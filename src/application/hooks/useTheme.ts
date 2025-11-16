@@ -1,19 +1,13 @@
 import { useEffect } from 'react';
-import { useThemeStore } from '../stores/theme.store';
 
+/**
+ * Applies dark theme to the document root.
+ * This ensures the dark theme is always active.
+ */
 export const useTheme = () => {
-  const { theme, toggleTheme, setTheme } = useThemeStore();
-
   useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-  }, [theme]);
-
-  return {
-    theme,
-    toggleTheme,
-    setTheme,
-    isDark: theme === 'dark',
-  };
+    root.classList.add('dark');
+    root.setAttribute('data-theme', 'dark');
+  }, []);
 };

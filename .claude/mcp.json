@@ -1,7 +1,11 @@
 {
   "mcpServers": {
     "supabase": {
+      "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=bqxdaevogklfhsqjqqta"
+    },
+    "alphavantage": {
+      "url": "https://mcp.alphavantage.co/mcp?apikey=G9246XE204ARDSYV"
     }
   }
 }

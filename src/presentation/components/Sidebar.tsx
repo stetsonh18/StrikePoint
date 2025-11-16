@@ -1,10 +1,24 @@
 import { NavLink } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import { useSidebarStore } from '../../application/stores/sidebar.store';
+import { useAuthStore } from '@/application/stores/auth.store';
+import { usePositionStatistics } from '@/application/hooks/usePositions';
 import { NAVIGATION_ITEMS } from '../../shared/constants/navigation';
 
 export const Sidebar = () => {
   const { isCollapsed, toggleSidebar } = useSidebarStore();
+  const user = useAuthStore((state) => state.user);
+  const userId = user?.id || '';
+  
+  // Fetch position statistics for win rate
+  const { data: positionStats } = usePositionStatistics(userId);
+  
+  // Calculate win rate
+  const wins = positionStats?.wins || 0;
+  const losses = positionStats?.losses || 0;
+  const totalTrades = wins + losses;
+  const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : '0';
+  const winRatePercent = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
 
   return (
     <aside
@@ -91,14 +105,24 @@ export const Sidebar = () => {
           {!isCollapsed ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-emerald-400">Win Rate</p>
-              <p className="text-2xl font-bold text-white">68.5%</p>
+              <p className="text-2xl font-bold text-white">
+                {totalTrades > 0 ? `${winRate}%` : '—'}
+              </p>
               <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full w-[68.5%] bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full" />
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                  style={{ width: `${winRatePercent}%` }}
+                />
               </div>
+              {totalTrades > 0 && (
+                <p className="text-xs text-slate-400">{wins}W / {losses}L</p>
+              )}
             </div>
           ) : (
             <div className="text-center">
-              <p className="text-xs font-bold text-emerald-400">68%</p>
+              <p className="text-xs font-bold text-emerald-400">
+                {totalTrades > 0 ? `${winRate}%` : '—'}
+              </p>
             </div>
           )}
         </div>

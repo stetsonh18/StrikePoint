@@ -1,8 +1,48 @@
-import { Moon, Sun, Bell, Search } from 'lucide-react';
-import { useTheme } from '../../application/hooks/useTheme';
+import { useState, useEffect } from 'react';
+import { Bell, Search, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../application/stores/auth.store';
+import { GlobalSearchModal } from './GlobalSearchModal';
 
 export const Header = () => {
-  const { isDark, toggleTheme } = useTheme();
+  const { user, signOut } = useAuthStore();
+  const navigate = useNavigate();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  const getInitials = (name?: string, email?: string) => {
+    if (name) {
+      return name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    }
+    return email?.slice(0, 2).toUpperCase() || 'U';
+  };
+
+  // Handle Cmd/Ctrl + K shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearchModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <header className="h-16 bg-slate-950/50 backdrop-blur-xl border-b border-slate-800/50 flex items-center justify-between px-6 relative">
@@ -11,29 +51,24 @@ export const Header = () => {
       <div className="relative flex items-center gap-6 flex-1">
         <div className="flex-1 max-w-xl">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <label htmlFor="header-search" className="sr-only">
+              Search trades and symbols
+            </label>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" aria-hidden="true" />
             <input
+              id="header-search"
               type="text"
-              placeholder="Search trades, symbols..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-900/50 border border-slate-800/50 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
+              placeholder="Search trades, symbols... (Cmd/Ctrl + K)"
+              aria-label="Search trades and symbols"
+              className="w-full pl-10 pr-4 py-2 bg-slate-900/50 border border-slate-800/50 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm cursor-pointer"
+              onClick={() => setShowSearchModal(true)}
+              readOnly
             />
           </div>
         </div>
       </div>
 
       <div className="relative flex items-center gap-2">
-        <button
-          onClick={toggleTheme}
-          className="p-2.5 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-emerald-400 transition-all group"
-          aria-label="Toggle theme"
-        >
-          {isDark ? (
-            <Sun className="w-5 h-5 group-hover:rotate-45 transition-transform duration-300" />
-          ) : (
-            <Moon className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-300" />
-          )}
-        </button>
-
         <button
           className="relative p-2.5 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-emerald-400 transition-all group"
           aria-label="Notifications"
@@ -44,18 +79,47 @@ export const Header = () => {
 
         <div className="ml-2 h-8 w-px bg-slate-800/50" />
 
-        <button className="flex items-center gap-3 pl-3 pr-4 py-2 rounded-xl hover:bg-slate-800/50 transition-all group">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-xs font-bold text-slate-950 shadow-glow-sm">
-            JD
-          </div>
-          <div className="text-left hidden sm:block">
-            <p className="text-sm font-medium text-slate-200 group-hover:text-emerald-400 transition-colors">
-              John Doe
-            </p>
-            <p className="text-xs text-slate-500">Pro Trader</p>
-          </div>
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            aria-label="User menu"
+            aria-expanded={showDropdown}
+            aria-haspopup="true"
+            className="flex items-center gap-3 pl-3 pr-4 py-2 rounded-xl hover:bg-slate-800/50 transition-all group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-xs font-bold text-slate-950 shadow-glow-sm">
+              {getInitials(user?.fullName, user?.email)}
+            </div>
+            <div className="text-left hidden sm:block">
+              <p className="text-sm font-medium text-slate-200 group-hover:text-emerald-400 transition-colors">
+                {user?.fullName || user?.email?.split('@')[0] || 'User'}
+              </p>
+              <p className="text-xs text-slate-500">{user?.email}</p>
+            </div>
+          </button>
+
+          {showDropdown && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setShowDropdown(false)}
+              />
+              <div className="absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-20 overflow-hidden">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-800/50 hover:text-red-400 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Global Search Modal */}
+      <GlobalSearchModal isOpen={showSearchModal} onClose={() => setShowSearchModal(false)} />
     </header>
   );
 };

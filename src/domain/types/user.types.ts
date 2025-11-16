@@ -9,7 +9,6 @@ export interface User {
 
 export interface UserPreferences {
   userId: string;
-  theme: 'light' | 'dark';
   currency: string;
   timezone: string;
   notifications: {
