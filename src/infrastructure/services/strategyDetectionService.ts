@@ -1,4 +1,5 @@
 import { PositionRepository, StrategyRepository } from '../repositories';
+import { logger } from '@/shared/utils/logger';
 import type { Position, StrategyInsert, Strategy, StrategyType } from '@/domain/types';
 
 /**
@@ -13,7 +14,7 @@ export class StrategyDetectionService {
     strategiesCreated: number;
     positionsGrouped: number;
   }> {
-    console.log('Starting strategy detection for user:', userId);
+    logger.debug('Starting strategy detection', { userId });
 
     // Get all open positions without a strategy
     const unmatchedPositions = await PositionRepository.getAll(userId, {
@@ -22,7 +23,7 @@ export class StrategyDetectionService {
 
     const positionsWithoutStrategy = unmatchedPositions.filter((p) => !p.strategy_id);
 
-    console.log(`Found ${positionsWithoutStrategy.length} positions without strategies`);
+    logger.debug('Positions without strategies', { count: positionsWithoutStrategy.length, userId });
 
     // Group positions by underlying symbol and expiration date
     const groupedBySymbol = this.groupPositionsBySymbol(positionsWithoutStrategy);
@@ -32,21 +33,43 @@ export class StrategyDetectionService {
 
     // Analyze each group for strategy patterns
     for (const [symbol, positions] of Object.entries(groupedBySymbol)) {
-      // Group by expiration date for same-expiration strategies
-      const byExpiration = this.groupByExpiration(positions);
-
-      for (const [expiration, expirationPositions] of Object.entries(byExpiration)) {
-        const result = await this.detectStrategyPattern(userId, symbol, expirationPositions);
-        if (result) {
-          strategiesCreated += result.strategiesCreated;
-          positionsGrouped += result.positionsGrouped;
+      // First, try to detect cross-expiration strategies (calendar, diagonal)
+      const crossExpirationResult = await this.detectCrossExpirationStrategies(userId, symbol, positions);
+      if (crossExpirationResult) {
+        strategiesCreated += crossExpirationResult.strategiesCreated;
+        positionsGrouped += crossExpirationResult.positionsGrouped;
+        // Remove detected positions from the pool
+        const remainingPositions = positions.filter(
+          (p) => !crossExpirationResult.detectedPositionIds.includes(p.id)
+        );
+        if (remainingPositions.length === 0) continue;
+        // Continue with remaining positions
+        const byExpiration = this.groupByExpiration(remainingPositions);
+        for (const [expiration, expirationPositions] of Object.entries(byExpiration)) {
+          const result = await this.detectStrategyPattern(userId, symbol, expirationPositions);
+          if (result) {
+            strategiesCreated += result.strategiesCreated;
+            positionsGrouped += result.positionsGrouped;
+          }
+        }
+      } else {
+        // Group by expiration date for same-expiration strategies
+        const byExpiration = this.groupByExpiration(positions);
+        for (const [expiration, expirationPositions] of Object.entries(byExpiration)) {
+          const result = await this.detectStrategyPattern(userId, symbol, expirationPositions);
+          if (result) {
+            strategiesCreated += result.strategiesCreated;
+            positionsGrouped += result.positionsGrouped;
+          }
         }
       }
     }
 
-    console.log(
-      `Strategy detection complete: ${strategiesCreated} strategies created, ${positionsGrouped} positions grouped`
-    );
+    logger.info('Strategy detection complete', {
+      strategiesCreated,
+      positionsGrouped,
+      userId,
+    });
 
     return {
       strategiesCreated,
@@ -111,13 +134,15 @@ export class StrategyDetectionService {
     let strategiesCreated = 0;
     let positionsGrouped = 0;
 
-    // Try to detect specific patterns
+    // Try to detect specific patterns (order matters - more complex first)
     const detected =
+      (await this.detectIronButterfly(userId, symbol, optionPositions)) ||
       (await this.detectIronCondor(userId, symbol, optionPositions)) ||
+      (await this.detectButterfly(userId, symbol, optionPositions)) ||
+      (await this.detectRatioSpread(userId, symbol, optionPositions)) ||
       (await this.detectVerticalSpread(userId, symbol, optionPositions)) ||
       (await this.detectStraddle(userId, symbol, optionPositions)) ||
-      (await this.detectStrangle(userId, symbol, optionPositions)) ||
-      (await this.detectButterfly(userId, symbol, optionPositions));
+      (await this.detectStrangle(userId, symbol, optionPositions));
 
     if (detected) {
       strategiesCreated += detected.strategiesCreated;
@@ -293,6 +318,185 @@ export class StrategyDetectionService {
   }
 
   /**
+   * Detect Iron Butterfly: Straddle + wings (4 legs, same expiration)
+   * Pattern: Long put (lower strike), Short put (middle), Short call (middle), Long call (higher strike)
+   */
+  private static async detectIronButterfly(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number } | null> {
+    if (positions.length !== 4) return null;
+
+    // All must have same expiration
+    const expirations = new Set(positions.map((p) => p.expiration_date).filter((e): e is string => e !== null));
+    if (expirations.size !== 1) return null;
+
+    // Sort by strike price
+    const sorted = positions.sort((a, b) => (a.strike_price || 0) - (b.strike_price || 0));
+    const [p1, p2, p3, p4] = sorted;
+
+    // Check for iron butterfly pattern
+    // Pattern 1: Long put, Short put, Short call, Long call (all at middle strike for short legs)
+    if (
+      p1.option_type === 'put' &&
+      p1.side === 'long' &&
+      p2.option_type === 'put' &&
+      p2.side === 'short' &&
+      p2.strike_price === p3.strike_price && // Middle strike
+      p3.option_type === 'call' &&
+      p3.side === 'short' &&
+      p4.option_type === 'call' &&
+      p4.side === 'long' &&
+      p1.strike_price < p2.strike_price &&
+      p4.strike_price > p3.strike_price
+    ) {
+      await this.createStrategy(userId, 'iron_butterfly', symbol, positions, 'neutral');
+      return { strategiesCreated: 1, positionsGrouped: 4 };
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect Calendar Spread (Horizontal Spread): Same strike, different expirations
+   */
+  private static async detectCalendarSpread(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number; detectedPositionIds: string[] } | null> {
+    if (positions.length !== 2) return null;
+
+    const [p1, p2] = positions;
+
+    // Check if same option type, same strike, different expirations, opposite sides
+    if (
+      p1.option_type === p2.option_type &&
+      p1.strike_price === p2.strike_price &&
+      p1.expiration_date !== p2.expiration_date &&
+      p1.expiration_date !== null &&
+      p2.expiration_date !== null &&
+      p1.side !== p2.side
+    ) {
+      await this.createStrategy(userId, 'calendar_spread', symbol, positions, 'neutral');
+      return { strategiesCreated: 1, positionsGrouped: 2, detectedPositionIds: [p1.id, p2.id] };
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect Diagonal Spread: Different strikes AND different expirations
+   */
+  private static async detectDiagonalSpread(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number; detectedPositionIds: string[] } | null> {
+    if (positions.length !== 2) return null;
+
+    const [p1, p2] = positions;
+
+    // Check if same option type, different strikes, different expirations, opposite sides
+    if (
+      p1.option_type === p2.option_type &&
+      p1.strike_price !== p2.strike_price &&
+      p1.expiration_date !== p2.expiration_date &&
+      p1.expiration_date !== null &&
+      p2.expiration_date !== null &&
+      p1.side !== p2.side
+    ) {
+      // Determine direction based on strike and expiration
+      const isCall = p1.option_type === 'call';
+      const longLeg = p1.side === 'long' ? p1 : p2;
+      const shortLeg = p1.side === 'short' ? p1 : p2;
+      
+      // For calls: bullish if long leg has lower strike, bearish if higher strike
+      // For puts: bullish if long leg has higher strike, bearish if lower strike
+      let direction: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+      if (isCall) {
+        direction = (longLeg.strike_price || 0) < (shortLeg.strike_price || 0) ? 'bullish' : 'bearish';
+      } else {
+        direction = (longLeg.strike_price || 0) > (shortLeg.strike_price || 0) ? 'bullish' : 'bearish';
+      }
+
+      await this.createStrategy(userId, 'diagonal_spread', symbol, positions, direction);
+      return { strategiesCreated: 1, positionsGrouped: 2, detectedPositionIds: [p1.id, p2.id] };
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect Ratio Spread: Unequal quantities (e.g., 1-2, 2-3, etc.)
+   */
+  private static async detectRatioSpread(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number } | null> {
+    if (positions.length !== 2) return null;
+
+    const [p1, p2] = positions;
+
+    // Check if same option type, same expiration, different strikes, opposite sides, unequal quantities
+    if (
+      p1.option_type === p2.option_type &&
+      p1.expiration_date === p2.expiration_date &&
+      p1.strike_price !== p2.strike_price &&
+      p1.side !== p2.side &&
+      p1.current_quantity !== p2.current_quantity
+    ) {
+      // Determine direction
+      const isDebit = p1.side === 'long' || p2.side === 'long';
+      const direction =
+        p1.option_type === 'call'
+          ? isDebit
+            ? 'bullish'
+            : 'bearish'
+          : isDebit
+          ? 'bearish'
+          : 'bullish';
+
+      await this.createStrategy(userId, 'ratio_spread', symbol, positions, direction);
+      return { strategiesCreated: 1, positionsGrouped: 2 };
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect cross-expiration strategies (calendar and diagonal spreads)
+   * Checks all pairs of positions for cross-expiration patterns
+   */
+  private static async detectCrossExpirationStrategies(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number; detectedPositionIds: string[] } | null> {
+    const optionPositions = positions.filter((p) => p.asset_type === 'option');
+    if (optionPositions.length < 2) return null;
+
+    // Try all pairs for calendar and diagonal spreads
+    for (let i = 0; i < optionPositions.length; i++) {
+      for (let j = i + 1; j < optionPositions.length; j++) {
+        const pair = [optionPositions[i], optionPositions[j]];
+        
+        // Try calendar spread first (more specific - same strike)
+        const calendarResult = await this.detectCalendarSpread(userId, symbol, pair);
+        if (calendarResult) return calendarResult;
+
+        // Try diagonal spread
+        const diagonalResult = await this.detectDiagonalSpread(userId, symbol, pair);
+        if (diagonalResult) return diagonalResult;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Create a strategy from positions
    */
   private static async createStrategy(
@@ -355,7 +559,7 @@ export class StrategyDetectionService {
       await PositionRepository.update(position.id, { strategy_id: strategy.id });
     }
 
-    console.log(`Created ${strategyType} strategy for ${symbol}:`, strategy.id);
+    logger.debug('Created strategy', { strategyType, symbol, strategyId: strategy.id });
 
     return strategy;
   }

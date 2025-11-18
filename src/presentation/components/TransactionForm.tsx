@@ -8,6 +8,7 @@ import { CashBalanceService } from '@/infrastructure/services/cashBalanceService
 import { SymbolAutocomplete } from './SymbolAutocomplete';
 import { OptionsChain } from './OptionsChain';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
+import { logger } from '@/shared/utils/logger';
 
 interface TransactionFormProps {
   assetType: AssetType;
@@ -19,6 +20,12 @@ interface TransactionFormProps {
     symbol?: string;
     transactionType?: 'Buy' | 'Sell';
     maxQuantity?: number;
+    // Option-specific fields
+    underlyingSymbol?: string;
+    optionType?: 'call' | 'put';
+    strikePrice?: number;
+    expirationDate?: string;
+    optionTransactionCode?: 'BTO' | 'STO' | 'BTC' | 'STC';
   };
 }
 
@@ -41,6 +48,27 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   });
+  
+  // Time field - restricted to 5-minute increments
+  const [transactionTime, setTransactionTime] = useState(() => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  });
+  
+  // Helper function to round time to nearest 5 minutes
+  const roundTo5Minutes = (time: string): string => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const roundedMinutes = Math.floor(minutes / 5) * 5;
+    return `${String(hours).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`;
+  };
+  
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const roundedTime = roundTo5Minutes(e.target.value);
+    setTransactionTime(roundedTime);
+  };
+  
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -52,11 +80,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const [transactionCode, setTransactionCode] = useState<'Buy' | 'Sell'>(initialValues?.transactionType || 'Buy');
 
   // Option fields
-  const [underlyingSymbol, setUnderlyingSymbol] = useState('');
-  const [optionType, setOptionType] = useState<'call' | 'put'>('call');
-  const [strikePrice, setStrikePrice] = useState('');
-  const [expirationDate, setExpirationDate] = useState('');
-  const [optionTransactionCode, setOptionTransactionCode] = useState<'BTO' | 'STO' | 'BTC' | 'STC'>('BTO');
+  const [underlyingSymbol, setUnderlyingSymbol] = useState(initialValues?.underlyingSymbol || '');
+  const [optionType, setOptionType] = useState<'call' | 'put'>(initialValues?.optionType || 'call');
+  const [strikePrice, setStrikePrice] = useState(initialValues?.strikePrice?.toString() || '');
+  const [expirationDate, setExpirationDate] = useState(initialValues?.expirationDate || '');
+  const [optionTransactionCode, setOptionTransactionCode] = useState<'BTO' | 'STO' | 'BTC' | 'STC'>(
+    initialValues?.optionTransactionCode || 'BTO'
+  );
   const [showChainSelector, setShowChainSelector] = useState(false);
 
   // Cash fields
@@ -117,6 +147,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       const useProcessDate = transactionDate;
       const useSettleDate = transactionDate;
       
+      // Store entry time in notes for position matching and analytics
+      // Format: "ENTRY_TIME:HH:MM" (will be extracted when creating positions)
+      const entryTimeNote = `ENTRY_TIME:${transactionTime}`;
+      const combinedNotes = notes 
+        ? `${notes}\n${entryTimeNote}` 
+        : entryTimeNote;
+      
       let transactionData: any = {
         user_id: userId,
         import_id: null,
@@ -124,7 +161,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         process_date: useProcessDate,
         settle_date: useSettleDate,
         description: description || 'Manual entry',
-        notes: notes || null,
+        notes: combinedNotes,
         tags: [],
         fees: parseFloat(fees) || 0,
       };
@@ -259,7 +296,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               }
             );
           } catch (error) {
-            console.error('Error updating cash balance:', error);
+            logger.error('Error updating cash balance', error);
             // Don't fail the transaction creation if balance update fails
           }
           
@@ -316,47 +353,62 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     >
       <div
         ref={modalRef as React.RefObject<HTMLDivElement>}
-        className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
       >
-        <div className="sticky top-0 bg-slate-900 border-b border-slate-700 p-6 flex items-center justify-between">
-          <h2 id="transaction-form-title" className="text-2xl font-bold text-slate-100">
+        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between">
+          <h2 id="transaction-form-title" className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             Add {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             aria-label="Close modal"
           >
-            <X className="text-slate-400" size={20} />
+            <X className="text-slate-600 dark:text-slate-400" size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-sm">
               {error}
             </div>
           )}
 
-          {/* Common Fields - Date Field */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Date *
-            </label>
-            <input
-              type="date"
-              value={transactionDate}
-              onChange={(e) => setTransactionDate(e.target.value)}
-              required
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-            />
+          {/* Common Fields - Date and Time Fields */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Date *
+              </label>
+              <input
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                required
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Time (5-min increments) *
+              </label>
+              <input
+                type="time"
+                step="300"
+                value={transactionTime}
+                onChange={handleTimeChange}
+                required
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              />
+            </div>
           </div>
 
           {/* Asset Type Specific Fields */}
           {assetType === 'stock' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Symbol *
                 </label>
                 <SymbolAutocomplete
@@ -368,21 +420,21 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
                   </label>
                   <select
                     value={transactionCode}
                     onChange={(e) => setTransactionCode(e.target.value as 'Buy' | 'Sell')}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >
                     <option value="Buy">Buy</option>
                     <option value="Sell">Sell</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Quantity *
                   </label>
                   <input
@@ -392,13 +444,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setQuantity(e.target.value)}
                     placeholder="100"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Share *
                   </label>
                   <input
@@ -408,11 +460,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="150.00"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Fees
                   </label>
                   <input
@@ -421,7 +473,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={fees}
                     onChange={(e) => setFees(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
@@ -431,7 +483,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           {assetType === 'option' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Underlying Symbol *
                 </label>
                 <div className="flex gap-2">
@@ -447,7 +499,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     type="button"
                     onClick={() => setShowChainSelector(true)}
                     disabled={!underlyingSymbol}
-                    className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <Search size={16} />
                     Chain
@@ -456,14 +508,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Transaction Type *
                   </label>
                   <select
                     value={optionTransactionCode}
                     onChange={(e) => setOptionTransactionCode(e.target.value as any)}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >
                     <option value="BTO">Buy To Open</option>
                     <option value="STO">Sell To Open</option>
@@ -472,14 +524,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Option Type *
                   </label>
                   <select
                     value={optionType}
                     onChange={(e) => setOptionType(e.target.value as 'call' | 'put')}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >
                     <option value="call">Call</option>
                     <option value="put">Put</option>
@@ -488,7 +540,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Strike Price *
                   </label>
                   <input
@@ -498,11 +550,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setStrikePrice(e.target.value)}
                     placeholder="4500"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Expiration Date *
                   </label>
                   <input
@@ -510,26 +562,42 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={expirationDate}
                     onChange={(e) => setExpirationDate(e.target.value)}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Contracts *
                   </label>
                   <input
                     type="number"
                     value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (initialValues?.maxQuantity) {
+                        const numVal = parseFloat(val) || 0;
+                        if (numVal > initialValues.maxQuantity) {
+                          setQuantity(initialValues.maxQuantity.toString());
+                          return;
+                        }
+                      }
+                      setQuantity(val);
+                    }}
                     placeholder="1"
+                    max={initialValues?.maxQuantity}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
+                  {initialValues?.maxQuantity && (
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                      Maximum: {initialValues.maxQuantity} contracts
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Contract *
                   </label>
                   <input
@@ -539,11 +607,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="5.50"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Fees
                   </label>
                   <input
@@ -552,7 +620,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={fees}
                     onChange={(e) => setFees(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
@@ -562,35 +630,35 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           {assetType === 'crypto' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Symbol *
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Cryptocurrency *
                 </label>
                 <input
                   type="text"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                  placeholder="BTC"
+                  placeholder="BTC, ETH, SOL..."
                   required
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
                   </label>
                   <select
                     value={transactionCode}
                     onChange={(e) => setTransactionCode(e.target.value as 'Buy' | 'Sell')}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >
                     <option value="Buy">Buy</option>
                     <option value="Sell">Sell</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Quantity *
                   </label>
                   <input
@@ -600,14 +668,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setQuantity(e.target.value)}
                     placeholder="0.001"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Price *
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Price per Unit *
                   </label>
                   <input
                     type="number"
@@ -616,11 +684,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="50000.00"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Fees
                   </label>
                   <input
@@ -629,7 +697,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={fees}
                     onChange={(e) => setFees(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
@@ -639,7 +707,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           {assetType === 'futures' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Symbol *
                 </label>
                 <input
@@ -648,26 +716,26 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                   placeholder="ES"
                   required
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
                   </label>
                   <select
                     value={transactionCode}
                     onChange={(e) => setTransactionCode(e.target.value as 'Buy' | 'Sell')}
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >
                     <option value="Buy">Buy</option>
                     <option value="Sell">Sell</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Contract Month
                   </label>
                   <input
@@ -675,13 +743,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={contractMonth}
                     onChange={(e) => setContractMonth(e.target.value.toUpperCase())}
                     placeholder="DEC24"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Quantity *
                   </label>
                   <input
@@ -690,24 +758,24 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setQuantity(e.target.value)}
                     placeholder="1"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Expiration Date
                   </label>
                   <input
                     type="date"
                     value={expirationDate}
                     onChange={(e) => setExpirationDate(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price *
                   </label>
                   <input
@@ -717,11 +785,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="4500.00"
                     required
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Fees
                   </label>
                   <input
@@ -730,7 +798,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                     value={fees}
                     onChange={(e) => setFees(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
@@ -741,11 +809,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Category *
                   </label>
                   {categoriesLoading ? (
-                    <div className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 text-sm">
+                    <div className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-400 text-sm">
                       Loading categories...
                     </div>
                   ) : (
@@ -753,7 +821,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                       value={cashTransactionCategory}
                       onChange={(e) => setCashTransactionCategory(e.target.value)}
                       required
-                      className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                     >
                       <option value="">Select Category</option>
                       {cashRelevantCategories.map((category) => (
@@ -765,15 +833,15 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Transaction Type *
                   </label>
                   {!cashTransactionCategory ? (
-                    <div className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 text-sm">
+                    <div className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-400 text-sm">
                       Select a category first
                     </div>
                   ) : codesLoading ? (
-                    <div className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 text-sm">
+                    <div className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-400 text-sm">
                       Loading transaction codes...
                     </div>
                   ) : (
@@ -782,7 +850,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                       onChange={(e) => setCashTransactionCode(e.target.value)}
                       required
                       disabled={!cashTransactionCategory || transactionCodes.length === 0}
-                      className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="">Select Transaction Type</option>
                       {transactionCodes.map((code) => {
@@ -805,7 +873,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Amount *
                 </label>
                 <input
@@ -815,7 +883,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="1000.00"
                   required
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
             </>
@@ -823,7 +891,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Description and Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Description
             </label>
             <input
@@ -831,11 +899,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Notes
             </label>
             <textarea
@@ -843,7 +911,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional notes"
               rows={3}
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
 
@@ -852,14 +920,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-300 font-medium transition-all"
+              className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating...' : 'Create Transaction'}
             </button>
@@ -870,16 +938,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       {/* Options Chain Selector Modal */}
       {assetType === 'option' && showChainSelector && underlyingSymbol && (
         <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="sticky top-0 bg-slate-900 border-b border-slate-700 p-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-100">
+          <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 Select Option from Chain - {underlyingSymbol}
               </h3>
               <button
                 onClick={() => setShowChainSelector(false)}
-                className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
-                <X className="text-slate-400" size={20} />
+                <X className="text-slate-600 dark:text-slate-400" size={20} />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">

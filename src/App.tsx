@@ -1,18 +1,22 @@
 import { useEffect, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { queryClient } from './infrastructure/api/queryClient';
 import { RootLayout } from './presentation/layouts/RootLayout';
 import { Login } from './presentation/pages/Login';
 import { Signup } from './presentation/pages/Signup';
+import { ResetPassword } from './presentation/pages/ResetPassword';
+import { Landing } from './presentation/pages/Landing';
 import { ProtectedRoute } from './presentation/components/ProtectedRoute';
+import { HomeRoute } from './presentation/components/HomeRoute';
 import { ErrorBoundary } from './presentation/components/ErrorBoundary';
 import { LoadingSpinner } from './presentation/components/LoadingSpinner';
-import { useTheme } from './application/hooks/useTheme';
+import { useTheme } from './shared/theme/useTheme';
 import { useAuthStore } from './application/stores/auth.store';
 import { createRouteWithErrorBoundary } from './presentation/components/RouteWithErrorBoundary';
 import { RoutePrefetcher } from './presentation/components/RoutePrefetcher';
+import { AnalyticsTracker } from './presentation/components/AnalyticsTracker';
 
 // Lazy load routes with error boundaries
 const Dashboard = createRouteWithErrorBoundary(() => import('./presentation/pages/Dashboard').then(module => ({ default: module.Dashboard })));
@@ -33,13 +37,13 @@ function App() {
 
   useEffect(() => {
     initialize();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [initialize]);
 
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
+          <AnalyticsTracker />
           <RoutePrefetcher />
           <Suspense
             fallback={
@@ -51,12 +55,16 @@ function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/landing" element={<Landing />} />
               <Route
                 path="/"
                 element={
-                  <ProtectedRoute>
-                    <RootLayout />
-                  </ProtectedRoute>
+                  <HomeRoute>
+                    <ProtectedRoute>
+                      <RootLayout />
+                    </ProtectedRoute>
+                  </HomeRoute>
                 }
               >
                 <Route index element={<Dashboard />} />

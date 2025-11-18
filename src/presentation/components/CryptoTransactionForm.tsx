@@ -92,29 +92,29 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-slate-900 border-b border-slate-700 p-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-100">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             Add Crypto Transaction
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
           >
-            <X className="text-slate-400" size={20} />
+            <X className="text-slate-600 dark:text-slate-400" size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-sm">
               {error}
             </div>
           )}
 
           {/* Date Field */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Date *
             </label>
             <input
@@ -122,13 +122,13 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
               value={transactionDate}
               onChange={(e) => setTransactionDate(e.target.value)}
               required
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
 
           {/* Crypto Symbol */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Cryptocurrency *
             </label>
             <CryptoSymbolAutocomplete
@@ -142,21 +142,21 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
           {/* Transaction Type and Quantity */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Type *
               </label>
               <select
                 value={transactionCode}
                 onChange={(e) => setTransactionCode(e.target.value as 'Buy' | 'Sell')}
                 required
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               >
                 <option value="Buy">Buy</option>
                 <option value="Sell">Sell</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Quantity *
               </label>
               <input
@@ -166,7 +166,7 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
                 onChange={(e) => setQuantity(e.target.value)}
                 placeholder="0.001"
                 required
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               />
             </div>
           </div>
@@ -174,7 +174,7 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
           {/* Price and Fees */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Price per Unit *
               </label>
               <input
@@ -184,11 +184,11 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="50000.00"
                 required
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Fees
               </label>
               <input
@@ -197,17 +197,17 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
                 value={fees}
                 onChange={(e) => setFees(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               />
             </div>
           </div>
 
           {/* Total Amount Display */}
           {quantity && price && (
-            <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-xl">
+            <div className="p-4 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-400">Total Amount</span>
-                <span className="text-lg font-semibold text-slate-100">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Total Amount</span>
+                <span className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                   ${(parseFloat(price) * parseFloat(quantity)).toFixed(2)}
                 </span>
               </div>
@@ -216,7 +216,7 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Description
             </label>
             <input
@@ -224,13 +224,13 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Notes
             </label>
             <textarea
@@ -238,7 +238,7 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional notes"
               rows={3}
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
 
@@ -247,14 +247,14 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-300 font-medium transition-all"
+              className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating...' : 'Create Transaction'}
             </button>

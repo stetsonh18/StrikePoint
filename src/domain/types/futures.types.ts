@@ -167,3 +167,112 @@ export function calculateTickPL(
   const ticks = priceDifference / tickSize;
   return ticks * tickValue * quantity;
 }
+
+/**
+ * Calculate the third Friday of a given month and year
+ * @param year - Full year (e.g., 2025)
+ * @param month - Month index (0-11, where 0 = January)
+ * @returns Date object for the third Friday
+ */
+export function getThirdFriday(year: number, month: number): Date {
+  // Start with the first day of the month
+  const firstDay = new Date(year, month, 1);
+  const dayOfWeek = firstDay.getDay(); // 0 = Sunday, 5 = Friday
+  
+  // Calculate days until first Friday
+  // Friday is day 5, so if today is:
+  // Sunday (0): need 5 days
+  // Monday (1): need 4 days
+  // Tuesday (2): need 3 days
+  // Wednesday (3): need 2 days
+  // Thursday (4): need 1 day
+  // Friday (5): need 0 days (it's already Friday)
+  // Saturday (6): need 6 days
+  const daysUntilFirstFriday = (5 - dayOfWeek + 7) % 7;
+  
+  // First Friday is on day (1 + daysUntilFirstFriday)
+  // Third Friday is 14 days after first Friday
+  const thirdFridayDay = 1 + daysUntilFirstFriday + 14;
+  
+  return new Date(year, month, thirdFridayDay);
+}
+
+/**
+ * Calculate expiration date from contract month
+ * For equity index futures (ES, NQ, YM, RTY): Third Friday of contract month
+ * For other futures: Last day of contract month (fallback)
+ * @param contractMonth - Contract month in format "MAR25", "DEC24", etc. or month code + year "H25"
+ * @param symbol - Contract symbol (e.g., "ES", "NQ", "CL")
+ * @returns Expiration date as YYYY-MM-DD string, or null if unable to calculate
+ */
+export function calculateExpirationDate(contractMonth: string, symbol?: string): string | null {
+  if (!contractMonth) return null;
+
+  // Parse contract month to get month and year
+  let monthCode: string | null = null;
+  let yearStr: string | null = null;
+
+  // Try to parse formats like "MAR25", "DEC24"
+  const formattedMatch = contractMonth.match(/^([A-Z]{3})(\d{2})$/);
+  if (formattedMatch) {
+    const monthName = formattedMatch[1];
+    yearStr = formattedMatch[2];
+    // Convert month name to month code
+    const monthNameToCode: Record<string, string> = {
+      JAN: 'F', FEB: 'G', MAR: 'H', APR: 'J', MAY: 'K', JUN: 'M',
+      JUL: 'N', AUG: 'Q', SEP: 'U', OCT: 'V', NOV: 'X', DEC: 'Z'
+    };
+    monthCode = monthNameToCode[monthName] || null;
+  } else {
+    // Try to parse formats like "H25", "Z24"
+    const codeMatch = contractMonth.match(/^([FGHJKMNQUVXZ])(\d{2,4})$/);
+    if (codeMatch) {
+      monthCode = codeMatch[1];
+      yearStr = codeMatch[2];
+    }
+  }
+
+  if (!monthCode || !yearStr) return null;
+
+  // Convert month code to month index (0-11)
+  const monthCodeToIndex: Record<string, number> = {
+    F: 0,  // January
+    G: 1,  // February
+    H: 2,  // March
+    J: 3,  // April
+    K: 4,  // May
+    M: 5,  // June
+    N: 6,  // July
+    Q: 7,  // August
+    U: 8,  // September
+    V: 9,  // October
+    X: 10, // November
+    Z: 11  // December
+  };
+
+  const monthIndex = monthCodeToIndex[monthCode];
+  if (monthIndex === undefined) return null;
+
+  // Convert year string to full year
+  const year = yearStr.length === 2 ? 2000 + parseInt(yearStr, 10) : parseInt(yearStr, 10);
+
+  // Equity index futures expire on third Friday of contract month
+  const equityIndexFutures = ['ES', 'NQ', 'YM', 'RTY', 'MES', 'MNQ', 'MYM', 'M2K'];
+  const isEquityIndex = symbol && equityIndexFutures.includes(symbol.toUpperCase());
+
+  let expirationDate: Date;
+  if (isEquityIndex) {
+    // Third Friday of the contract month
+    expirationDate = getThirdFriday(year, monthIndex);
+  } else {
+    // For other futures, use last day of the month as fallback
+    // Last day is the day before the first day of next month
+    expirationDate = new Date(year, monthIndex + 1, 0);
+  }
+
+  // Format as YYYY-MM-DD
+  const yearStrFull = expirationDate.getFullYear();
+  const monthStr = String(expirationDate.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(expirationDate.getDate()).padStart(2, '0');
+  return `${yearStrFull}-${monthStr}-${dayStr}`;
+}

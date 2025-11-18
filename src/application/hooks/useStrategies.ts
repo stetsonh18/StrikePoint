@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { StrategyRepository } from '@/infrastructure/repositories';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { StrategyFilters, Strategy } from '@/domain/types';
 
 export function useStrategies(
@@ -7,7 +8,7 @@ export function useStrategies(
   filters?: StrategyFilters,
   options?: Omit<UseQueryOptions<Strategy[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['strategies', userId, filters] as const;
+  const queryKey = queryKeys.strategies.list(userId, filters);
 
   return useQuery<Strategy[], Error>({
     queryKey,
@@ -21,7 +22,7 @@ export function useOpenStrategies(
   userId: string,
   options?: Omit<UseQueryOptions<Strategy[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['strategies', 'open', userId] as const;
+  const queryKey = queryKeys.strategies.open(userId);
 
   return useQuery<Strategy[], Error>({
     queryKey,

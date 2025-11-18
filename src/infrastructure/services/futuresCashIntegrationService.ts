@@ -54,6 +54,7 @@ export class FuturesCashIntegrationService {
         process_date: transaction.process_date,
         settle_date: transaction.settle_date,
         symbol: transaction.underlying_symbol || transaction.instrument || null,
+        transaction_id: transaction.id,
         tags: ['futures', 'margin', 'open'],
       };
 
@@ -72,6 +73,7 @@ export class FuturesCashIntegrationService {
         process_date: transaction.process_date,
         settle_date: transaction.settle_date,
         symbol: transaction.underlying_symbol || transaction.instrument || null,
+        transaction_id: transaction.id,
         tags: ['futures', 'fee', 'open'],
       };
 
@@ -132,6 +134,7 @@ export class FuturesCashIntegrationService {
         process_date: transaction.process_date,
         settle_date: transaction.settle_date,
         symbol: transaction.underlying_symbol || transaction.instrument || null,
+        transaction_id: transaction.id,
         tags: ['futures', 'margin', 'close'],
       };
 
@@ -163,6 +166,7 @@ export class FuturesCashIntegrationService {
         process_date: transaction.process_date,
         settle_date: transaction.settle_date,
         symbol: transaction.underlying_symbol || transaction.instrument || null,
+        transaction_id: transaction.id,
         tags: ['futures', 'pnl', 'close'],
       };
 
@@ -183,6 +187,7 @@ export class FuturesCashIntegrationService {
         process_date: transaction.process_date,
         settle_date: transaction.settle_date,
         symbol: transaction.underlying_symbol || transaction.instrument || null,
+        transaction_id: transaction.id,
         tags: ['futures', 'fee', 'close'],
       };
 

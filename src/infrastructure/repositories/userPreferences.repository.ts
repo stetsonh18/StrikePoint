@@ -29,6 +29,8 @@ export class UserPreferencesRepository {
           email: data.email_notifications,
           desktop: data.desktop_notifications,
         },
+        isEarlyAdopter: data.is_early_adopter ?? false,
+        subscriptionPrice: data.subscription_price ? parseFloat(data.subscription_price) : undefined,
       };
     }
 
@@ -54,7 +56,7 @@ export class UserPreferencesRepository {
     userId: string,
     preferences: Partial<UserPreferences>
   ): Promise<UserPreferences> {
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (preferences.currency !== undefined) {
       updateData.currency = preferences.currency;
@@ -109,6 +111,8 @@ export class UserPreferencesRepository {
           email: insertedData.email_notifications,
           desktop: insertedData.desktop_notifications,
         },
+        isEarlyAdopter: insertedData.is_early_adopter ?? false,
+        subscriptionPrice: insertedData.subscription_price ? parseFloat(insertedData.subscription_price) : undefined,
       };
     }
 
@@ -120,7 +124,46 @@ export class UserPreferencesRepository {
         email: updatedData.email_notifications,
         desktop: updatedData.desktop_notifications,
       },
+      isEarlyAdopter: updatedData.is_early_adopter ?? false,
+      subscriptionPrice: updatedData.subscription_price ? parseFloat(updatedData.subscription_price) : undefined,
     };
+  }
+
+  /**
+   * Check and set early adopter status for a user
+   * This atomically checks if spots are available and sets the user's status
+   */
+  static async checkAndSetEarlyAdopter(userId: string): Promise<{
+    isEarlyAdopter: boolean;
+    subscriptionPrice: number;
+    spotsRemaining: number;
+  }> {
+    const { data, error } = await supabase.rpc('check_and_set_early_adopter', {
+      p_user_id: userId,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      isEarlyAdopter: data.is_early_adopter ?? false,
+      subscriptionPrice: parseFloat(data.subscription_price) || 19.99,
+      spotsRemaining: data.spots_remaining ?? 0,
+    };
+  }
+
+  /**
+   * Get current early adopter count
+   */
+  static async getEarlyAdopterCount(): Promise<number> {
+    const { data, error } = await supabase.rpc('get_early_adopter_count');
+
+    if (error) {
+      throw error;
+    }
+
+    return data ?? 0;
   }
 }
 

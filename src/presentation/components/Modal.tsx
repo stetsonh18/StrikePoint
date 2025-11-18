@@ -64,16 +64,16 @@ export const Modal = ({
     >
       <div
         ref={containerRef as React.RefObject<HTMLDivElement>}
-        className={`bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto ${className}`}
+        className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto ${className}`}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 p-6 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between z-10">
           <div>
-            <h2 id="modal-title" className="text-2xl font-bold text-slate-100">
+            <h2 id="modal-title" className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               {title}
             </h2>
             {description && (
-              <p id="modal-description" className="text-sm text-slate-400 mt-1">
+              <p id="modal-description" className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                 {description}
               </p>
             )}
@@ -81,10 +81,10 @@ export const Modal = ({
           {showCloseButton && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               aria-label="Close modal"
             >
-              <X className="text-slate-400" size={20} />
+              <X className="text-slate-600 dark:text-slate-400" size={20} />
             </button>
           )}
         </div>

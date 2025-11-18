@@ -11,6 +11,7 @@ import { useToast } from '@/shared/hooks/useToast';
 import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import type { CashTransaction } from '@/domain/types';
+import { logger } from '@/shared/utils/logger';
 
 const CashTransactions: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -88,7 +89,12 @@ const CashTransactions: React.FC = () => {
       .filter(t => ['FEE', 'GOLD'].includes(t.transaction_code))
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    const netCashFlow = transactions.reduce((sum, t) => sum + t.amount, 0);
+    // Exclude FUTURES_MARGIN and FUTURES_MARGIN_RELEASE from net cash flow calculation
+    // FUTURES_MARGIN represents margin reserved, not actual cash spent
+    // FUTURES_MARGIN_RELEASE offsets the reservation (both excluded nets to 0)
+    const netCashFlow = transactions
+      .filter((t) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(t.transaction_code))
+      .reduce((sum, t) => sum + t.amount, 0);
 
     return {
       totalDeposits: deposits,
@@ -105,9 +111,9 @@ const CashTransactions: React.FC = () => {
     const isCredit = creditCodes.includes(code) || amount > 0;
 
     if (isCredit) {
-      return <TrendingUp className="text-emerald-400" size={20} />;
+      return <TrendingUp className="text-emerald-600 dark:text-emerald-400" size={20} />;
     } else {
-      return <TrendingDown className="text-red-400" size={20} />;
+      return <TrendingDown className="text-red-600 dark:text-red-400" size={20} />;
     }
   };
 
@@ -115,7 +121,7 @@ const CashTransactions: React.FC = () => {
     const creditCodes = ['ACH', 'RTP', 'DCF', 'INT', 'CDIV', 'SLIP', 'GMPC', 'OCC', 'DEP', 'DEPOSIT', 'WIRE'];
     const isCredit = creditCodes.includes(code) || amount > 0;
     
-    return isCredit ? 'text-emerald-400' : 'text-red-400';
+    return isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
   };
 
   const formatCurrency = (amount: number) => {
@@ -147,7 +153,7 @@ const CashTransactions: React.FC = () => {
       await deleteMutation.mutateAsync(transaction.id);
       toast.success('Transaction deleted successfully');
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      logger.error('Error deleting transaction', error);
       toast.error('Failed to delete transaction', {
         description: error instanceof Error ? error.message : 'Please try again.',
       });
@@ -159,23 +165,23 @@ const CashTransactions: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 dark:from-slate-100 to-slate-600 dark:to-slate-400 bg-clip-text text-transparent">
             Cash Transactions
           </h1>
-          <p className="text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
             Track deposits, withdrawals, dividends, and interest payments
           </p>
         </div>
         <div className="flex gap-3">
           <button
-            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all"
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all"
             onClick={() => {/* TODO: Export to CSV */}}
           >
             <Download size={18} className="inline mr-2" />
             Export
           </button>
           <button
-            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
             onClick={() => setShowAddModal(true)}
           >
             <Plus size={18} className="inline mr-2" />
@@ -213,11 +219,11 @@ const CashTransactions: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-4">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 shadow-sm dark:shadow-none">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex items-center gap-2">
-            <Filter size={18} className="text-slate-400" />
-            <span className="text-sm font-medium text-slate-300">
+            <Filter size={18} className="text-slate-500 dark:text-slate-400" />
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Filter by:
             </span>
           </div>
@@ -247,37 +253,37 @@ const CashTransactions: React.FC = () => {
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 overflow-hidden">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 overflow-hidden shadow-sm dark:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-800/50">
+            <thead className="bg-slate-100 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Symbol
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Amount
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
               {transactionsLoading ? (
                 <TableSkeleton rows={5} columns={6} />
               ) : filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
                     No transactions found
                   </td>
                 </tr>
@@ -285,23 +291,23 @@ const CashTransactions: React.FC = () => {
                 filteredTransactions.map((transaction) => (
                   <tr
                     key={transaction.id}
-                    className="hover:bg-slate-800/30 transition-colors"
+                    className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
                       {formatDate(transaction.activity_date)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-2">
                         {getTransactionIcon(transaction.transaction_code, transaction.amount)}
-                        <span className="text-slate-100">
+                        <span className="text-slate-900 dark:text-slate-100">
                           {transaction.transaction_code}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-100">
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">
                       {transaction.description || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
                       {transaction.symbol || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
@@ -316,7 +322,7 @@ const CashTransactions: React.FC = () => {
                             e.stopPropagation();
                             handleEdit(transaction);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
                           title="Edit transaction"
                         >
                           <Edit size={16} />
@@ -326,7 +332,7 @@ const CashTransactions: React.FC = () => {
                             e.stopPropagation();
                             handleDelete(transaction);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                           title="Delete transaction"
                         >
                           <Trash2 size={16} />
@@ -382,16 +388,16 @@ interface StatCardProps {
 }
 
 const StatCard = ({ title, value, icon: Icon, positive }: StatCardProps) => (
-  <div className="group relative bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden">
+  <div className="group relative bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-none">
     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all duration-300" />
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-slate-400">{title}</span>
+        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</span>
         <div className={`p-2.5 rounded-xl ${positive ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
           <Icon className={`w-5 h-5 ${positive ? 'text-emerald-400' : 'text-red-400'}`} />
         </div>
       </div>
-      <p className="text-3xl font-bold text-slate-100">{value}</p>
+      <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
     </div>
   </div>
 );

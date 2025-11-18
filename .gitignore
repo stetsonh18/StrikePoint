@@ -21,3 +21,15 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.test
+.env.local
+.env.*.local
+
+# Local Netlify folder
+.netlify
+
+# Playwright
+test-results/
+playwright-report/
+.playwright-mcp/
+

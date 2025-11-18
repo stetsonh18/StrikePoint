@@ -1,23 +1,84 @@
 /**
  * Market Data Service
  * Handles fetching real-time market data
- * - Symbol Search: Finnhub API (via Express proxy)
- * - Stock Quotes: MarketData.app API (via Express proxy)
+ * - Symbol Search: Finnhub API (via Supabase Edge Functions)
+ * - Stock Quotes: MarketData.app API (via Supabase Edge Functions)
  *
- * All API calls go through the Express backend to:
- * 1. Keep API keys secure (server-side only)
- * 2. Provide a stable IP address for API providers that require IP whitelisting (MarketData.app)
+ * All API calls go through Supabase Edge Functions to keep API keys secure.
+ * API keys are stored in Supabase Secrets and never exposed to the frontend.
  */
 
-// Backend API URL - uses Vite proxy in development (/api), direct URL in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Get Supabase URL and construct Edge Functions base URL
+import { env } from '@/shared/utils/envValidation';
 
-interface SymbolSearchResult {
+const supabaseUrl = env.supabaseUrl;
+const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
+  ? `${supabaseUrl}/functions/v1`
+  : '/functions/v1';
+
+export interface SymbolSearchResult {
   symbol: string;
   name: string;
   type: string;
   region: string;
   currency?: string;
+}
+
+/**
+ * Search for symbols using Tradier API
+ * Documentation: https://documentation.tradier.com/brokerage-api/markets/get-lookup
+ */
+export async function searchSymbolsTradier(query: string): Promise<SymbolSearchResult[]> {
+  if (!query || query.length < 1) {
+    return [];
+  }
+
+  try {
+    // Call Supabase Edge Function (Tradier API key is handled server-side)
+    const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-symbol-search?q=${encodeURIComponent(query)}&types=stock,option,etf`;
+    const supabaseAnonKey = env.supabaseAnonKey;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[searchSymbolsTradier] Backend API Error:', errorText);
+      throw new Error(`Backend API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Check for API errors
+    if (data.error) {
+      console.warn('[searchSymbolsTradier] Backend API error:', data.error);
+      return [];
+    }
+
+    // Parse Tradier response format
+    // Response: { result: [...] }
+    if (data.result && Array.isArray(data.result)) {
+      const results = data.result
+        .map((item: any) => ({
+          symbol: item.symbol || '',
+          name: item.name || item.description || item.symbol || '',
+          type: item.type || 'stock',
+          region: item.exchange ? 'United States' : 'United States',
+          currency: 'USD',
+        }))
+        .filter(r => r.symbol && r.name); // Filter out invalid entries
+
+      return results;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('[searchSymbolsTradier] Error searching symbols:', error);
+    return [];
+  }
 }
 
 interface StockQuote {
@@ -43,10 +104,12 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
   }
 
   try {
-    // Call Express backend (API key is handled server-side)
-    const apiUrl = `${API_BASE_URL}/finnhub/symbol-search?keywords=${encodeURIComponent(keywords)}`;
+    // Call Supabase Edge Function (API key is handled server-side)
+    const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/finnhub-symbol-search?keywords=${encodeURIComponent(keywords)}`;
+    const supabaseAnonKey = env.supabaseAnonKey;
     const response = await fetch(apiUrl, {
       headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -104,8 +167,8 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
 }
 
 /**
- * Get real-time quote for a stock symbol using MarketData.app API
- * Documentation: https://www.marketdata.app/docs/api/stocks/quotes
+ * Get real-time quote for a stock symbol using Tradier API
+ * Documentation: https://documentation.tradier.com/brokerage-api/markets/get-quotes
  */
 export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
   if (!symbol) {
@@ -113,11 +176,13 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
   }
 
   try {
-    // Call Express backend (API token is handled server-side)
-    const quoteUrl = `${API_BASE_URL}/marketdata/quote/${encodeURIComponent(symbol)}`;
+    // Call Supabase Edge Function for Tradier (access token is handled server-side)
+    const quoteUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-stock-quote/${encodeURIComponent(symbol)}`;
+    const supabaseAnonKey = env.supabaseAnonKey;
 
     const response = await fetch(quoteUrl, {
       headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -234,7 +299,7 @@ export async function getMarketNews(category: string = 'general', minId?: number
 
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/finnhub-news?${params.toString()}`;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseAnonKey = env.supabaseAnonKey;
     const response = await fetch(apiUrl, {
       headers: {
         'Authorization': `Bearer ${supabaseAnonKey}`,

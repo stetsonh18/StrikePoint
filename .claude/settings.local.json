@@ -3,7 +3,15 @@
     "allow": [
       "WebFetch(domain:mcp.alphavantage.co)",
       "Bash(curl:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(timeout 60 bash:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(timeout 120 bash:*)",
+      "Bash(timeout 90 bash:*)",
+      "Bash(git add:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

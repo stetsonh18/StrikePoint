@@ -1,18 +1,25 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Plus, Download, Search, DollarSign, Activity } from 'lucide-react';
-import type { CryptoPosition, CryptoTransaction } from '@/domain/types';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { TrendingUp, TrendingDown, Plus, Download, Search, DollarSign, Activity, Edit, Trash2 } from 'lucide-react';
+import type { CryptoPosition, CryptoTransaction, Position, Transaction } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositions } from '@/application/hooks/usePositions';
-import { useTransactions } from '@/application/hooks/useTransactions';
+import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
+import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
 import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
 import { getCoinIdFromSymbol } from '@/infrastructure/services/cryptoMarketDataService';
 import { toCryptoPosition, toCryptoTransaction } from '@/shared/utils/positionTransformers';
 import { CryptoTransactionForm } from '@/presentation/components/CryptoTransactionForm';
+import { PositionEditForm } from '@/presentation/components/PositionEditForm';
 import { SellCryptoPositionForm } from '@/presentation/components/SellCryptoPositionForm';
 import { MarketStatusIndicator } from '@/presentation/components/MarketStatusIndicator';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '@/presentation/components/SkeletonLoader';
+import { useToast } from '@/shared/hooks/useToast';
+import { useConfirmation } from '@/shared/hooks/useConfirmation';
+import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
+import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
+import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
+import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 
 const Crypto: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -24,6 +31,17 @@ const Crypto: React.FC = () => {
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [showSellForm, setShowSellForm] = useState(false);
   const [selectedPositionForSell, setSelectedPositionForSell] = useState<CryptoPosition | null>(null);
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [positionSort, setPositionSort] = useState<SortConfig<CryptoPosition> | null>(null);
+  const [transactionSort, setTransactionSort] = useState<SortConfig<CryptoTransaction> | null>(null);
+  
+  const toast = useToast();
+  const confirmation = useConfirmation();
+  const updatePositionMutation = useUpdatePosition();
+  const deletePositionMutation = useDeletePosition();
+  const updateTransactionMutation = useUpdateTransaction();
+  const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch crypto positions
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {
@@ -99,6 +117,7 @@ const Crypto: React.FC = () => {
 
         return {
           ...position,
+          name: quote.name || position.name, // Use quote name if available, fallback to mapped name
           currentPrice,
           marketValue,
           unrealizedPL,
@@ -124,22 +143,28 @@ const Crypto: React.FC = () => {
       .filter((t): t is CryptoTransaction => t !== null);
   }, [allTransactions]);
 
-  // Filter positions
+  // Filter and sort positions
   const filteredPositions = useMemo(() => {
-    if (!searchQuery) return positions;
-    return positions.filter(pos =>
-      pos.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pos.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery, positions]);
+    let filtered = positions;
+    if (searchQuery) {
+      filtered = filtered.filter(pos =>
+        pos.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pos.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return sortData(filtered, positionSort);
+  }, [searchQuery, positions, positionSort]);
 
-  // Filter transactions
+  // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return transactions;
-    return transactions.filter(tx =>
-      tx.symbol.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery, transactions]);
+    let filtered = transactions;
+    if (searchQuery) {
+      filtered = filtered.filter(tx =>
+        tx.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return sortData(filtered, transactionSort);
+  }, [searchQuery, transactions, transactionSort]);
 
   const portfolioSummary = useMemo(() => {
     const totalValue = positions.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
@@ -175,15 +200,59 @@ const Crypto: React.FC = () => {
     setShowSellForm(true);
   };
 
+  const handleEditPosition = useCallback((position: CryptoPosition) => {
+    // Find the original position from allPositions
+    const originalPosition = allPositions?.find(p => p.id === position.id);
+    if (originalPosition) {
+      setEditingPosition(originalPosition);
+      setShowTransactionForm(true);
+    }
+  }, [allPositions]);
+
+  const handleDeletePosition = useCallback(async (position: CryptoPosition) => {
+    const confirmed = await confirmation.confirm({
+      title: 'Delete Position',
+      message: `Are you sure you want to delete the position for ${position.symbol}? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+
+    if (!confirmed) return;
+    await deletePositionMutation.mutateAsync(position.id);
+  }, [confirmation, deletePositionMutation]);
+
+  const handleEditTransaction = useCallback((transaction: CryptoTransaction) => {
+    // Find the original transaction from allTransactions
+    const originalTransaction = allTransactions?.find(t => t.id === transaction.id);
+    if (originalTransaction) {
+      setEditingTransaction(originalTransaction);
+      setShowTransactionForm(true);
+    }
+  }, [allTransactions]);
+
+  const handleDeleteTransaction = useCallback(async (transaction: CryptoTransaction) => {
+    const confirmed = await confirmation.confirm({
+      title: 'Delete Transaction',
+      message: `Are you sure you want to delete this transaction? This action cannot be undone and may affect your positions.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+
+    if (!confirmed) return;
+    await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
+  }, [confirmation, deleteTransactionMutation]);
+
   return (
     <div className="p-8 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Cryptocurrency
           </h1>
-          <p className="text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
             Track your crypto holdings and transactions
           </p>
           <div className="mt-3">
@@ -191,7 +260,7 @@ const Crypto: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all">
+          <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all">
             <Download size={18} className="inline mr-2" />
             Export
           </button>
@@ -235,14 +304,14 @@ const Crypto: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 overflow-hidden">
-        <div className="flex border-b border-slate-800/50">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 overflow-hidden shadow-sm dark:shadow-none">
+        <div className="flex border-b border-slate-200 dark:border-slate-800/50">
           <button
             onClick={() => setActiveTab('positions')}
             className={`px-6 py-3 font-medium transition-all ${
               activeTab === 'positions'
-                ? 'text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
             }`}
           >
             Positions
@@ -251,8 +320,8 @@ const Crypto: React.FC = () => {
             onClick={() => setActiveTab('transactions')}
             className={`px-6 py-3 font-medium transition-all ${
               activeTab === 'transactions'
-                ? 'text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
             }`}
           >
             Transactions
@@ -260,10 +329,10 @@ const Crypto: React.FC = () => {
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-slate-800/50">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800/50">
           <div className="relative">
             <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
               size={18}
             />
             <input
@@ -271,7 +340,7 @@ const Crypto: React.FC = () => {
               placeholder="Search by symbol..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
         </div>
@@ -280,42 +349,70 @@ const Crypto: React.FC = () => {
         <div className="overflow-x-auto">
           {activeTab === 'positions' ? (
             <table className="w-full">
-              <thead className="bg-slate-800/50">
+              <thead className="bg-slate-100 dark:bg-slate-800/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Asset
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Quantity
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Avg Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Current Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Market Value
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Unrealized P&L
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    P&L %
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <SortableTableHeader
+                    label="Asset"
+                    sortKey="symbol"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="left"
+                  />
+                  <SortableTableHeader
+                    label="Quantity"
+                    sortKey="quantity"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Avg Price"
+                    sortKey="averagePrice"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Current Price"
+                    sortKey="currentPrice"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Market Value"
+                    sortKey="marketValue"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Unrealized P&L"
+                    sortKey="unrealizedPL"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="P&L %"
+                    sortKey="unrealizedPLPercent"
+                    currentSort={positionSort}
+                    onSortChange={setPositionSort}
+                    align="right"
+                  />
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
                 {positionsLoading ? (
                   <TableSkeleton rows={5} columns={8} />
                 ) : filteredPositions.length === 0 ? (
                   <tr>
                     <td
                       colSpan={8}
-                      className="px-6 py-8 text-center text-slate-400"
+                      className="px-6 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
                       No positions found
                     </td>
@@ -324,28 +421,28 @@ const Crypto: React.FC = () => {
                   filteredPositions.map((position) => (
                     <tr
                       key={position.id}
-                      className="hover:bg-slate-800/30 transition-colors cursor-pointer"
+                      className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="font-semibold text-slate-100">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100">
                             {position.symbol}
                           </div>
-                          <div className="text-sm text-slate-400">
+                          <div className="text-sm text-slate-500 dark:text-slate-400">
                             {position.name}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                         {position.quantity.toFixed(8)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                         {formatCurrency(position.averagePrice)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                         {formatCurrency(position.currentPrice || 0)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-900 dark:text-slate-100">
                         {formatCurrency(position.marketValue || 0)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
@@ -376,15 +473,37 @@ const Crypto: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSellClick(position);
-                          }}
-                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all"
-                        >
-                          Sell
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSellClick(position);
+                            }}
+                            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all"
+                          >
+                            Sell
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditPosition(position);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                            title="Edit position"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeletePosition(position);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                            title="Delete position"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -393,39 +512,70 @@ const Crypto: React.FC = () => {
             </table>
           ) : (
             <table className="w-full">
-              <thead className="bg-slate-800/50">
+              <thead className="bg-slate-100 dark:bg-slate-800/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Symbol
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Quantity
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Fees
+                  <SortableTableHeader
+                    label="Date"
+                    sortKey="activityDate"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="left"
+                  />
+                  <SortableTableHeader
+                    label="Symbol"
+                    sortKey="symbol"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="left"
+                  />
+                  <SortableTableHeader
+                    label="Type"
+                    sortKey="transactionType"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="left"
+                  />
+                  <SortableTableHeader
+                    label="Quantity"
+                    sortKey="quantity"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Price"
+                    sortKey="price"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Amount"
+                    sortKey="amount"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="right"
+                  />
+                  <SortableTableHeader
+                    label="Fees"
+                    sortKey="fees"
+                    currentSort={transactionSort}
+                    onSortChange={setTransactionSort}
+                    align="right"
+                  />
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
                 {transactionsLoading ? (
-                  <TableSkeleton rows={5} columns={7} />
+                  <TableSkeleton rows={5} columns={8} />
                 ) : filteredTransactions.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
-                      className="px-6 py-8 text-center text-slate-400"
+                      colSpan={8}
+                      className="px-6 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
                       No transactions found
                     </td>
@@ -434,13 +584,13 @@ const Crypto: React.FC = () => {
                   filteredTransactions.map((transaction) => (
                     <tr
                       key={transaction.id}
-                      className="hover:bg-slate-800/30 transition-colors"
+                      className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
                         {formatDate(transaction.activityDate)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="font-semibold text-slate-100">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">
                           {transaction.symbol}
                         </span>
                       </td>
@@ -455,17 +605,41 @@ const Crypto: React.FC = () => {
                           {transaction.transactionType.toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                         {transaction.quantity.toFixed(8)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                         {transaction.price ? formatCurrency(transaction.price) : '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-100">
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-900 dark:text-slate-100">
                         {formatCurrency(transaction.amount)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-400">
                         {transaction.fees ? formatCurrency(transaction.fees) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditTransaction(transaction);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                            title="Edit transaction"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTransaction(transaction);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                            title="Delete transaction"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -475,6 +649,18 @@ const Crypto: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        title={confirmation.options.title}
+        message={confirmation.options.message}
+        confirmLabel={confirmation.options.confirmLabel}
+        cancelLabel={confirmation.options.cancelLabel}
+        variant={confirmation.options.variant}
+        onConfirm={confirmation.handleConfirm}
+        onCancel={confirmation.handleCancel}
+      />
 
       {/* Sell Position Form Modal */}
       {showSellForm && selectedPositionForSell && (
@@ -498,19 +684,44 @@ const Crypto: React.FC = () => {
 
       {/* Add Transaction Form Modal (for new trades) */}
       {showTransactionForm && !showSellForm && (
-        <CryptoTransactionForm
-          userId={userId}
-          onClose={() => {
-            setShowTransactionForm(false);
-          }}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['positions'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            queryClient.invalidateQueries({ queryKey: ['cash_transactions'] });
-            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
-            setShowTransactionForm(false);
-          }}
-        />
+        <>
+          {editingPosition ? (
+            <PositionEditForm
+              position={editingPosition}
+              userId={userId}
+              onClose={() => {
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+              onSuccess={() => {
+                queryClient.invalidateQueries({ queryKey: ['positions'] });
+                queryClient.invalidateQueries({ queryKey: ['position-statistics'] });
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+            />
+          ) : (
+            <CryptoTransactionForm
+              userId={userId}
+              onClose={() => {
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+              onSuccess={() => {
+                queryClient.invalidateQueries({ queryKey: ['positions'] });
+                queryClient.invalidateQueries({ queryKey: ['transactions'] });
+                queryClient.invalidateQueries({ queryKey: ['cash_transactions'] });
+                queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -525,17 +736,17 @@ interface StatCardProps {
 }
 
 const StatCard = ({ title, value, subtitle, icon: Icon, positive }: StatCardProps) => (
-  <div className="group relative bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden ">
+  <div className="group relative bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-none">
     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all duration-300" />
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-slate-400">{title}</span>
+        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</span>
         <div className={`p-2.5 rounded-xl ${positive ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
           <Icon className={`w-5 h-5 ${positive ? 'text-emerald-400' : 'text-red-400'}`} />
         </div>
       </div>
       <div className="space-y-2">
-        <p className="text-3xl font-bold text-slate-100">{value}</p>
+        <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
         {subtitle && (
           <p className={`text-sm font-medium ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
             {subtitle}

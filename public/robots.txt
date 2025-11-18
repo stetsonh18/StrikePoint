@@ -1,0 +1,12 @@
+# robots.txt for StrikePoint
+
+User-agent: *
+Allow: /
+
+# Disallow admin/internal routes (if any)
+Disallow: /api/
+Disallow: /_next/
+
+# Sitemap location
+Sitemap: https://strikepoint.money/sitemap.xml
+

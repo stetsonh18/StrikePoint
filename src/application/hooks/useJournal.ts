@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { JournalRepository, type JournalEntryFilters, type JournalEntryInsert, type JournalEntryUpdate } from '@/infrastructure/repositories/journal.repository';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { JournalEntry, JournalStats } from '@/domain/types';
 
 /**
@@ -10,7 +11,7 @@ export function useJournalEntries(
   filters?: JournalEntryFilters,
   options?: Omit<UseQueryOptions<JournalEntry[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['journal-entries', userId, filters] as const;
+  const queryKey = queryKeys.journal.list(userId, filters);
 
   return useQuery<JournalEntry[], Error>({
     queryKey,
@@ -27,7 +28,7 @@ export function useJournalEntry(
   id: string,
   options?: Omit<UseQueryOptions<JournalEntry | null, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['journal-entry', id] as const;
+  const queryKey = queryKeys.journal.detail(id);
 
   return useQuery<JournalEntry | null, Error>({
     queryKey,
@@ -47,8 +48,8 @@ export function useCreateJournalEntry() {
     mutationFn: (entry: JournalEntryInsert) => JournalRepository.create(entry),
     onSuccess: (data) => {
       // Invalidate and refetch journal entries for the user
-      queryClient.invalidateQueries({ queryKey: ['journal-entries', data.userId] });
-      queryClient.invalidateQueries({ queryKey: ['journal-stats', data.userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.list(data.userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.stats(data.userId) });
     },
   });
 }
@@ -64,9 +65,9 @@ export function useUpdateJournalEntry() {
       JournalRepository.update(id, updates),
     onSuccess: (data) => {
       // Invalidate and refetch journal entries for the user
-      queryClient.invalidateQueries({ queryKey: ['journal-entries', data.userId] });
-      queryClient.invalidateQueries({ queryKey: ['journal-entry', data.id] });
-      queryClient.invalidateQueries({ queryKey: ['journal-stats', data.userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.list(data.userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.detail(data.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.stats(data.userId) });
     },
   });
 }
@@ -81,9 +82,9 @@ export function useDeleteJournalEntry() {
     mutationFn: (id: string) => JournalRepository.delete(id),
     onSuccess: (_, deletedId) => {
       // Invalidate all journal-related queries
-      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['journal-entry', deletedId] });
-      queryClient.invalidateQueries({ queryKey: ['journal-stats'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.detail(deletedId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.journal.stats('') });
     },
   });
 }
@@ -97,7 +98,7 @@ export function useJournalStats(
   endDate?: string,
   options?: Omit<UseQueryOptions<JournalStats, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['journal-stats', userId, startDate, endDate] as const;
+  const queryKey = queryKeys.journal.stats(userId, startDate, endDate);
 
   return useQuery<JournalStats, Error>({
     queryKey,

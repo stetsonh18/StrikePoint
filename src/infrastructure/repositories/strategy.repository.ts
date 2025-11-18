@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type {
   Strategy,
   StrategyInsert,
@@ -24,8 +25,9 @@ export class StrategyRepository {
       .single();
 
     if (error) {
-      console.error('Error creating strategy:', error);
-      throw new Error(`Failed to create strategy: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.create', strategy });
+      throw new Error(`Failed to create strategy: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -43,8 +45,9 @@ export class StrategyRepository {
       .select();
 
     if (error) {
-      console.error('Error creating strategies:', error);
-      throw new Error(`Failed to create strategies: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.createMany', count: strategies.length });
+      throw new Error(`Failed to create strategies: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -62,8 +65,9 @@ export class StrategyRepository {
 
     if (error) {
       if (error.code === 'PGRST116') return null;
-      console.error('Error fetching strategy:', error);
-      throw new Error(`Failed to fetch strategy: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getById', id });
+      throw new Error(`Failed to fetch strategy: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -98,8 +102,9 @@ export class StrategyRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching strategies:', error);
-      throw new Error(`Failed to fetch strategies: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getAll', userId, filters });
+      throw new Error(`Failed to fetch strategies: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -129,8 +134,9 @@ export class StrategyRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching strategy summaries:', error);
-      throw new Error(`Failed to fetch strategy summaries: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getSummaries', userId, filters });
+      throw new Error(`Failed to fetch strategy summaries: ${parsed.message}`, { cause: error });
     }
 
     return (data || []) as StrategySummaryView[];
@@ -155,8 +161,9 @@ export class StrategyRepository {
       .single();
 
     if (error) {
-      console.error('Error updating strategy:', error);
-      throw new Error(`Failed to update strategy: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.update', id, updates });
+      throw new Error(`Failed to update strategy: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -233,8 +240,9 @@ export class StrategyRepository {
       .order('opened_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching adjustment history:', error);
-      throw new Error(`Failed to fetch adjustment history: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getAdjustmentHistory', strategyId });
+      throw new Error(`Failed to fetch adjustment history: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -247,8 +255,9 @@ export class StrategyRepository {
     const { error } = await supabase.from('strategies').delete().eq('id', id);
 
     if (error) {
-      console.error('Error deleting strategy:', error);
-      throw new Error(`Failed to delete strategy: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.delete', id });
+      throw new Error(`Failed to delete strategy: ${parsed.message}`, { cause: error });
     }
   }
 
@@ -272,8 +281,9 @@ export class StrategyRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching strategy statistics:', error);
-      throw new Error(`Failed to fetch statistics: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getStatistics', userId, startDate, endDate });
+      throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 
     const strategies = data || [];
@@ -323,8 +333,9 @@ export class StrategyRepository {
       .order('expiration_date', { ascending: true });
 
     if (error) {
-      console.error('Error fetching expiring strategies:', error);
-      throw new Error(`Failed to fetch expiring strategies: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.getExpiringSoon', userId, daysAhead });
+      throw new Error(`Failed to fetch expiring strategies: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -342,8 +353,9 @@ export class StrategyRepository {
       .order('opened_at', { ascending: false });
 
     if (error) {
-      console.error('Error searching strategies:', error);
-      throw new Error(`Failed to search strategies: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'StrategyRepository.searchBySymbol', userId, symbol });
+      throw new Error(`Failed to search strategies: ${parsed.message}`, { cause: error });
     }
 
     return data || [];

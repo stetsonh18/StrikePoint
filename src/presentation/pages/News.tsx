@@ -189,17 +189,17 @@ const News: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 dark:from-slate-100 to-slate-600 dark:to-slate-400 bg-clip-text text-transparent">
             Market News
           </h1>
-          <p className="text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
             Stay updated with the latest market news and analysis
           </p>
         </div>
         <button
           onClick={handleRefresh}
           disabled={isLoading}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Refresh news"
         >
           <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
@@ -208,11 +208,11 @@ const News: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-4">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 shadow-sm dark:shadow-none">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="relative flex-1 min-w-[300px]">
             <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
               size={18}
             />
             <input
@@ -220,12 +220,12 @@ const News: React.FC = () => {
               placeholder="Search news..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <Filter size={18} className="text-slate-400" />
+            <Filter size={18} className="text-slate-500 dark:text-slate-400" />
             <Select
               value={filterCategory}
               onChange={(e) => handleCategoryChange(e.target.value as NewsCategory | 'all')}
@@ -331,7 +331,7 @@ const News: React.FC = () => {
                     setSelectedSymbol(null);
                     setSearchQuery('');
                   }}
-                  className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all"
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all"
                 >
                   Clear Filters
                 </button>
@@ -351,7 +351,7 @@ const News: React.FC = () => {
               return (
                 <div
                   key={article.id}
-                  className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all"
+                  className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all shadow-sm dark:shadow-none"
                 >
                   <div className="flex gap-4">
                     {article.imageUrl && (
@@ -369,16 +369,16 @@ const News: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
-                          <h3 className="text-xl font-semibold text-slate-100 mb-2">
+                          <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
                             {article.title}
                           </h3>
-                          <p className={`text-slate-300 mb-3 ${!isExpanded && shouldTruncate ? 'line-clamp-3' : ''}`}>
+                          <p className={`text-slate-700 dark:text-slate-300 mb-3 ${!isExpanded && shouldTruncate ? 'line-clamp-3' : ''}`}>
                             {article.summary}
                           </p>
                           {shouldTruncate && (
                             <button
                               onClick={() => toggleArticleExpansion(article.id)}
-                              className="text-emerald-400 hover:text-emerald-300 text-sm font-medium transition-colors"
+                              className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 text-sm font-medium transition-colors"
                             >
                               {isExpanded ? 'Show less' : 'Read more'}
                             </button>
@@ -386,8 +386,8 @@ const News: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-slate-400">
-                        <span className="px-2 py-1 bg-slate-800/50 text-slate-300 border border-slate-700/50 text-xs rounded capitalize">
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                        <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700/50 text-xs rounded capitalize">
                           {article.category}
                         </span>
 
@@ -398,7 +398,7 @@ const News: React.FC = () => {
                           href={article.sourceUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 hover:underline ml-auto transition-colors"
+                          className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline ml-auto transition-colors"
                         >
                           Read more
                           <ExternalLink size={14} />
@@ -408,7 +408,7 @@ const News: React.FC = () => {
                       {/* Symbols */}
                       {article.symbols && article.symbols.length > 0 && (
                         <div className="flex items-center gap-2 mt-3">
-                          <span className="text-sm text-slate-400">Related:</span>
+                          <span className="text-sm text-slate-600 dark:text-slate-400">Related:</span>
                           <div className="flex gap-2 flex-wrap">
                             {article.symbols.map((symbol) => (
                               <button
@@ -441,8 +441,8 @@ const News: React.FC = () => {
                 disabled={!canGoPrevious}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
                   canGoPrevious
-                    ? 'bg-slate-800/50 border-slate-700/50 text-slate-300 hover:bg-slate-800/70 hover:border-emerald-500/50'
-                    : 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed'
+                    ? 'bg-slate-100 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800/70 hover:border-emerald-500/50'
+                    : 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/30 text-slate-400 dark:text-slate-600 cursor-not-allowed'
                 }`}
                 title="Previous page (←)"
               >
@@ -450,7 +450,7 @@ const News: React.FC = () => {
                 Previous
               </button>
 
-              <div className="flex items-center gap-4 text-sm text-slate-400">
+              <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
                 {totalArticles > 0 && (
                   <span>
                     {pageHistory.length > 0 
@@ -466,8 +466,8 @@ const News: React.FC = () => {
                 disabled={!canGoNext}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
                   canGoNext
-                    ? 'bg-slate-800/50 border-slate-700/50 text-slate-300 hover:bg-slate-800/70 hover:border-emerald-500/50'
-                    : 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed'
+                    ? 'bg-slate-100 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800/70 hover:border-emerald-500/50'
+                    : 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/30 text-slate-400 dark:text-slate-600 cursor-not-allowed'
                 }`}
                 title="Next page (→)"
               >

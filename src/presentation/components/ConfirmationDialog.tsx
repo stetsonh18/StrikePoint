@@ -50,28 +50,28 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       />
 
       {/* Dialog */}
-      <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
         <div className="flex items-start gap-4">
           <div className={`p-2 rounded-xl ${styles.icon} bg-opacity-10 flex-shrink-0`}>
             <AlertTriangle className="w-6 h-6" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-100 mb-2">{title}</h3>
-            <p className="text-sm text-slate-400">{message}</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">{title}</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">{message}</p>
           </div>
           <button
             onClick={onCancel}
-            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
             aria-label="Close dialog"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex gap-3 justify-end pt-4 border-t border-slate-800">
+        <div className="flex gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             onClick={onCancel}
-            className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-slate-300 hover:text-slate-100 text-sm font-medium transition-all"
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 text-sm font-medium transition-all"
           >
             {cancelLabel}
           </button>

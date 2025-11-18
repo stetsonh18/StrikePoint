@@ -1,17 +1,30 @@
-import React, { useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers } from 'lucide-react';
-import type { OptionContract, OptionTransaction, OptionChainEntry } from '@/domain/types';
+import React, { useState, useMemo, useCallback } from 'react';
+import { TrendingUp, TrendingDown, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers, Edit, Trash2 } from 'lucide-react';
+import type { OptionContract, OptionTransaction, OptionChainEntry, Position, Transaction } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositions } from '@/application/hooks/usePositions';
-import { useTransactions } from '@/application/hooks/useTransactions';
-import { toOptionContract, toOptionTransaction } from '@/shared/utils/positionTransformers';
+import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
+import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
+import { useOptionsChain } from '@/application/hooks/useOptionsChain';
+import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
+import { useStrategies } from '@/application/hooks/useStrategies';
+import { toOptionContract, toOptionTransaction, buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import { TransactionForm } from '@/presentation/components/TransactionForm';
+import { PositionEditForm } from '@/presentation/components/PositionEditForm';
 import { OptionsMultiLegForm } from '@/presentation/components/OptionsMultiLegForm';
 import { OptionsChain } from '@/presentation/components/OptionsChain';
 import { MarketStatusIndicator } from '@/presentation/components/MarketStatusIndicator';
+import { PositionDetailsModal } from '@/presentation/components/PositionDetailsModal';
 import { useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '@/presentation/components/SkeletonLoader';
+import { EmptyPositions } from '@/presentation/components/EnhancedEmptyState';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
+import { useToast } from '@/shared/hooks/useToast';
+import { useConfirmation } from '@/shared/hooks/useConfirmation';
+import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
+import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
+import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
+import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
+import { logger } from '@/shared/utils/logger';
 
 const Options: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -23,7 +36,22 @@ const Options: React.FC = () => {
   const [filterType, setFilterType] = useState<'all' | 'call' | 'put'>('all');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [showMultiLegForm, setShowMultiLegForm] = useState(false);
+  const [showCloseForm, setShowCloseForm] = useState(false);
   const [chainSymbol, setChainSymbol] = useState('');
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<OptionContract | null>(null);
+  const [selectedPositionForClose, setSelectedPositionForClose] = useState<OptionContract | null>(null);
+  const [selectedStrategyGroup, setSelectedStrategyGroup] = useState<OptionContract[] | null>(null);
+  const [positionSort, setPositionSort] = useState<SortConfig<OptionContract> | null>(null);
+  const [transactionSort, setTransactionSort] = useState<SortConfig<OptionTransaction> | null>(null);
+  
+  const toast = useToast();
+  const confirmation = useConfirmation();
+  const updatePositionMutation = useUpdatePosition();
+  const deletePositionMutation = useDeletePosition();
+  const updateTransactionMutation = useUpdateTransaction();
+  const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch option positions
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {
@@ -36,10 +64,73 @@ const Options: React.FC = () => {
     asset_type: 'option',
   });
 
-  // Transform positions
+  // Fetch strategies to get total_opening_cost for spread P&L calculation
+  const { data: strategies } = useStrategies(userId, {
+    status: 'open',
+  });
+
+
+  // Build Tradier option symbols for all open positions
+  const optionSymbols = useMemo(() => {
+    if (!allPositions) return [];
+    const symbols: string[] = [];
+    allPositions
+      .filter((p) => p.asset_type === 'option' && p.status === 'open' && p.symbol && p.expiration_date && p.strike_price && p.option_type)
+      .forEach((p) => {
+        try {
+          const tradierSymbol = buildTradierOptionSymbol(
+            p.symbol,
+            p.expiration_date,
+            p.option_type as 'call' | 'put',
+            p.strike_price
+          );
+          symbols.push(tradierSymbol);
+        } catch (e) {
+          logger.error('Error building Tradier option symbol', e, { position: p });
+        }
+      });
+    return symbols;
+  }, [allPositions]);
+
+  // Fetch individual option quotes using Tradier API
+  const { data: optionQuotes = {} } = useOptionQuotes(optionSymbols, optionSymbols.length > 0);
+
+  // Get unique underlying symbols from positions (for options chain display, limit to first 5 for performance)
+  const underlyingSymbols = useMemo(() => {
+    if (!allPositions) return [];
+    const symbols = new Set<string>();
+    allPositions
+      .filter((p) => p.asset_type === 'option' && p.status === 'open' && p.symbol)
+      .forEach((p) => symbols.add(p.symbol));
+    return Array.from(symbols).slice(0, 5); // Limit to 5 symbols to avoid too many API calls
+  }, [allPositions]);
+
+  // Fetch options chains for each underlying symbol (up to 5) - used for chain display only
+  const chain1 = useOptionsChain(underlyingSymbols[0] || '', undefined, undefined, undefined, !!underlyingSymbols[0]);
+  const chain2 = useOptionsChain(underlyingSymbols[1] || '', undefined, undefined, undefined, !!underlyingSymbols[1]);
+  const chain3 = useOptionsChain(underlyingSymbols[2] || '', undefined, undefined, undefined, !!underlyingSymbols[2]);
+  const chain4 = useOptionsChain(underlyingSymbols[3] || '', undefined, undefined, undefined, !!underlyingSymbols[3]);
+  const chain5 = useOptionsChain(underlyingSymbols[4] || '', undefined, undefined, undefined, !!underlyingSymbols[4]);
+  
+  // Combine all chain data into a map (for chain display)
+  const chainsByUnderlying = useMemo(() => {
+    const map: Record<string, typeof chain1.data> = {};
+    const chains = [chain1, chain2, chain3, chain4, chain5];
+    underlyingSymbols.forEach((symbol, index) => {
+      const chainData = chains[index]?.data;
+      if (chainData) {
+        map[symbol] = chainData;
+      }
+    });
+    return map;
+  }, [underlyingSymbols, chain1.data, chain2.data, chain3.data, chain4.data, chain5.data]);
+
+  // Transform positions with real-time prices from Tradier option quotes
+  // Include all positions (both with and without strategies) for price updates
   const positions = useMemo(() => {
     if (!allPositions) return [];
-    return allPositions
+    
+    const basePositions = allPositions
       .filter((p) => p.asset_type === 'option' && p.status === 'open' && p.option_type && p.strike_price && p.expiration_date)
       .map((p) => {
         try {
@@ -49,7 +140,127 @@ const Options: React.FC = () => {
         }
       })
       .filter((p): p is OptionContract => p !== null);
-  }, [allPositions]);
+
+    // Update positions with real-time quotes from Tradier API
+    return basePositions.map((position) => {
+      // Build Tradier option symbol for this position
+      let tradierSymbol: string | null = null;
+      try {
+        tradierSymbol = buildTradierOptionSymbol(
+          position.underlyingSymbol,
+          position.expirationDate,
+          position.optionType,
+          position.strikePrice
+        );
+      } catch (e) {
+        logger.error('Error building Tradier symbol for position', e, { position });
+      }
+
+      // Get quote for this option symbol
+      let quote = tradierSymbol ? optionQuotes[tradierSymbol] : null;
+      
+      // If no direct quote, try to find it in the options chain data as fallback
+      if (!quote && position.underlyingSymbol) {
+        const chainData = chainsByUnderlying[position.underlyingSymbol];
+        if (chainData?.chain && position.expirationDate) {
+          const expirationChain = chainData.chain[position.expirationDate];
+          if (expirationChain) {
+            const chainEntry = expirationChain.find(
+              (entry) =>
+                entry.strike === position.strikePrice &&
+                entry.option_type === position.optionType
+            );
+            if (chainEntry) {
+              // Convert chain entry to quote-like object
+              quote = {
+                symbol: chainEntry.symbol,
+                underlying: chainEntry.underlying,
+                expiration: chainEntry.expiration,
+                strike: chainEntry.strike,
+                option_type: chainEntry.option_type,
+                bid: chainEntry.bid,
+                ask: chainEntry.ask,
+                last: chainEntry.last,
+                volume: chainEntry.volume,
+                open_interest: chainEntry.open_interest,
+                implied_volatility: chainEntry.implied_volatility,
+                delta: chainEntry.delta,
+                gamma: chainEntry.gamma,
+                theta: chainEntry.theta,
+                vega: chainEntry.vega,
+                rho: chainEntry.rho,
+              };
+              logger.debug('Using chain data for option', { 
+                underlyingSymbol: position.underlyingSymbol,
+                expirationDate: position.expirationDate,
+                optionType: position.optionType,
+                strikePrice: position.strikePrice
+              });
+            }
+          }
+        }
+      }
+
+      if (quote) {
+        // Use last price, or mid price (bid/ask average) if last is not available
+        const currentPrice = quote.last || 
+          (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.averagePrice);
+        
+        const multiplier = position.multiplier || 100;
+        const marketValue = position.quantity * multiplier * currentPrice;
+        
+        // Get original position to check side and actual total_cost_basis
+        const originalPosition = allPositions.find(p => p.id === position.id);
+        const actualCostBasis = originalPosition?.total_cost_basis || 0;
+        const isLong = position.side === 'long';
+        
+        // Calculate P&L correctly for long vs short:
+        // Long: You paid (negative cost basis), P&L = marketValue - |costBasis|
+        // Short: You received credit (positive cost basis), P&L = costBasis - marketValue
+        const unrealizedPL = isLong 
+          ? marketValue - Math.abs(actualCostBasis)
+          : Math.abs(actualCostBasis) - marketValue;
+        
+        const costBasisAbs = Math.abs(actualCostBasis);
+        const unrealizedPLPercent = costBasisAbs > 0 ? (unrealizedPL / costBasisAbs) * 100 : 0;
+
+        return {
+          ...position,
+          currentPrice,
+          marketValue,
+          unrealizedPL,
+          unrealizedPLPercent,
+          delta: quote.delta,
+          gamma: quote.gamma,
+          theta: quote.theta,
+          vega: quote.vega,
+          impliedVolatility: quote.implied_volatility,
+        };
+      }
+
+      // If no quote available, return position with average price as fallback
+      // Still calculate P&L correctly
+      const originalPosition = allPositions.find(p => p.id === position.id);
+      const actualCostBasis = originalPosition?.total_cost_basis || 0;
+      const isLong = position.side === 'long';
+      const fallbackMarketValue = position.quantity * (position.multiplier || 100) * position.averagePrice;
+      
+      const fallbackUnrealizedPL = isLong
+        ? fallbackMarketValue - Math.abs(actualCostBasis)
+        : Math.abs(actualCostBasis) - fallbackMarketValue;
+      
+      const costBasisAbs = Math.abs(actualCostBasis);
+      const fallbackUnrealizedPLPercent = costBasisAbs > 0 ? (fallbackUnrealizedPL / costBasisAbs) * 100 : 0;
+      
+      return {
+        ...position,
+        currentPrice: position.averagePrice,
+        marketValue: fallbackMarketValue,
+        unrealizedPL: fallbackUnrealizedPL,
+        unrealizedPLPercent: fallbackUnrealizedPLPercent,
+      };
+    });
+  }, [allPositions, optionQuotes, chainsByUnderlying]);
 
   // Transform transactions
   const transactions = useMemo(() => {
@@ -87,30 +298,86 @@ const Options: React.FC = () => {
     };
   }, [positions]);
 
-  // Filter positions
-  const filteredPositions = useMemo(() => {
-    let filtered = positions;
+  // Group positions by strategy_id - positions with same strategy_id are grouped together
+  // Only group if the strategy has more than one position (multi-leg)
+  const groupedPositions = useMemo(() => {
+    if (!allPositions || !positions) return { individual: [], strategies: [] };
+    
+    // Separate positions into individual and strategy groups
+    const individual: OptionContract[] = [];
+    const strategyGroups: Record<string, OptionContract[]> = {};
+    
+    positions.forEach((pos) => {
+      const originalPosition = allPositions.find(p => p.id === pos.id);
+      if (originalPosition?.strategy_id) {
+        const strategyId = originalPosition.strategy_id;
+        if (!strategyGroups[strategyId]) {
+          strategyGroups[strategyId] = [];
+        }
+        strategyGroups[strategyId].push(pos);
+      } else {
+        individual.push(pos);
+      }
+    });
+    
+    // Only group strategies that have more than one position (multi-leg)
+    // Single positions with a strategy_id should be displayed as individual
+    const multiLegStrategies = Object.values(strategyGroups).filter(group => group.length > 1);
+    const singleLegWithStrategy = Object.values(strategyGroups).filter(group => group.length === 1).flat();
+    
+    return {
+      individual: [...individual, ...singleLegWithStrategy],
+      strategies: multiLegStrategies,
+    };
+  }, [positions, allPositions]);
+
+  // Filter and sort grouped positions
+  const filteredGroupedPositions = useMemo(() => {
+    let filtered = groupedPositions;
 
     if (searchQuery) {
-      filtered = filtered.filter(pos =>
-        pos.underlyingSymbol.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      filtered = {
+        individual: filtered.individual.filter(pos =>
+          pos.underlyingSymbol.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+        strategies: filtered.strategies.filter(strategyGroup =>
+          strategyGroup.some(pos =>
+            pos.underlyingSymbol.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        ),
+      };
     }
 
     if (filterType !== 'all') {
-      filtered = filtered.filter(pos => pos.optionType === filterType);
+      filtered = {
+        individual: filtered.individual.filter(pos => pos.optionType === filterType),
+        strategies: filtered.strategies.filter(strategyGroup =>
+          strategyGroup.some(pos => pos.optionType === filterType)
+        ),
+      };
+    }
+
+    // Sort individual positions
+    if (positionSort && positionSort.direction) {
+      filtered = {
+        ...filtered,
+        individual: sortData(filtered.individual, positionSort),
+      };
     }
 
     return filtered;
-  }, [searchQuery, filterType, positions]);
+  }, [groupedPositions, searchQuery, filterType, positionSort]);
 
-  // Filter transactions
+  // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return transactions;
-    return transactions.filter(tx =>
-      tx.underlyingSymbol.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery, transactions]);
+    let filtered = transactions;
+    if (searchQuery) {
+      filtered = filtered.filter(tx =>
+        tx.underlyingSymbol.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return sortData(filtered, transactionSort);
+  }, [searchQuery, transactions, transactionSort]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -134,15 +401,64 @@ const Options: React.FC = () => {
     return diffDays;
   };
 
+  const handleEditPosition = useCallback((position: OptionContract) => {
+    // Find the original position from allPositions
+    const originalPosition = allPositions?.find(p => p.id === position.id);
+    if (originalPosition) {
+      setEditingPosition(originalPosition);
+      setShowTransactionForm(true);
+    }
+  }, [allPositions]);
+
+  const handleClosePosition = useCallback((position: OptionContract) => {
+    setSelectedPositionForClose(position);
+    setShowCloseForm(true);
+  }, []);
+
+  const handleDeletePosition = useCallback(async (position: OptionContract) => {
+    const confirmed = await confirmation.confirm({
+      title: 'Delete Position',
+      message: `Are you sure you want to delete the position for ${position.underlyingSymbol} ${position.optionType.toUpperCase()} $${position.strikePrice}? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+
+    if (!confirmed) return;
+    await deletePositionMutation.mutateAsync(position.id);
+  }, [confirmation, deletePositionMutation]);
+
+  const handleEditTransaction = useCallback((transaction: OptionTransaction) => {
+    // Find the original transaction from allTransactions
+    const originalTransaction = allTransactions?.find(t => t.id === transaction.id);
+    if (originalTransaction) {
+      setEditingTransaction(originalTransaction);
+      setShowTransactionForm(true);
+    }
+  }, [allTransactions]);
+
+  const handleDeleteTransaction = useCallback(async (transaction: OptionTransaction) => {
+    const confirmed = await confirmation.confirm({
+      title: 'Delete Transaction',
+      message: `Are you sure you want to delete this transaction? This action cannot be undone and may affect your positions.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+
+    if (!confirmed) return;
+    await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
+  }, [confirmation, deleteTransactionMutation]);
+
   return (
     <div className="p-8 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Options
           </h1>
-          <p className="text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
             Track your options positions, strategies, and Greeks
           </p>
           <div className="mt-3">
@@ -150,7 +466,7 @@ const Options: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all">
+          <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all">
             <Download size={18} className="inline mr-2" />
             Export
           </button>
@@ -207,14 +523,14 @@ const Options: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 overflow-hidden ">
-        <div className="flex border-b border-slate-800/50">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 overflow-hidden shadow-sm dark:shadow-none">
+        <div className="flex border-b border-slate-200 dark:border-slate-800/50">
           <button
             onClick={() => setActiveTab('positions')}
             className={`px-6 py-3 font-medium transition-all ${
               activeTab === 'positions'
-                ? 'text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
             }`}
           >
             Positions
@@ -223,8 +539,8 @@ const Options: React.FC = () => {
             onClick={() => setActiveTab('transactions')}
             className={`px-6 py-3 font-medium transition-all ${
               activeTab === 'transactions'
-                ? 'text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
             }`}
           >
             Transactions
@@ -233,8 +549,8 @@ const Options: React.FC = () => {
             onClick={() => setActiveTab('chain')}
             className={`px-6 py-3 font-medium transition-all ${
               activeTab === 'chain'
-                ? 'text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-300'
+                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
             }`}
           >
             Options Chain
@@ -242,10 +558,10 @@ const Options: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="p-4 border-b border-slate-800/50 flex gap-4">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800/50 flex gap-4">
           <div className="relative flex-1">
             <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
               size={18}
             />
             <input
@@ -253,14 +569,14 @@ const Options: React.FC = () => {
               placeholder="Search by underlying symbol..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             />
           </div>
           {activeTab === 'positions' && (
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as any)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             >
               <option value="all">All Types</option>
               <option value="call">Calls Only</option>
@@ -274,7 +590,7 @@ const Options: React.FC = () => {
           {activeTab === 'chain' ? (
             <div className="p-6">
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Underlying Symbol
                 </label>
                 <div className="flex gap-3">
@@ -283,7 +599,7 @@ const Options: React.FC = () => {
                     value={chainSymbol}
                     onChange={(e) => setChainSymbol(e.target.value.toUpperCase())}
                     placeholder="AAPL"
-                    className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
               </div>
@@ -299,157 +615,449 @@ const Options: React.FC = () => {
                   }}
                 />
               ) : (
-                <div className="text-center py-12 text-slate-400">
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                   <p>Enter an underlying symbol to view options chain</p>
                 </div>
               )}
             </div>
           ) : activeTab === 'positions' ? (
             <table className="w-full">
-              <thead className="bg-slate-800/50">
+              <thead className="bg-slate-100 dark:bg-slate-800/50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Symbol
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Strike
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Expiration
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Contracts
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Avg Price
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Current
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Value
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      P&L
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Delta
+                    <SortableTableHeader
+                      label="Symbol"
+                      sortKey="underlyingSymbol"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Type"
+                      sortKey="optionType"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Strike"
+                      sortKey="strikePrice"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Expiration"
+                      sortKey="expirationDate"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Contracts"
+                      sortKey="quantity"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Avg Price"
+                      sortKey="averagePrice"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Current"
+                      sortKey="currentPrice"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Value"
+                      sortKey="marketValue"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="P&L"
+                      sortKey="unrealizedPL"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Delta"
+                      sortKey="delta"
+                      currentSort={positionSort}
+                      onSortChange={setPositionSort}
+                      align="right"
+                    />
+                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                      Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
                   {positionsLoading ? (
-                    <TableSkeleton rows={5} columns={10} />
-                  ) : filteredPositions.length === 0 ? (
+                    <TableSkeleton rows={5} columns={11} />
+                  ) : filteredGroupedPositions.individual.length === 0 && filteredGroupedPositions.strategies.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-6 py-8 text-center text-slate-400">
-                        No positions found
+                      <td colSpan={11} className="px-6 py-12">
+                        <EmptyPositions
+                          assetType="options"
+                          onAddTrade={() => setShowTransactionForm(true)}
+                        />
                       </td>
                     </tr>
                   ) : (
-                    filteredPositions.map((position) => {
-                      const daysToExp = getDaysToExpiration(position.expirationDate);
-                      return (
-                        <tr
-                          key={position.id}
-                          className="hover:bg-slate-800/30 transition-colors cursor-pointer"
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="font-semibold text-slate-100">
-                              {position.underlyingSymbol}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                position.optionType === 'call'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              }`}
-                            >
-                              {position.optionType.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
-                            ${position.strikePrice}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
-                            <div className="flex items-center gap-1">
-                              <Calendar size={14} className="text-slate-400" />
-                              <span>{formatDate(position.expirationDate)}</span>
-                              <span className={`text-xs ${daysToExp < 7 ? 'text-red-500 dark:text-red-400' : 'text-slate-400'}`}>
-                                ({daysToExp}d)
+                    <>
+                      {/* Individual positions (not part of a strategy) */}
+                      {filteredGroupedPositions.individual.map((position) => {
+                        const daysToExp = getDaysToExpiration(position.expirationDate);
+                        return (
+                          <tr
+                            key={position.id}
+                            className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                            onClick={() => setSelectedPosition(position)}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {position.underlyingSymbol}
                               </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
-                            {position.quantity}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
-                            {formatCurrency(position.averagePrice)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
-                            {formatCurrency(position.currentPrice || 0)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-100">
-                            {formatCurrency(position.marketValue || 0)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                            <div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <span
-                              className={`font-semibold ${
-                                (position.unrealizedPL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
-                              }`}
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  position.optionType === 'call'
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                }`}
                               >
-                                {formatCurrency(position.unrealizedPL || 0)}
+                                {position.optionType.toUpperCase()}
                               </span>
-                              <div className={`text-xs ${(position.unrealizedPLPercent || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {formatPercent(position.unrealizedPLPercent || 0)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              ${position.strikePrice}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
+                              <div className="flex items-center gap-1">
+                                <Calendar size={14} className="text-slate-500 dark:text-slate-400" />
+                                <span>{formatDate(position.expirationDate)}</span>
+                                <span className={`text-xs ${daysToExp < 7 ? 'text-red-500 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                  ({daysToExp}d)
+                                </span>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
-                            {position.delta?.toFixed(2) || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {position.quantity}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {formatCurrency(position.averagePrice)}/contract
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {formatCurrency(position.currentPrice || 0)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-900 dark:text-slate-100">
+                              {formatCurrency(position.marketValue || 0)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              <div>
+                                <span
+                                className={`font-semibold ${
+                                  (position.unrealizedPL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                                }`}
+                                >
+                                  {formatCurrency(position.unrealizedPL || 0)}
+                                </span>
+                                <div className={`text-xs ${(position.unrealizedPLPercent || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {formatPercent(position.unrealizedPLPercent || 0)}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {position.delta?.toFixed(2) || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleClosePosition(position);
+                                  }}
+                                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all"
+                                >
+                                  Close
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditPosition(position);
+                                  }}
+                                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                                  title="Edit position"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeletePosition(position);
+                                  }}
+                                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                  title="Delete position"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      
+                      {/* Grouped strategy positions */}
+                      {filteredGroupedPositions.strategies.map((strategyGroup, groupIdx) => {
+                        const firstPosition = strategyGroup[0];
+                        
+                        // Find the strategy for this group to get total_opening_cost
+                        const originalPosition = allPositions.find(p => p.id === firstPosition.id);
+                        const strategyId = originalPosition?.strategy_id;
+                        const strategy = strategies?.find(s => s.id === strategyId);
+                        
+                        // Calculate weighted average current price and average entry price
+                        const totalContracts = strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0);
+                        const weightedAvgCurrentPrice = totalContracts > 0
+                          ? strategyGroup.reduce((sum, pos) => {
+                              const posValue = (pos.currentPrice || pos.averagePrice) * pos.quantity;
+                              return sum + posValue;
+                            }, 0) / totalContracts
+                          : 0;
+                        
+                        // Calculate weighted average entry price (price per contract, not total cost)
+                        const weightedAvgEntryPrice = totalContracts > 0
+                          ? strategyGroup.reduce((sum, pos) => {
+                              const posValue = pos.averagePrice * pos.quantity;
+                              return sum + posValue;
+                            }, 0) / totalContracts
+                          : 0;
+                        
+                        // Calculate total value and P&L correctly accounting for long/short
+                        let totalValue = 0;
+                        let totalPL = 0;
+                        let totalCostBasis = 0;
+                        
+                        strategyGroup.forEach((pos) => {
+                          const origPos = allPositions.find(p => p.id === pos.id);
+                          const actualCostBasis = origPos?.total_cost_basis || 0;
+                          const isLong = pos.side === 'long';
+                          
+                          const marketValue = pos.marketValue || 0;
+                          totalValue += marketValue;
+                          
+                          // Calculate P&L for this position
+                          // Long: You paid (negative cost basis), P&L = marketValue - |costBasis|
+                          // Short: You received credit (positive cost basis), P&L = costBasis - marketValue
+                          const posPL = isLong
+                            ? marketValue - Math.abs(actualCostBasis)
+                            : Math.abs(actualCostBasis) - marketValue;
+                          totalPL += posPL;
+                          totalCostBasis += Math.abs(actualCostBasis);
+                        });
+                        
+                        // For spreads, calculate P&L using strategy's total_opening_cost (net credit/debit)
+                        // This is more accurate for multi-leg strategies
+                        let finalPL = totalPL;
+                        let finalPLPercent = totalCostBasis > 0 ? (totalPL / totalCostBasis) * 100 : 0;
+                        
+                        if (strategy && strategy.total_opening_cost !== undefined) {
+                          // For spreads, calculate current spread value and compare to net credit/debit
+                          // Current spread value = sum of (long leg values) - sum of (short leg values)
+                          let longLegsValue = 0;
+                          let shortLegsValue = 0;
+                          
+                          strategyGroup.forEach((pos) => {
+                            const marketValue = pos.marketValue || 0;
+                            if (pos.side === 'long') {
+                              longLegsValue += marketValue;
+                            } else {
+                              shortLegsValue += marketValue;
+                            }
+                          });
+                          
+                          // Current spread value (what you'd get if you closed it now)
+                          const currentSpreadValue = longLegsValue - shortLegsValue;
+                          
+                          // Net credit/debit when opened (positive = credit received, negative = debit paid)
+                          const netCreditDebit = strategy.total_opening_cost;
+                          
+                          // P&L = Current spread value - Net credit/debit
+                          // For credit spread: positive netCreditDebit, so P&L = currentSpreadValue - netCreditDebit
+                          // For debit spread: negative netCreditDebit, so P&L = currentSpreadValue - netCreditDebit (which adds)
+                          finalPL = currentSpreadValue - netCreditDebit;
+                          
+                          // Calculate percentage based on net credit/debit
+                          const netCreditDebitAbs = Math.abs(netCreditDebit);
+                          finalPLPercent = netCreditDebitAbs > 0 ? (finalPL / netCreditDebitAbs) * 100 : 0;
+                        }
+                        
+                        const daysToExp = getDaysToExpiration(firstPosition.expirationDate);
+                        
+                        return (
+                          <tr
+                            key={`strategy-${groupIdx}`}
+                            className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                            onClick={() => setSelectedStrategyGroup(strategyGroup)}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                {firstPosition.underlyingSymbol}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4" colSpan={2}>
+                              <div className="flex flex-wrap gap-1">
+                                {strategyGroup.map((pos, idx) => (
+                                  <span
+                                    key={idx}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${
+                                      pos.optionType === 'call'
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                    }`}
+                                  >
+                                    {pos.optionType.toUpperCase()} ${pos.strikePrice}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
+                              <div className="flex items-center gap-1">
+                                <Calendar size={14} className="text-slate-500 dark:text-slate-400" />
+                                <span>{formatDate(firstPosition.expirationDate)}</span>
+                                <span className={`text-xs ${daysToExp < 7 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                  ({daysToExp}d)
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {formatCurrency(weightedAvgEntryPrice)}/contract
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {weightedAvgCurrentPrice > 0 ? formatCurrency(weightedAvgCurrentPrice) : '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-900 dark:text-slate-100">
+                              {formatCurrency(totalValue)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              <div>
+                                <span
+                                  className={`font-semibold ${
+                                    finalPL >= 0 ? 'text-emerald-400' : 'text-red-400'
+                                  }`}
+                                >
+                                  {formatCurrency(finalPL)}
+                                </span>
+                                <div className={`text-xs ${finalPLPercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {formatPercent(finalPLPercent)}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
+                              {strategyGroup.reduce((sum, pos) => sum + (pos.delta || 0), 0).toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Edit first position as representative
+                                    handleEditPosition(firstPosition);
+                                  }}
+                                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                                  title="Edit strategy"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Delete first position as representative
+                                    handleDeletePosition(firstPosition);
+                                  }}
+                                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                  title="Delete strategy"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </>
                   )}
                 </tbody>
               </table>
           ) : (
             <table className="w-full">
-              <thead className="bg-slate-800/50">
+              <thead className="bg-slate-100 dark:bg-slate-800/50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Description
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Action
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Contracts
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Price
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Amount
+                    <SortableTableHeader
+                      label="Date"
+                      sortKey="activityDate"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Description"
+                      sortKey="description"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Action"
+                      sortKey="transactionType"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="left"
+                    />
+                    <SortableTableHeader
+                      label="Contracts"
+                      sortKey="quantity"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Price"
+                      sortKey="price"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="right"
+                    />
+                    <SortableTableHeader
+                      label="Amount"
+                      sortKey="amount"
+                      currentSort={transactionSort}
+                      onSortChange={setTransactionSort}
+                      align="right"
+                    />
+                    <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                      Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
                   {transactionsLoading ? (
-                    <TableSkeleton rows={5} columns={6} />
+                    <TableSkeleton rows={5} columns={7} />
                   ) : filteredTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                      <td colSpan={7} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
                         No transactions found
                       </td>
                     </tr>
@@ -457,33 +1065,57 @@ const Options: React.FC = () => {
                     filteredTransactions.map((transaction) => (
                       <tr
                         key={transaction.id}
-                        className="hover:bg-slate-800/30 transition-colors"
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors"
                       >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
                           {formatDate(transaction.activityDate)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-100">
+                        <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">
                           {transaction.description}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
                               className={`px-2 py-1 rounded-full text-xs font-medium ${
                                 transaction.transactionType === 'BTO' || transaction.transactionType === 'STO'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                   : 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
                               }`}
                           >
                             {transaction.transactionType}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                           {transaction.quantity}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-100">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                           {transaction.price ? formatCurrency(transaction.price) : '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-100">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-900 dark:text-slate-100">
                           {transaction.amount ? formatCurrency(Math.abs(transaction.amount)) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditTransaction(transaction);
+                              }}
+                              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                              title="Edit transaction"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTransaction(transaction);
+                              }}
+                              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                              title="Delete transaction"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -494,17 +1126,83 @@ const Options: React.FC = () => {
         </div>
       </div>
 
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        title={confirmation.options.title}
+        message={confirmation.options.message}
+        confirmLabel={confirmation.options.confirmLabel}
+        cancelLabel={confirmation.options.cancelLabel}
+        variant={confirmation.options.variant}
+        onConfirm={confirmation.handleConfirm}
+        onCancel={confirmation.handleCancel}
+      />
+
       {/* Transaction Form Modal */}
       {showTransactionForm && (
+        <>
+          {editingPosition ? (
+            <PositionEditForm
+              position={editingPosition}
+              userId={userId}
+              onClose={() => {
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+              onSuccess={() => {
+                queryClient.invalidateQueries({ queryKey: ['positions'] });
+                queryClient.invalidateQueries({ queryKey: ['position-statistics'] });
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+            />
+          ) : (
+            <TransactionForm
+              assetType="option"
+              userId={userId}
+              onClose={() => {
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+              onSuccess={() => {
+                queryClient.invalidateQueries({ queryKey: ['positions'] });
+                queryClient.invalidateQueries({ queryKey: ['transactions'] });
+                queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+                setShowTransactionForm(false);
+                setEditingPosition(null);
+                setEditingTransaction(null);
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {/* Close Position Form Modal */}
+      {showCloseForm && selectedPositionForClose && (
         <TransactionForm
           assetType="option"
           userId={userId}
-          onClose={() => setShowTransactionForm(false)}
+          initialValues={{
+            underlyingSymbol: selectedPositionForClose.underlyingSymbol,
+            optionType: selectedPositionForClose.optionType,
+            strikePrice: selectedPositionForClose.strikePrice,
+            expirationDate: selectedPositionForClose.expirationDate,
+            optionTransactionCode: selectedPositionForClose.side === 'long' ? 'STC' : 'BTC',
+            maxQuantity: selectedPositionForClose.quantity,
+          }}
+          onClose={() => {
+            setShowCloseForm(false);
+            setSelectedPositionForClose(null);
+          }}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['positions'] });
             queryClient.invalidateQueries({ queryKey: ['transactions'] });
             queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
-            setShowTransactionForm(false);
+            setShowCloseForm(false);
+            setSelectedPositionForClose(null);
           }}
         />
       )}
@@ -523,6 +1221,28 @@ const Options: React.FC = () => {
           }}
         />
       )}
+
+      {/* Position Details Modal */}
+      {(selectedPosition || selectedStrategyGroup) && (
+        <PositionDetailsModal
+          position={selectedPosition}
+          strategyGroup={selectedStrategyGroup || undefined}
+          strategy={
+            selectedStrategyGroup
+              ? strategies?.find(
+                  (s) =>
+                    allPositions?.find((p) => p.id === selectedStrategyGroup[0]?.id)?.strategy_id ===
+                    s.id
+                ) || null
+              : null
+          }
+          allPositions={allPositions || []}
+          onClose={() => {
+            setSelectedPosition(null);
+            setSelectedStrategyGroup(null);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -536,17 +1256,17 @@ interface StatCardProps {
 }
 
 const StatCard = ({ title, value, subtitle, icon: Icon, positive }: StatCardProps) => (
-  <div className="group relative bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden ">
+  <div className="group relative bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden shadow-sm dark:shadow-none">
     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all duration-300" />
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-slate-400">{title}</span>
+        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</span>
         <div className={`p-2.5 rounded-xl ${positive ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
           <Icon className={`w-5 h-5 ${positive ? 'text-emerald-400' : 'text-red-400'}`} />
         </div>
       </div>
       <div className="space-y-2">
-        <p className="text-3xl font-bold text-slate-100">{value}</p>
+        <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
         {subtitle && (
           <p className={`text-sm font-medium ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
             {subtitle}

@@ -1,9 +1,13 @@
 import { supabase } from '../api/supabase';
+import { logger } from '@/shared/utils/logger';
+import { parseError, logError } from '@/shared/utils/errorHandler';
+import { validateData, TransactionInsertSchema, TransactionUpdateSchema } from '@/shared/utils/validationSchemas';
 import type {
   Transaction,
   TransactionInsert,
   TransactionUpdate,
   TransactionFilters,
+  TransactionStatistics,
 } from '@/domain/types';
 
 /**
@@ -15,15 +19,23 @@ export class TransactionRepository {
    * Create a single transaction
    */
   static async create(transaction: TransactionInsert): Promise<Transaction> {
+    // Validate input data
+    const validatedTransaction = validateData(
+      TransactionInsertSchema,
+      transaction,
+      'TransactionRepository.create'
+    );
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert(transaction)
+      .insert(validatedTransaction)
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating transaction:', error);
-      throw new Error(`Failed to create transaction: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.create', transaction });
+      throw new Error(`Failed to create transaction: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -35,14 +47,24 @@ export class TransactionRepository {
   static async createMany(transactions: TransactionInsert[]): Promise<Transaction[]> {
     if (transactions.length === 0) return [];
 
+    // Validate all transactions
+    const validatedTransactions = transactions.map((tx, index) =>
+      validateData(
+        TransactionInsertSchema,
+        tx,
+        `TransactionRepository.createMany[${index}]`
+      )
+    );
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert(transactions)
+      .insert(validatedTransactions)
       .select();
 
     if (error) {
-      console.error('Error creating transactions:', error);
-      throw new Error(`Failed to create transactions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.createMany', count: transactions.length });
+      throw new Error(`Failed to create transactions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -60,8 +82,9 @@ export class TransactionRepository {
 
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
-      console.error('Error fetching transaction:', error);
-      throw new Error(`Failed to fetch transaction: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.getById', id });
+      throw new Error(`Failed to fetch transaction: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -105,8 +128,9 @@ export class TransactionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching transactions:', error);
-      throw new Error(`Failed to fetch transactions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.getAll', userId, filters });
+      throw new Error(`Failed to fetch transactions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -123,8 +147,9 @@ export class TransactionRepository {
       .order('activity_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching transactions by import:', error);
-      throw new Error(`Failed to fetch transactions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.getByImportId', importId });
+      throw new Error(`Failed to fetch transactions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -151,8 +176,9 @@ export class TransactionRepository {
       .order('underlying_symbol', { ascending: true });
 
     if (error) {
-      console.error('Error fetching options for detection:', error);
-      throw new Error(`Failed to fetch options: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.getOptionsForDetection', userId, startDate, endDate });
+      throw new Error(`Failed to fetch options: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -183,8 +209,17 @@ export class TransactionRepository {
       .order('activity_date', { ascending: true });
 
     if (error) {
-      console.error('Error finding opening transactions:', error);
-      throw new Error(`Failed to find opening transactions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { 
+        context: 'TransactionRepository.findOpeningTransactions', 
+        userId, 
+        underlyingSymbol, 
+        expirationDate, 
+        strikePrice, 
+        optionType, 
+        isLong 
+      });
+      throw new Error(`Failed to find opening transactions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -194,16 +229,24 @@ export class TransactionRepository {
    * Update transaction
    */
   static async update(id: string, updates: TransactionUpdate): Promise<Transaction> {
+    // Validate update data
+    const validatedUpdates = validateData(
+      TransactionUpdateSchema,
+      updates,
+      'TransactionRepository.update'
+    );
+
     const { data, error } = await supabase
       .from('transactions')
-      .update(updates)
+      .update(validatedUpdates)
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating transaction:', error);
-      throw new Error(`Failed to update transaction: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.update', id, updates });
+      throw new Error(`Failed to update transaction: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -218,15 +261,23 @@ export class TransactionRepository {
   ): Promise<Transaction[]> {
     if (ids.length === 0) return [];
 
+    // Validate update data
+    const validatedUpdates = validateData(
+      TransactionUpdateSchema,
+      updates,
+      'TransactionRepository.updateMany'
+    );
+
     const { data, error } = await supabase
       .from('transactions')
-      .update(updates)
+      .update(validatedUpdates)
       .in('id', ids)
       .select();
 
     if (error) {
-      console.error('Error updating transactions:', error);
-      throw new Error(`Failed to update transactions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.updateMany', ids, updates });
+      throw new Error(`Failed to update transactions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -239,8 +290,9 @@ export class TransactionRepository {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
 
     if (error) {
-      console.error('Error deleting transaction:', error);
-      throw new Error(`Failed to delete transaction: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.delete', id });
+      throw new Error(`Failed to delete transaction: ${parsed.message}`, { cause: error });
     }
   }
 
@@ -266,7 +318,7 @@ export class TransactionRepository {
       );
 
     if (error) {
-      console.error('Error checking duplicates:', error);
+      logError(error, { context: 'TransactionRepository.findDuplicates', userId, transactionCount: transactions.length });
       return [];
     }
 
@@ -288,7 +340,7 @@ export class TransactionRepository {
   /**
    * Get transaction statistics
    */
-  static async getStatistics(userId: string, startDate?: string, endDate?: string) {
+  static async getStatistics(userId: string, startDate?: string, endDate?: string): Promise<TransactionStatistics> {
     let query = supabase
       .from('transactions')
       .select('asset_type, transaction_code, amount, activity_date')
@@ -305,8 +357,9 @@ export class TransactionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching transaction statistics:', error);
-      throw new Error(`Failed to fetch statistics: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionRepository.getStatistics', userId, startDate, endDate });
+      throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 
     // Calculate statistics

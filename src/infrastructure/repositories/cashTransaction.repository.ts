@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { logger } from '@/shared/utils/logger';
 import type {
   CashTransaction,
   CashTransactionInsert,
@@ -21,7 +22,16 @@ export class CashTransactionRepository {
       .single();
 
     if (error) {
-      console.error('Error creating cash transaction:', error);
+      logger.error('Error creating cash transaction', error);
+      
+      // Check if the error is about a missing column (schema not up to date)
+      if (error.message?.includes('transaction_id') || error.message?.includes('column') || error.code === '42703') {
+        throw new Error(
+          `Database schema update required: The 'transaction_id' column does not exist in the cash_transactions table. ` +
+          `Please ensure your database schema is up to date. Check database/schema/consolidated_schema.sql`
+        );
+      }
+      
       throw new Error(`Failed to create cash transaction: ${error.message}`);
     }
 
@@ -42,7 +52,7 @@ export class CashTransactionRepository {
       if (error.code === 'PGRST116') {
         return null; // Not found
       }
-      console.error('Error fetching cash transaction:', error);
+      logger.error('Error fetching cash transaction', error);
       throw new Error(`Failed to fetch cash transaction: ${error.message}`);
     }
 
@@ -81,7 +91,7 @@ export class CashTransactionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching cash transactions:', error);
+      logger.error('Error fetching cash transactions', error);
       throw new Error(`Failed to fetch cash transactions: ${error.message}`);
     }
 
@@ -103,7 +113,7 @@ export class CashTransactionRepository {
       .single();
 
     if (error) {
-      console.error('Error updating cash transaction:', error);
+      logger.error('Error updating cash transaction', error);
       throw new Error(`Failed to update cash transaction: ${error.message}`);
     }
 
@@ -120,7 +130,7 @@ export class CashTransactionRepository {
       .eq('id', id);
 
     if (error) {
-      console.error('Error deleting cash transaction:', error);
+      logger.error('Error deleting cash transaction', error);
       throw new Error(`Failed to delete cash transaction: ${error.message}`);
     }
   }

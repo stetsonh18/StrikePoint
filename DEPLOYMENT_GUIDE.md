@@ -1,391 +1,336 @@
-# Express Backend Deployment Guide
+# Deployment Guide
 
-This guide explains how to deploy the Express.js backend server to solve the MarketData.app IP whitelisting issue.
+This guide explains how to deploy StrikePoint to production.
 
-## Problem Summary
+## Architecture
 
-MarketData.app API requires IP whitelisting for security. The previous architecture used Supabase Edge Functions, which run on cloud infrastructure with dynamic/rotating IP addresses that cannot be whitelisted. This caused 403 Forbidden errors.
-
-**Solution:** Deploy the Express.js backend (`server.js`) to a server with a static IP address, whitelist that IP with MarketData.app, and route all market data API calls through the backend.
-
-## Architecture Overview
+The application uses a **serverless architecture** with Supabase:
 
 ```
-Frontend (React/Vite)
+Frontend (Static Site)
   ↓
-Express Backend (Static IP)
-  ↓
-MarketData.app API (IP whitelisted)
+Supabase (Backend-as-a-Service)
+  ├─→ Database (PostgreSQL)
+  ├─→ Authentication
+  ├─→ Storage
+  └─→ Edge Functions (API Gateway)
+       └─→ External APIs (MarketData, Finnhub, etc.)
 ```
 
-## Local Development Setup
+## Frontend Deployment
 
-### 1. Create Environment Variables
-
-Create a `.env` file in the project root with your API keys:
-
-```env
-# MarketData.app API Token (Required)
-MARKETDATA_API_TOKEN=your_marketdata_token_here
-
-# Finnhub API Key (Required for symbol search)
-FINNHUB_API_KEY=your_finnhub_key_here
-
-# CoinGecko API Key (Optional - for crypto data)
-COINGECKO_API_KEY=your_coingecko_key_here
-
-# Alpha Vantage MCP URL (Optional)
-ALPHA_VANTAGE_MCP_URL=http://localhost:3000/mcp
-
-# Server Port (Optional - defaults to 3001)
-PORT=3001
-
-# Node Environment
-NODE_ENV=development
-```
-
-### 2. Install Dependencies
-
-```bash
-npm install
-```
-
-### 3. Run Development Servers
-
-**Option A: Run both frontend and backend together (recommended)**
-```bash
-npm run dev:all
-```
-
-**Option B: Run separately**
-
-Terminal 1 (Backend):
-```bash
-npm run dev:api
-```
-
-Terminal 2 (Frontend):
-```bash
-npm run dev
-```
-
-### 4. Verify Setup
-
-- Backend: http://localhost:3001/api/health
-- Frontend: http://localhost:5173
-
-You should see the backend endpoints listed in the terminal output.
-
-## Production Deployment
-
-### Option 1: DigitalOcean Droplet (Recommended)
+### Option 1: Netlify (Recommended)
 
 **Advantages:**
-- Simple setup
-- Static IP included
-- Affordable ($6/month)
-- Full control
-
-**Steps:**
-
-1. **Create Droplet:**
-   - Create a DigitalOcean account
-   - Create a new Droplet (Ubuntu 22.04 LTS)
-   - Choose Basic plan ($6/month)
-   - Note the static IP address
-
-2. **SSH into Droplet:**
-   ```bash
-   ssh root@your_droplet_ip
-   ```
-
-3. **Install Node.js:**
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-   apt-get install -y nodejs
-   ```
-
-4. **Install PM2 (Process Manager):**
-   ```bash
-   npm install -g pm2
-   ```
-
-5. **Clone Your Repository:**
-   ```bash
-   git clone https://github.com/yourusername/strikepointv4.git
-   cd strikepointv4
-   ```
-
-6. **Create Production .env File:**
-   ```bash
-   nano .env
-   ```
-
-   Add your production environment variables:
-   ```env
-   MARKETDATA_API_TOKEN=your_production_token
-   FINNHUB_API_KEY=your_production_key
-   COINGECKO_API_KEY=your_production_key
-   PORT=3001
-   NODE_ENV=production
-   ```
-
-7. **Install Dependencies:**
-   ```bash
-   npm install --production
-   ```
-
-8. **Start Server with PM2:**
-   ```bash
-   pm2 start server.js --name "strikepoint-api"
-   pm2 save
-   pm2 startup
-   ```
-
-9. **Setup Nginx Reverse Proxy (Optional but recommended):**
-   ```bash
-   apt-get install -y nginx
-   ```
-
-   Create Nginx config:
-   ```bash
-   nano /etc/nginx/sites-available/strikepoint-api
-   ```
-
-   Add configuration:
-   ```nginx
-   server {
-       listen 80;
-       server_name api.yourdomain.com;  # Or use your IP
-
-       location / {
-           proxy_pass http://localhost:3001;
-           proxy_http_version 1.1;
-           proxy_set_header Upgrade $http_upgrade;
-           proxy_set_header Connection 'upgrade';
-           proxy_set_header Host $host;
-           proxy_cache_bypass $http_upgrade;
-           proxy_set_header X-Real-IP $remote_addr;
-           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       }
-   }
-   ```
-
-   Enable site:
-   ```bash
-   ln -s /etc/nginx/sites-available/strikepoint-api /etc/nginx/sites-enabled/
-   nginx -t
-   systemctl restart nginx
-   ```
-
-10. **Setup Firewall:**
-    ```bash
-    ufw allow 22    # SSH
-    ufw allow 80    # HTTP
-    ufw allow 443   # HTTPS (if using SSL)
-    ufw enable
-    ```
-
-11. **Whitelist Droplet IP with MarketData.app:**
-    - Log in to MarketData.app dashboard
-    - Go to API settings
-    - Add your Droplet's static IP address to the whitelist
-
-12. **Update Frontend Environment Variable:**
-
-    In your frontend `.env` or `.env.production`:
-    ```env
-    VITE_API_URL=http://your_droplet_ip/api
-    # Or with domain: VITE_API_URL=https://api.yourdomain.com/api
-    ```
-
-### Option 2: AWS EC2
-
-**Advantages:**
-- Elastic IP (static)
-- Scalable
-- Integrates with other AWS services
-
-**Steps:**
-
-1. **Launch EC2 Instance:**
-   - Choose Amazon Linux 2 or Ubuntu
-   - t2.micro (free tier eligible)
-   - Configure security group (ports 22, 80, 3001)
-
-2. **Allocate Elastic IP:**
-   - AWS Console → EC2 → Elastic IPs
-   - Allocate new address
-   - Associate with your instance
-
-3. **Follow similar setup steps as DigitalOcean** (SSH, install Node.js, PM2, etc.)
-
-4. **Whitelist Elastic IP with MarketData.app**
-
-### Option 3: Railway.app
-
-**Advantages:**
-- Simple deployment from GitHub
 - Free tier available
-- Automatic HTTPS
-
-**Limitations:**
-- Dynamic IP on free tier (need paid plan for static IP)
+- Automatic deployments from Git
+- Built-in CI/CD
+- Easy environment variable management
 
 **Steps:**
 
-1. **Connect GitHub Repository:**
-   - Sign up at Railway.app
-   - Create new project from GitHub repo
+1. **Connect Repository:**
+   - Sign up at https://netlify.com
+   - Click "Add new site" → "Import an existing project"
+   - Connect your GitHub/GitLab repository
 
-2. **Configure Environment Variables:**
-   - Add all required API keys in Railway dashboard
+2. **Configure Build Settings:**
+   - **Build command:** `npm run build`
+   - **Publish directory:** `dist`
+   - **Node version:** 18 (or higher)
 
-3. **Configure Start Command:**
+3. **Set Environment Variables:**
+   In Netlify dashboard → Site settings → Environment variables:
    ```
-   node server.js
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+   VITE_SENTRY_DSN=https://your-dsn@sentry.io/project-id
    ```
+   
+   **Note:** `VITE_SENTRY_DSN` is optional but recommended for production error tracking.
 
 4. **Deploy:**
-   - Railway will auto-deploy on git push
+   - Netlify will automatically deploy on push to main branch
+   - Or click "Deploy site" to deploy immediately
 
-5. **Get Static IP (Paid plan required):**
-   - Upgrade to Pro plan
-   - Request static IP from Railway support
+5. **Configure Redirects:**
+   The `public/_redirects` file is already configured for SPA routing:
+   ```
+   /*    /index.html   200
+   ```
 
-### Option 4: Heroku
-
-**Note:** Heroku requires a paid plan for static IPs via "Static IP" add-on.
+### Option 2: Vercel
 
 **Steps:**
 
-1. **Install Heroku CLI:**
+1. **Install Vercel CLI:**
    ```bash
-   npm install -g heroku
+   npm i -g vercel
    ```
 
-2. **Create Heroku App:**
+2. **Deploy:**
    ```bash
-   heroku create your-app-name
+   vercel
    ```
 
 3. **Set Environment Variables:**
+   In Vercel dashboard → Project settings → Environment variables:
+   ```
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+   VITE_SENTRY_DSN=https://your-dsn@sentry.io/project-id
+   ```
+   
+   **Note:** `VITE_SENTRY_DSN` is optional but recommended for production error tracking.
+
+4. **Configure:**
+   - Framework preset: Vite
+   - Build command: `npm run build`
+   - Output directory: `dist`
+
+### Option 3: GitHub Pages
+
+**Steps:**
+
+1. **Install gh-pages:**
    ```bash
-   heroku config:set MARKETDATA_API_TOKEN=your_token
-   heroku config:set FINNHUB_API_KEY=your_key
+   npm install --save-dev gh-pages
    ```
 
-4. **Create Procfile:**
-   ```
-   web: node server.js
+2. **Add to package.json:**
+   ```json
+   {
+     "scripts": {
+       "deploy": "npm run build && gh-pages -d dist"
+     }
+   }
    ```
 
-5. **Deploy:**
+3. **Deploy:**
    ```bash
-   git push heroku main
+   npm run deploy
    ```
 
-6. **Add Static IP Add-on:**
-   - Requires paid Heroku plan
-   - Install QuotaGuard Static add-on
-   - Whitelist the provided IP with MarketData.app
+**Note:** GitHub Pages requires environment variables to be set in GitHub Actions or use a different approach for secrets.
 
-## Frontend Configuration
+## Supabase Configuration
 
-### Development
-No configuration needed - Vite proxy automatically routes `/api` to `http://localhost:3001`
+### 1. Deploy Edge Functions
 
-### Production
-Set environment variable:
+Edge Functions handle API calls to external services. Deploy them to Supabase:
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link your project
+supabase link --project-ref your-project-ref
+
+# Deploy all functions
+supabase functions deploy
+
+# Or deploy specific function
+supabase functions deploy generate-insights
+```
+
+### 2. Configure Edge Function Secrets
+
+Set API keys in Supabase Secrets (these are server-side only):
+
+```bash
+# Set secrets via CLI
+supabase secrets set MARKETDATA_API_TOKEN=your_token
+supabase secrets set FINNHUB_API_KEY=your_key
+supabase secrets set COINGECKO_API_KEY=your_key
+supabase secrets set OPENAI_API_KEY=your_key
+supabase secrets set OPENAI_MODEL=gpt-4o-mini
+```
+
+Or via Supabase Dashboard:
+1. Go to **Settings** → **Edge Functions** → **Secrets**
+2. Add each secret key-value pair
+
+### 3. Database Setup
+
+1. **Run Schema File:**
+   - Open Supabase SQL Editor
+   - Run `database/schema/consolidated_schema.sql`
+   - This single file contains all tables, indexes, RLS policies, and views
+
+2. **Verify RLS Policies:**
+   - All tables should have Row Level Security enabled
+   - Policies should allow users to access only their own data
+
+3. **Set Up Indexes:**
+   - Indexes are included in schema files
+   - Verify they're created for performance
+
+## Environment Variables
+
+### Required for Frontend
+
+These must be set in your hosting platform (Netlify, Vercel, etc.):
+
 ```env
-VITE_API_URL=https://your-backend-domain.com/api
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
 ```
 
-Or if using IP directly:
-```env
-VITE_API_URL=http://your_static_ip/api
-```
+**Optional:**
+- `VITE_SENTRY_ENABLE_DEV` - Set to `true` to enable Sentry in development (default: disabled)
+- `VITE_APP_VERSION` - App version for release tracking (e.g., `1.0.0`)
+- `VITE_ANALYTICS_ENABLED` - Set to `true` to enable analytics in development (default: disabled)
+- `VITE_GA4_MEASUREMENT_ID` - Google Analytics 4 Measurement ID (e.g., `G-XXXXXXXXXX`)
+- `VITE_PLAUSIBLE_DOMAIN` - Plausible domain for privacy-focused analytics
 
-## Monitoring and Maintenance
+### Required for Edge Functions
 
-### Check Server Status (PM2)
+These are set in Supabase Secrets (not in frontend):
+
+- `MARKETDATA_API_TOKEN` - MarketData.app API token
+- `FINNHUB_API_KEY` - Finnhub API key
+- `COINGECKO_API_KEY` - CoinGecko API key (optional)
+- `TRADIER_API_KEY` - Tradier API key (optional)
+- `OPENAI_API_KEY` - OpenAI API key (for AI Insights)
+- `OPENAI_MODEL` - Model name (default: `gpt-4o-mini`)
+- `SUPABASE_URL` - Auto-set by Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` - Auto-set by Supabase
+
+## Custom Domain Setup
+
+### Netlify
+
+1. Go to **Domain settings** → **Add custom domain**
+2. Follow DNS configuration instructions
+3. SSL certificate is automatically provisioned
+
+### Vercel
+
+1. Go to **Settings** → **Domains**
+2. Add your domain
+3. Configure DNS as instructed
+4. SSL is automatic
+
+## Monitoring & Maintenance
+
+### Check Edge Function Logs
+
 ```bash
-pm2 status
-pm2 logs strikepoint-api
-pm2 monit
+# View logs for specific function
+supabase functions logs generate-insights
+
+# View all function logs
+supabase functions logs
 ```
 
-### Restart Server
-```bash
-pm2 restart strikepoint-api
-```
+Or via Supabase Dashboard:
+- Go to **Edge Functions** → Select function → **Logs**
 
-### Update Code
-```bash
-cd strikepointv4
-git pull origin main
-npm install
-pm2 restart strikepoint-api
-```
+### Database Monitoring
 
-### View Logs
-```bash
-pm2 logs strikepoint-api --lines 100
-```
+- Use Supabase Dashboard → **Database** → **Logs**
+- Monitor query performance
+- Check for slow queries
 
-## Troubleshooting
+### Error Tracking
 
-### 403 Forbidden Errors
-- Verify your server's IP is whitelisted with MarketData.app
-- Check if your server's IP has changed (use `curl ifconfig.me`)
-- Verify `MARKETDATA_API_TOKEN` is correct in `.env`
+**Sentry Integration (Recommended)**
 
-### CORS Errors
-- Backend already has CORS configured
-- If issues persist, check Nginx configuration (if using)
+Sentry is already integrated in the codebase. To enable:
 
-### Connection Refused
-- Verify backend is running: `pm2 status`
-- Check firewall: `ufw status`
-- Verify port is open: `netstat -tuln | grep 3001`
+1. **Create a Sentry account** at https://sentry.io
+2. **Create a new project** (select React)
+3. **Get your DSN** from project settings
+4. **Set environment variable:**
+   ```env
+   VITE_SENTRY_DSN=https://your-dsn@sentry.io/project-id
+   ```
 
-### API Key Issues
-- Check `.env` file exists and has correct values
-- Restart server after updating `.env`: `pm2 restart strikepoint-api`
-- Check logs for missing key warnings: `pm2 logs strikepoint-api`
+**For Source Maps Upload (Optional):**
 
-## Security Best Practices
+To upload source maps for better error tracking:
 
-1. **Never commit `.env` file** - It's already in `.gitignore`
-2. **Use HTTPS in production** - Setup SSL certificate with Let's Encrypt
-3. **Implement rate limiting** - Consider adding express-rate-limit
-4. **Keep dependencies updated** - Run `npm audit` regularly
-5. **Monitor logs** - Set up log rotation and monitoring
-6. **Backup environment variables** - Store securely in password manager
+1. **Get Sentry Auth Token:**
+   - Go to Sentry → Settings → Auth Tokens
+   - Create a new token with `project:releases` scope
+
+2. **Set build-time environment variables:**
+   ```env
+   SENTRY_AUTH_TOKEN=your-auth-token
+   SENTRY_ORG=your-org-slug
+   SENTRY_PROJECT=your-project-slug
+   ```
+
+3. **Source maps will be automatically uploaded** during build
+
+**Other Options:**
+- **LogRocket** - Session replay
+- **Supabase Logs** - Built-in logging
+
+## Security Checklist
+
+- [ ] Environment variables set in hosting platform
+- [ ] Supabase Secrets configured for Edge Functions
+- [ ] RLS policies enabled on all tables
+- [ ] API keys never exposed to frontend
+- [ ] HTTPS enabled (automatic on Netlify/Vercel)
+- [ ] CORS configured correctly
+- [ ] Rate limiting on Edge Functions (if needed)
 
 ## Cost Estimates
 
-| Platform | Plan | Cost/Month | Static IP | Notes |
-|----------|------|------------|-----------|-------|
-| DigitalOcean | Basic Droplet | $6 | ✅ Included | Recommended |
-| AWS EC2 | t2.micro | $0-10 | ✅ Free Elastic IP | Free tier available |
-| Railway | Pro | $5 | ❌ Contact support | Simple deployment |
-| Heroku | Basic | $7 + add-on | ❌ Add-on required | Easy to use |
-| Render | Starter | $7 | ❌ Contact support | Auto-deploy from Git |
+| Service | Plan | Cost/Month | Notes |
+|---------|------|------------|-------|
+| Netlify | Free | $0 | 100GB bandwidth, 300 build minutes |
+| Vercel | Free | $0 | 100GB bandwidth, unlimited builds |
+| Supabase | Free | $0 | 500MB database, 2GB bandwidth |
+| Supabase | Pro | $25 | 8GB database, 50GB bandwidth |
+
+**Total for small projects:** $0/month (free tiers)
+
+## Troubleshooting
+
+### Build Failures
+
+- Check Node.js version (should be 18+)
+- Verify all dependencies install correctly
+- Check build logs for specific errors
+
+### Environment Variables Not Working
+
+- Restart build after adding variables
+- Verify variable names start with `VITE_`
+- Check for typos in variable names
+
+### Edge Functions Not Working
+
+- Verify functions are deployed: `supabase functions list`
+- Check secrets are set: `supabase secrets list`
+- Review function logs for errors
+
+### Database Connection Issues
+
+- Verify Supabase project is active
+- Check RLS policies allow access
+- Ensure user is authenticated
 
 ## Next Steps
 
-1. Choose your deployment platform
-2. Deploy the backend server
-3. Whitelist the static IP with MarketData.app
-4. Update frontend `VITE_API_URL` environment variable
-5. Test the integration
-6. Monitor for any issues
+1. Deploy frontend to Netlify/Vercel
+2. Deploy Edge Functions to Supabase
+3. Configure Supabase Secrets
+4. Test all functionality
+5. Set up monitoring
+6. Configure custom domain (optional)
 
 ## Support
 
-For issues or questions:
-- Check server logs: `pm2 logs strikepoint-api`
-- Review [server.js](./server.js) endpoints documentation
-- Verify MarketData.app API status
-- Check firewall and network settings
+For issues:
+- Check Supabase Dashboard logs
+- Review Edge Function logs
+- Verify environment variables
+- Check [Supabase Status](https://status.supabase.com)

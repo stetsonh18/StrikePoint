@@ -7,6 +7,7 @@ import { useTransactions } from '@/application/hooks/useTransactions';
 import { StorageService } from '@/infrastructure/services/storageService';
 import { Select } from './Select';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
+import { logger } from '@/shared/utils/logger';
 
 interface JournalEntryFormProps {
   userId: string;
@@ -243,7 +244,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
           const result = await StorageService.uploadJournalImage(userId, entryId, file);
           newImageUrls.push(result.url);
         } catch (err) {
-          console.error('Error uploading image:', err);
+          logger.error('Error uploading image', err);
         }
       }
 
@@ -252,7 +253,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
           const result = await StorageService.uploadJournalChart(userId, entryId, file);
           newChartUrls.push(result.url);
         } catch (err) {
-          console.error('Error uploading chart:', err);
+          logger.error('Error uploading chart', err);
         }
       }
 
@@ -294,7 +295,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
-      console.error('Error saving journal entry:', err);
+      logger.error('Error saving journal entry', err);
       setError(err.message || 'Failed to save journal entry');
     } finally {
       setIsSubmitting(false);
@@ -309,17 +310,17 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
   }> = ({ title, sectionKey, children }) => {
     const isExpanded = isSectionExpanded(sectionKey);
     return (
-      <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+      <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => toggleSection(sectionKey)}
-          className="w-full px-4 py-3 bg-slate-800/50 hover:bg-slate-800/70 flex items-center justify-between transition-colors"
+          className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 flex items-center justify-between transition-colors"
         >
-          <span className="text-sm font-semibold text-slate-200">{title}</span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{title}</span>
           {isExpanded ? (
-            <ChevronUp size={18} className="text-slate-400" />
+            <ChevronUp size={18} className="text-slate-600 dark:text-slate-400" />
           ) : (
-            <ChevronDown size={18} className="text-slate-400" />
+            <ChevronDown size={18} className="text-slate-600 dark:text-slate-400" />
           )}
         </button>
         {isExpanded && <div className="p-4 space-y-4">{children}</div>}
@@ -366,32 +367,32 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
     >
       <div
         ref={modalRef as React.RefObject<HTMLDivElement>}
-        className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-4xl max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 p-6 flex items-center justify-between">
+        <div className="sticky top-0 bg-white dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between">
           <div>
-            <h2 id="journal-entry-title" className="text-2xl font-bold text-slate-100">
+            <h2 id="journal-entry-title" className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               {isEditing ? 'Edit Journal Entry' : 'New Journal Entry'}
             </h2>
-            <p id="journal-entry-description" className="text-sm text-slate-400 mt-1">
+            <p id="journal-entry-description" className="text-sm text-slate-600 dark:text-slate-400 mt-1">
               {isEditing ? 'Update your journal entry' : 'Document your trade, lesson, or strategy'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             disabled={isSubmitting}
             aria-label="Close modal"
           >
-            <X className="text-slate-400" size={20} />
+            <X className="text-slate-600 dark:text-slate-400" size={20} />
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-sm">
               {error}
             </div>
           )}
@@ -399,14 +400,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
           {/* Core Fields - Always Visible */}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Title *
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 required
                 disabled={isSubmitting}
               />
@@ -414,7 +415,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                   Entry Type *
                 </label>
                 <Select
@@ -426,14 +427,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                   Entry Date *
                 </label>
                 <input
                   type="date"
                   value={entryDate}
                   onChange={(e) => setEntryDate(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   required
                   disabled={isSubmitting}
                 />
@@ -441,14 +442,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Content / Notes *
               </label>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 rows={6}
-                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
+                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
                 required
                 disabled={isSubmitting}
               />
@@ -461,7 +462,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Linked Trades & Symbols" sectionKey="linked">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Link Positions
                   </label>
                   <select
@@ -471,7 +472,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       const selected = Array.from(e.target.selectedOptions, (option) => option.value);
                       setSelectedPositionIds(selected);
                     }}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
                     disabled={isSubmitting}
                   >
                     {positions.map((position: any) => (
@@ -480,13 +481,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     Hold Ctrl/Cmd to select multiple positions
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Link Transactions
                   </label>
                   <select
@@ -496,7 +497,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       const selected = Array.from(e.target.selectedOptions, (option) => option.value);
                       setSelectedTransactionIds(selected);
                     }}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
                     disabled={isSubmitting}
                   >
                     {transactions.slice(0, 100).map((transaction: any) => (
@@ -505,13 +506,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     Hold Ctrl/Cmd to select multiple transactions
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Manual Symbols
                   </label>
                   <div className="flex gap-2">
@@ -526,13 +527,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                         }
                       }}
                       placeholder="Enter symbol (e.g., AAPL)"
-                      className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       disabled={isSubmitting}
                     />
                     <button
                       type="button"
                       onClick={handleAddSymbol}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
                       disabled={isSubmitting}
                     >
                       Add
@@ -543,13 +544,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       {linkedSymbols.map((symbol) => (
                         <span
                           key={symbol}
-                          className="px-2 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-medium rounded flex items-center gap-1"
+                          className="px-2 py-1 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-medium rounded flex items-center gap-1"
                         >
                           {symbol}
                           <button
                             type="button"
                             onClick={() => handleRemoveSymbol(symbol)}
-                            className="hover:text-emerald-300"
+                            className="hover:text-emerald-500 dark:hover:text-emerald-300"
                             disabled={isSubmitting}
                           >
                             <XCircle size={14} />
@@ -566,14 +567,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Emotional & Market Context" sectionKey="emotions">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Emotions
                   </label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {EMOTION_OPTIONS.map((emotion) => (
                       <label
                         key={emotion.value}
-                        className="flex items-center gap-2 p-2 bg-slate-800/50 border border-slate-700/50 rounded-lg cursor-pointer hover:border-emerald-500/50 transition-colors"
+                        className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-lg cursor-pointer hover:border-emerald-500/50 transition-colors"
                       >
                         <input
                           type="checkbox"
@@ -585,18 +586,18 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                               setEmotions(emotions.filter((e) => e !== emotion.value));
                             }
                           }}
-                          className="w-4 h-4 text-emerald-500 bg-slate-900 border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
+                          className="w-4 h-4 text-emerald-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
                           disabled={isSubmitting}
                         />
                         <span className="text-lg">{emotion.emoji}</span>
-                        <span className="text-sm text-slate-300">{emotion.label}</span>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{emotion.label}</span>
                       </label>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Market Condition
                   </label>
                   <input
@@ -604,7 +605,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                     value={marketCondition}
                     onChange={(e) => setMarketCondition(e.target.value)}
                     placeholder="e.g., Bullish, Bearish, Sideways, Volatile"
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                     disabled={isSubmitting}
                   />
                 </div>
@@ -615,7 +616,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Strategy & Quality Ratings" sectionKey="strategy">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Strategy
                   </label>
                   <input
@@ -623,14 +624,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                     value={strategy}
                     onChange={(e) => setStrategy(e.target.value)}
                     placeholder="e.g., Breakout, Pullback, Momentum"
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                     disabled={isSubmitting}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                       Setup Quality (1-10)
                     </label>
                     <input
@@ -639,12 +640,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       max="10"
                       value={setupQuality}
                       onChange={(e) => setSetupQuality(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       disabled={isSubmitting}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                       Execution Quality (1-10)
                     </label>
                     <input
@@ -653,7 +654,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       max="10"
                       value={executionQuality}
                       onChange={(e) => setExecutionQuality(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       disabled={isSubmitting}
                     />
                   </div>
@@ -665,46 +666,46 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Analysis" sectionKey="analysis">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     What Went Well
                   </label>
                   <textarea
                     value={whatWentWell}
                     onChange={(e) => setWhatWentWell(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
                     disabled={isSubmitting}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     What Went Wrong
                   </label>
                   <textarea
                     value={whatWentWrong}
                     onChange={(e) => setWhatWentWrong(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
                     disabled={isSubmitting}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Lessons Learned
                   </label>
                   <textarea
                     value={lessonsLearned}
                     onChange={(e) => setLessonsLearned(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none"
                     disabled={isSubmitting}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Action Items
                   </label>
                   <div className="flex gap-2 mb-2">
@@ -719,13 +720,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                         }
                       }}
                       placeholder="Enter action item"
-                      className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       disabled={isSubmitting}
                     />
                     <button
                       type="button"
                       onClick={handleAddActionItem}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
                       disabled={isSubmitting}
                     >
                       <Plus size={18} className="inline" />
@@ -736,13 +737,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       {actionItems.map((item, index) => (
                         <li
                           key={index}
-                          className="flex items-center justify-between p-2 bg-slate-800/50 border border-slate-700/50 rounded-lg"
+                          className="flex items-center justify-between p-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg"
                         >
-                          <span className="text-sm text-slate-300">{item}</span>
+                          <span className="text-sm text-slate-700 dark:text-slate-300">{item}</span>
                           <button
                             type="button"
                             onClick={() => handleRemoveActionItem(index)}
-                            className="text-red-400 hover:text-red-300"
+                            className="text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300"
                             disabled={isSubmitting}
                           >
                             <Trash2 size={16} />
@@ -759,7 +760,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Attachments" sectionKey="attachments">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Images
                   </label>
                   <input
@@ -774,7 +775,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                   <button
                     type="button"
                     onClick={() => imageInputRef.current?.click()}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 hover:bg-slate-800/70 transition-colors flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800/70 transition-colors flex items-center justify-center gap-2"
                     disabled={isSubmitting}
                   >
                     <Upload size={18} />
@@ -822,7 +823,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Charts
                   </label>
                   <input
@@ -837,7 +838,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                   <button
                     type="button"
                     onClick={() => chartInputRef.current?.click()}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 hover:bg-slate-800/70 transition-colors flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800/70 transition-colors flex items-center justify-center gap-2"
                     disabled={isSubmitting}
                   >
                     <Upload size={18} />
@@ -890,7 +891,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             <CollapsibleSection title="Organization" sectionKey="organization">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Tags
                   </label>
                   <div className="flex gap-2 mb-2">
@@ -905,13 +906,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                         }
                       }}
                       placeholder="Enter tag"
-                      className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       disabled={isSubmitting}
                     />
                     <button
                       type="button"
                       onClick={handleAddTag}
-                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
                       disabled={isSubmitting}
                     >
                       Add
@@ -922,13 +923,13 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       {tags.map((tag) => (
                         <span
                           key={tag}
-                          className="px-2 py-1 bg-slate-800/50 text-slate-300 border border-slate-700/50 text-xs rounded flex items-center gap-1"
+                          className="px-2 py-1 bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700/50 text-xs rounded flex items-center gap-1"
                         >
                           #{tag}
                           <button
                             type="button"
                             onClick={() => handleRemoveTag(tag)}
-                            className="hover:text-red-400"
+                            className="hover:text-red-600 dark:hover:text-red-400"
                             disabled={isSubmitting}
                           >
                             <XCircle size={14} />
@@ -945,14 +946,14 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                       type="checkbox"
                       checked={isFavorite}
                       onChange={(e) => setIsFavorite(e.target.checked)}
-                      className="w-5 h-5 text-emerald-500 bg-slate-900 border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
+                      className="w-5 h-5 text-emerald-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
                       disabled={isSubmitting}
                     />
                     <Star
                       size={18}
-                      className={isFavorite ? 'text-emerald-400 fill-current' : 'text-slate-400'}
+                      className={isFavorite ? 'text-emerald-600 dark:text-emerald-400 fill-current' : 'text-slate-500 dark:text-slate-400'}
                     />
-                    <span className="text-sm text-slate-300">Mark as favorite</span>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">Mark as favorite</span>
                   </label>
                 </div>
               </div>
@@ -960,18 +961,18 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
           </div>
 
           {/* Form Actions */}
-          <div className="flex gap-4 pt-4 border-t border-slate-700/50">
+          <div className="flex gap-4 pt-4 border-t border-slate-200 dark:border-slate-700/50">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-3 bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/50 rounded-xl text-slate-300 text-sm font-medium transition-all"
+              className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Saving...' : isEditing ? 'Update Entry' : 'Create Entry'}

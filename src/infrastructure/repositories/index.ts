@@ -11,3 +11,5 @@ export * from './cashTransaction.repository';
 export * from './transactionCode.repository';
 export * from './userPreferences.repository';
 export * from './journal.repository';
+export * from './aiInsight.repository';
+export * from './portfolioSnapshot.repository';

@@ -8,7 +8,9 @@
  */
 
 // Get Supabase URL and construct Edge Functions base URL
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+import { env } from '@/shared/utils/envValidation';
+
+const supabaseUrl = env.supabaseUrl;
 const EDGE_FUNCTIONS_BASE_URL = supabaseUrl 
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
@@ -59,7 +61,7 @@ export async function searchCrypto(query: string): Promise<CryptoSearchResult[]>
   try {
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-search?query=${encodeURIComponent(query)}`;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseAnonKey = env.supabaseAnonKey;
     const response = await fetch(apiUrl, {
       headers: {
         'Authorization': `Bearer ${supabaseAnonKey}`,
@@ -110,7 +112,7 @@ export async function getCryptoQuote(coinId: string): Promise<CryptoQuote | null
   try {
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-markets?ids=${encodeURIComponent(coinId)}&vs_currency=usd&per_page=1&page=1`;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseAnonKey = env.supabaseAnonKey;
     const response = await fetch(apiUrl, {
       headers: {
         'Authorization': `Bearer ${supabaseAnonKey}`,
@@ -173,7 +175,7 @@ export async function getCryptoQuotes(coinIds: string[]): Promise<Record<string,
     // Call backend proxy endpoint (API key is handled server-side)
     const idsParam = coinIds.join(',');
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-markets?ids=${encodeURIComponent(idsParam)}&vs_currency=usd&per_page=${coinIds.length}&page=1`;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseAnonKey = env.supabaseAnonKey;
     const response = await fetch(apiUrl, {
       headers: {
         'Authorization': `Bearer ${supabaseAnonKey}`,

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebouncedCryptoSymbolSearch } from '@/application/hooks/useCryptoSymbolSearch';
 import type { CryptoSearchResult } from '@/infrastructure/services/cryptoMarketDataService';
+import { logger } from '@/shared/utils/logger';
 
 interface CryptoSymbolAutocompleteProps {
   value: string;
@@ -40,7 +41,7 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
 
   useEffect(() => {
     if (error) {
-      console.error('[CryptoSymbolAutocomplete] Search error:', error);
+      logger.error('[CryptoSymbolAutocomplete] Search error', error);
     }
   }, [error]);
 
@@ -109,7 +110,7 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
     <div ref={containerRef} className="relative">
       <div className="relative">
         <Search
-          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
           size={18}
         />
         <input
@@ -121,29 +122,29 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
           placeholder={placeholder}
           required={required}
           disabled={disabled}
-          className={`w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 ${className}`}
+          className={`w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 ${className}`}
           autoComplete="off"
         />
         {isSearching && (
-          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 animate-spin" size={18} />
+          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400 animate-spin" size={18} />
         )}
       </div>
 
       {showDropdown && (
-        <div className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-60 overflow-auto">
           {isSearching ? (
-            <div className="px-4 py-3 text-sm text-slate-400 text-center">
+            <div className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 text-center">
               Searching...
             </div>
           ) : rateLimitReached ? (
-            <div className="px-4 py-3 text-sm text-amber-400 text-center">
+            <div className="px-4 py-3 text-sm text-amber-600 dark:text-amber-400 text-center">
               <div className="font-medium mb-1">No results found</div>
-              <div className="text-xs text-amber-500">
+              <div className="text-xs text-amber-600 dark:text-amber-500">
                 Try a different search term or check your spelling
               </div>
             </div>
           ) : searchResults.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-400 text-center">
+            <div className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 text-center">
               No cryptocurrencies found
             </div>
           ) : (
@@ -152,7 +153,7 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
                 <li
                   key={result.id}
                   onClick={() => handleSelectCrypto(result.symbol, result.id)}
-                  className="px-4 py-2 hover:bg-slate-700 cursor-pointer transition-colors"
+                  className="px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -160,12 +161,12 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
                         <img src={result.thumb} alt={result.symbol} className="w-6 h-6 rounded-full" loading="lazy" />
                       )}
                       <div>
-                        <div className="font-semibold text-slate-100">{result.symbol}</div>
-                        <div className="text-xs text-slate-400">{result.name}</div>
+                        <div className="font-semibold text-slate-900 dark:text-slate-100">{result.symbol}</div>
+                        <div className="text-xs text-slate-600 dark:text-slate-400">{result.name}</div>
                       </div>
                     </div>
                     {result.market_cap_rank && (
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-slate-500 dark:text-slate-500">
                         #{result.market_cap_rank}
                       </div>
                     )}

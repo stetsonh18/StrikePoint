@@ -9,6 +9,7 @@ import type {
   CryptoTransaction,
   FuturesTransaction,
 } from '@/domain/types';
+import { parseContractSymbol, calculateExpirationDate } from '@/domain/types/futures.types';
 
 /**
  * Transform database Position to StockPosition
@@ -34,6 +35,39 @@ export function toStockPosition(position: Position): StockPosition {
     createdAt: position.created_at,
     updatedAt: position.updated_at,
   };
+}
+
+/**
+ * Build Tradier option symbol from position data
+ * Format: {underlying}{YYMMDD}{C|P}{strike_padded_to_8_digits}
+ * Example: AAPL250321C00155000 (AAPL, 2025-03-21, CALL, 155)
+ */
+export function buildTradierOptionSymbol(
+  underlying: string,
+  expirationDate: string,
+  optionType: 'call' | 'put',
+  strikePrice: number
+): string {
+  // Parse expiration date (YYYY-MM-DD) to YYMMDD
+  // Use string parsing to avoid timezone issues
+  const dateParts = expirationDate.split('-');
+  if (dateParts.length !== 3) {
+    throw new Error(`Invalid expiration date format: ${expirationDate}. Expected YYYY-MM-DD`);
+  }
+
+  const year = dateParts[0].slice(-2); // Last 2 digits of year
+  const month = dateParts[1].padStart(2, '0');
+  const day = dateParts[2].padStart(2, '0');
+  const expStr = `${year}${month}${day}`;
+
+  // Convert option type to C or P
+  const typeChar = optionType.toUpperCase() === 'CALL' ? 'C' : 'P';
+
+  // Convert strike to cents and pad to 8 digits
+  const strikeInCents = Math.round(strikePrice * 100);
+  const strikeStr = strikeInCents.toString().padStart(8, '0');
+
+  return `${underlying}${expStr}${typeChar}${strikeStr}`;
 }
 
 /**
@@ -121,10 +155,6 @@ export function toCryptoPosition(position: Position): CryptoPosition {
  * Transform database Position to FuturesContract
  */
 export function toFuturesContract(position: Position): FuturesContract {
-  if (!position.expiration_date) {
-    throw new Error('Invalid futures position: missing expiration_date');
-  }
-
   // Get contract name from symbol (could be enhanced with a mapping)
   const contractNames: Record<string, string> = {
     ES: 'E-mini S&P 500',
@@ -138,18 +168,84 @@ export function toFuturesContract(position: Position): FuturesContract {
     ZN: '10-Year Treasury Note',
   };
 
-  const multiplier = position.multiplier || 50; // Default varies by contract
+  // Default multipliers by contract symbol
+  const defaultMultipliers: Record<string, number> = {
+    ES: 50,  // E-mini S&P 500
+    NQ: 20,  // E-mini Nasdaq-100
+    YM: 5,   // E-mini Dow
+    RTY: 50, // E-mini Russell 2000
+    CL: 1000, // Crude Oil
+    GC: 100, // Gold
+    SI: 5000, // Silver
+    ZB: 1000, // 30-Year Treasury Bond
+    ZN: 1000, // 10-Year Treasury Note
+  };
+  const multiplier = position.multiplier || defaultMultipliers[position.symbol] || 50;
   const costBasis = Math.abs(position.total_cost_basis);
   const marketValue = position.current_quantity * multiplier * (position.average_opening_price || 0);
   const unrealizedPL = position.unrealized_pl || 0;
   const unrealizedPLPercent = costBasis > 0 ? (unrealizedPL / costBasis) * 100 : 0;
+
+  // Format contract month display
+  // If contract_month is already in format like "MAR25", use it as-is
+  // If it's in format like "H25", convert to "MAR25"
+  // If contract_month is missing, try to parse from symbol field (e.g., "MESH25" -> "MAR25")
+  let formattedContractMonth = position.contract_month || '';
+  
+  // If contract_month is missing, try to parse from symbol field as fallback
+  if (!formattedContractMonth && position.symbol) {
+    const parsed = parseContractSymbol(position.symbol);
+    if (parsed) {
+      // Format contract month as "MAR25" (month name + year)
+      const monthCodeMap: Record<string, string> = {
+        F: 'JAN', G: 'FEB', H: 'MAR', J: 'APR', K: 'MAY', M: 'JUN',
+        N: 'JUL', Q: 'AUG', U: 'SEP', V: 'OCT', X: 'NOV', Z: 'DEC'
+      };
+      const monthName = monthCodeMap[parsed.monthCode];
+      const year = parsed.year.length === 2 ? parsed.year : parsed.year.slice(-2);
+      if (monthName) {
+        formattedContractMonth = `${monthName}${year}`;
+      } else {
+        formattedContractMonth = `${parsed.monthCode}${year}`;
+      }
+    }
+  }
+  
+  if (formattedContractMonth) {
+    // Check if it's already formatted (e.g., "MAR25", "DEC24")
+    const isFormatted = /^[A-Z]{3}\d{2}$/.test(formattedContractMonth);
+    if (!isFormatted) {
+      // Try to parse and format (e.g., "H25" -> "MAR25")
+      // Month codes: F=Jan, G=Feb, H=Mar, J=Apr, K=May, M=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec
+      const monthCodeMap: Record<string, string> = {
+        F: 'JAN', G: 'FEB', H: 'MAR', J: 'APR', K: 'MAY', M: 'JUN',
+        N: 'JUL', Q: 'AUG', U: 'SEP', V: 'OCT', X: 'NOV', Z: 'DEC'
+      };
+      const match = formattedContractMonth.match(/^([FGHJKMNQUVXZ])(\d{2,4})$/);
+      if (match) {
+        const monthCode = match[1];
+        const year = match[2];
+        const monthName = monthCodeMap[monthCode];
+        if (monthName) {
+          formattedContractMonth = `${monthName}${year.length === 2 ? year : year.slice(-2)}`;
+        }
+      }
+    }
+  }
+
+  // Calculate expiration date from contract month if missing
+  let expirationDate = position.expiration_date;
+  if (!expirationDate && formattedContractMonth) {
+    // Try to calculate expiration date from contract month
+    expirationDate = calculateExpirationDate(formattedContractMonth, position.symbol);
+  }
 
   return {
     id: position.id,
     userId: position.user_id,
     symbol: position.symbol,
     contractName: contractNames[position.symbol] || position.symbol,
-    contractMonth: position.contract_month || '',
+    contractMonth: formattedContractMonth,
     quantity: position.current_quantity,
     side: position.side,
     averagePrice: position.average_opening_price,
@@ -160,7 +256,7 @@ export function toFuturesContract(position: Position): FuturesContract {
     multiplier,
     tickSize: position.tick_size || 0.25,
     tickValue: position.tick_value || 12.50,
-    expirationDate: position.expiration_date,
+    expirationDate: expirationDate || '', // Allow empty string if no expiration date
     marginRequirement: position.margin_requirement || 0,
     createdAt: position.created_at,
     updatedAt: position.updated_at,
@@ -197,12 +293,23 @@ export function toOptionTransaction(transaction: Transaction): OptionTransaction
 
   const optionSymbol = `${transaction.underlying_symbol}_${transaction.expiration_date}_${transaction.option_type.toUpperCase()}_${transaction.strike_price}`;
 
+  // Format expiration date to be more readable (Nov 21, 2025)
+  const formatExpirationDate = (dateStr: string) => {
+    const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Create a descriptive label if description is generic or missing
+  const description = transaction.description === 'Manual entry' || !transaction.description
+    ? `${transaction.underlying_symbol} $${transaction.strike_price} ${transaction.option_type === 'call' ? 'Call' : 'Put'} ${formatExpirationDate(transaction.expiration_date)}`
+    : transaction.description;
+
   return {
     id: transaction.id,
     userId: transaction.user_id,
     underlyingSymbol: transaction.underlying_symbol || '',
     optionSymbol,
-    description: transaction.description,
+    description,
     transactionType: transaction.transaction_code as any,
     optionType: transaction.option_type,
     strikePrice: transaction.strike_price,

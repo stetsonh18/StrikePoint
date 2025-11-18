@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { PositionRepository } from '@/infrastructure/repositories';
+import { useToast } from '@/shared/hooks/useToast';
+import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
+import { logger } from '@/shared/utils/logger';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { PositionFilters, Position, PositionUpdate } from '@/domain/types';
 
 export function usePositions(
@@ -7,7 +11,7 @@ export function usePositions(
   filters?: PositionFilters,
   options?: Omit<UseQueryOptions<Position[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['positions', userId, filters] as const;
+  const queryKey = queryKeys.positions.list(userId, filters);
 
   return useQuery<Position[], Error>({
     queryKey,
@@ -21,7 +25,7 @@ export function useOpenPositions(
   userId: string,
   options?: Omit<UseQueryOptions<Position[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['positions', 'open', userId] as const;
+  const queryKey = queryKeys.positions.open(userId);
 
   return useQuery<Position[], Error>({
     queryKey,
@@ -37,7 +41,7 @@ export function usePositionStatistics(
   endDate?: string,
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['position-statistics', userId, startDate, endDate] as const;
+  const queryKey = queryKeys.positions.statistics(userId, startDate, endDate);
 
   return useQuery({
     queryKey,
@@ -52,7 +56,7 @@ export function useExpiringSoon(
   daysAhead: number = 7,
   options?: Omit<UseQueryOptions<Position[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['positions', 'expiring', userId, daysAhead] as const;
+  const queryKey = queryKeys.positions.expiring(userId, daysAhead);
 
   return useQuery<Position[], Error>({
     queryKey,
@@ -73,8 +77,8 @@ export function useUpdatePosition() {
       PositionRepository.update(id, updates),
     onSuccess: () => {
       // Invalidate all position-related queries
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['position-statistics'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
     },
   });
 }
@@ -84,13 +88,23 @@ export function useUpdatePosition() {
  */
 export function useDeletePosition() {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return useMutation<void, Error, string>({
     mutationFn: (id: string) => PositionRepository.delete(id),
     onSuccess: () => {
       // Invalidate all position-related queries
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['position-statistics'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value('') });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
+      toast.success('Position deleted successfully');
+    },
+    onError: (error) => {
+      logger.error('Failed to delete position', error);
+      toast.error('Failed to delete position', {
+        description: getUserFriendlyErrorMessage(error, 'deleting the position'),
+      });
     },
   });
 }

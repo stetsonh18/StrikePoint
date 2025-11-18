@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type {
   Position,
   PositionInsert,
@@ -24,8 +25,9 @@ export class PositionRepository {
       .single();
 
     if (error) {
-      console.error('Error creating position:', error);
-      throw new Error(`Failed to create position: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.create', position });
+      throw new Error(`Failed to create position: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -43,8 +45,9 @@ export class PositionRepository {
       .select();
 
     if (error) {
-      console.error('Error creating positions:', error);
-      throw new Error(`Failed to create positions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.createMany', count: positions.length });
+      throw new Error(`Failed to create positions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -62,8 +65,9 @@ export class PositionRepository {
 
     if (error) {
       if (error.code === 'PGRST116') return null;
-      console.error('Error fetching position:', error);
-      throw new Error(`Failed to fetch position: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getById', id });
+      throw new Error(`Failed to fetch position: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -102,8 +106,9 @@ export class PositionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching positions:', error);
-      throw new Error(`Failed to fetch positions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getAll', userId, filters });
+      throw new Error(`Failed to fetch positions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -119,8 +124,9 @@ export class PositionRepository {
       .eq('user_id', userId);
 
     if (error) {
-      console.error('Error fetching open positions:', error);
-      throw new Error(`Failed to fetch open positions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getOpenPositions', userId });
+      throw new Error(`Failed to fetch open positions: ${parsed.message}`, { cause: error });
     }
 
     return (data || []) as OpenPositionView[];
@@ -185,8 +191,19 @@ export class PositionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error finding open position:', error);
-      throw new Error(`Failed to find open position: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { 
+        context: 'PositionRepository.findOpenPosition', 
+        userId, 
+        symbol, 
+        optionType, 
+        strikePrice, 
+        expirationDate, 
+        side, 
+        assetType, 
+        contractMonth 
+      });
+      throw new Error(`Failed to find open position: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -204,8 +221,9 @@ export class PositionRepository {
       .single();
 
     if (error) {
-      console.error('Error updating position:', error);
-      throw new Error(`Failed to update position: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.update', id, updates });
+      throw new Error(`Failed to update position: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -277,8 +295,9 @@ export class PositionRepository {
       .order('opened_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching positions by strategy:', error);
-      throw new Error(`Failed to fetch positions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getByStrategyId', strategyId });
+      throw new Error(`Failed to fetch positions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -291,8 +310,9 @@ export class PositionRepository {
     const { error } = await supabase.from('positions').delete().eq('id', id);
 
     if (error) {
-      console.error('Error deleting position:', error);
-      throw new Error(`Failed to delete position: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.delete', id });
+      throw new Error(`Failed to delete position: ${parsed.message}`, { cause: error });
     }
   }
 
@@ -316,8 +336,9 @@ export class PositionRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching position statistics:', error);
-      throw new Error(`Failed to fetch statistics: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getStatistics', userId, startDate, endDate });
+      throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 
     const positions = data || [];
@@ -369,8 +390,9 @@ export class PositionRepository {
       .order('expiration_date', { ascending: true });
 
     if (error) {
-      console.error('Error fetching expiring positions:', error);
-      throw new Error(`Failed to fetch expiring positions: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'PositionRepository.getExpiringSoon', userId, daysAhead });
+      throw new Error(`Failed to fetch expiring positions: ${parsed.message}`, { cause: error });
     }
 
     return data || [];

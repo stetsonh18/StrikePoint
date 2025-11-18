@@ -43,18 +43,18 @@ export const Select: React.FC<SelectProps> = ({
   };
 
   const baseClasses = `
-    bg-slate-800/50 
+    bg-slate-100 dark:bg-slate-800/50 
     border 
-    border-slate-700/50 
+    border-slate-300 dark:border-slate-700/50 
     rounded-xl 
-    text-slate-300 
+    text-slate-900 dark:text-slate-300 
     focus:outline-none 
     focus:ring-2 
     focus:ring-emerald-500/50 
     focus:border-emerald-500/50 
     transition-all 
-    [&>option]:bg-slate-800 
-    [&>option]:text-slate-300
+    [&>option]:bg-white dark:[&>option]:bg-slate-800 
+    [&>option]:text-slate-900 dark:[&>option]:text-slate-300
     disabled:opacity-50 
     disabled:cursor-not-allowed
     ${sizeClasses[size]}

@@ -10,8 +10,9 @@ export interface AuthState {
 
 export interface AuthActions {
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName?: string) => Promise<{ user: SupabaseUser | null } | null>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   setUser: (user: User | null) => void;
   setSession: (session: Session | null) => void;
   initialize: () => Promise<void>;

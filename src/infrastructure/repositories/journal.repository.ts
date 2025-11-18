@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type { JournalEntry, JournalEntryType, EmotionType, JournalStats } from '@/domain/types';
 
 export interface JournalEntryFilters {
@@ -142,8 +143,9 @@ export class JournalRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching journal entries:', error);
-      throw new Error(`Failed to fetch journal entries: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.getAll', userId, filters });
+      throw new Error(`Failed to fetch journal entries: ${parsed.message}`, { cause: error });
     }
 
     return (data || []).map(this.mapRowToEntry);
@@ -163,8 +165,9 @@ export class JournalRepository {
       if (error.code === 'PGRST116') {
         return null; // Not found
       }
-      console.error('Error fetching journal entry:', error);
-      throw new Error(`Failed to fetch journal entry: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.getById', id });
+      throw new Error(`Failed to fetch journal entry: ${parsed.message}`, { cause: error });
     }
 
     return data ? this.mapRowToEntry(data) : null;
@@ -181,8 +184,9 @@ export class JournalRepository {
       .single();
 
     if (error) {
-      console.error('Error creating journal entry:', error);
-      throw new Error(`Failed to create journal entry: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.create', entry });
+      throw new Error(`Failed to create journal entry: ${parsed.message}`, { cause: error });
     }
 
     return this.mapRowToEntry(data);
@@ -200,8 +204,9 @@ export class JournalRepository {
       .single();
 
     if (error) {
-      console.error('Error updating journal entry:', error);
-      throw new Error(`Failed to update journal entry: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.update', id, updates });
+      throw new Error(`Failed to update journal entry: ${parsed.message}`, { cause: error });
     }
 
     return this.mapRowToEntry(data);
@@ -217,8 +222,9 @@ export class JournalRepository {
       .eq('id', id);
 
     if (error) {
-      console.error('Error deleting journal entry:', error);
-      throw new Error(`Failed to delete journal entry: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.delete', id });
+      throw new Error(`Failed to delete journal entry: ${parsed.message}`, { cause: error });
     }
   }
 
@@ -242,8 +248,9 @@ export class JournalRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching journal stats:', error);
-      throw new Error(`Failed to fetch journal stats: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'JournalRepository.getStatistics', userId, startDate, endDate });
+      throw new Error(`Failed to fetch journal stats: ${parsed.message}`, { cause: error });
     }
 
     const entries = (data || []).map(this.mapRowToEntry);

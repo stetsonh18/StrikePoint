@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background matching sidebar logo -->
+  <rect x="8" y="8" width="48" height="48" rx="12" ry="12" fill="url(#grad)" />
+  <!-- Lightning bolt (Zap) icon matching sidebar -->
+  <path d="M 32 16 L 24 32 L 32 32 L 28 48 L 40 32 L 32 32 Z" 
+        fill="#0f172a" 
+        stroke="#0f172a" 
+        stroke-width="1" 
+        stroke-linejoin="round" />
+</svg>
+

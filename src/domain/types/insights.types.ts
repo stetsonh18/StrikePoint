@@ -14,40 +14,39 @@ export type InsightPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface AIInsight {
   id: string;
-  userId: string;
-  type: InsightType;
+  user_id: string;
+  type: 'risk_warning' | 'opportunity' | 'pattern' | 'performance' | 'strategy';
   priority: InsightPriority;
   title: string;
   description: string;
-  analysis: string;
-  recommendations?: string[];
+  analysis?: string;
+  recommendations?: string[] | any;
 
   // Related data
-  relatedSymbols?: string[];
-  relatedTradeIds?: string[];
-  relatedMetrics?: Record<string, number>;
-
-  // Charts or visualizations
-  chartData?: any;
-
-  // Actions
-  actionable: boolean;
-  actionTaken?: boolean;
-  actionDate?: string;
+  related_symbols?: string[];
+  related_positions?: string[];
+  related_transactions?: string[];
 
   // AI metadata
   confidence?: number; // 0-100
-  generatedAt: string;
-  modelVersion?: string;
+  actionable: boolean;
 
   // User interaction
-  isRead: boolean;
-  isDismissed: boolean;
-  userRating?: number; // 1-5 stars for feedback
-  userNotes?: string;
+  is_read: boolean;
+  is_dismissed: boolean;
+  user_rating?: number; // 1-5 stars for feedback
+  user_feedback?: string;
 
-  createdAt: string;
-  updatedAt: string;
+  // Timestamps
+  generated_at: string;
+  expires_at?: string;
+  read_at?: string;
+  dismissed_at?: string;
+  created_at: string;
+  updated_at: string;
+
+  // Metadata
+  metadata?: Record<string, any>;
 }
 
 // Performance Analysis Insight

@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebouncedSymbolSearch } from '@/application/hooks/useStockSymbolSearch';
 import { useOptionsSymbolSearch } from '@/application/hooks/useOptionsSymbolSearch';
+import { useDebouncedTradierSymbolSearch } from '@/application/hooks/useTradierSymbolSearch';
 import type { SymbolSearchResult } from '@/infrastructure/services/marketDataService';
 import type { OptionsSymbolSearchResult } from '@/application/hooks/useOptionsSymbolSearch';
+import { logger } from '@/shared/utils/logger';
 
 interface SymbolAutocompleteProps {
   value: string;
@@ -45,47 +47,39 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
     !isOptionsMode && hasUserInteracted && inputValue.length >= 1
   );
 
-  // Options search (MarketData validation)
+  // Options search (Tradier API)
+  const {
+    debouncedQuery: tradierDebouncedQuery,
+    data: tradierSearchResults = [],
+    isLoading: isTradierSearching,
+    error: tradierError,
+  } = useDebouncedTradierSymbolSearch(
+    inputValue,
+    300,
+    isOptionsMode && hasUserInteracted && inputValue.length >= 1
+  );
+
+  // Legacy options search (MarketData validation) - kept for backward compatibility
   const {
     data: optionsSearchResults = [],
     isLoading: isOptionsSearching,
     error: optionsError,
   } = useOptionsSymbolSearch(
     inputValue,
-    isOptionsMode && hasUserInteracted && inputValue.length >= 1
+    false // Disabled in favor of Tradier
   );
 
-  // Use appropriate results based on mode
-  // Convert options results to match SymbolSearchResult format for display
-  const optionsResultsAsSymbolResults: SymbolSearchResult[] = optionsSearchResults.map(result => ({
-    symbol: result.symbol,
-    name: result.name || 'Options Available',
-    type: 'Option',
-    region: 'US',
-  }));
-
-  const searchResults = isOptionsMode ? optionsResultsAsSymbolResults : stockSearchResults;
-  const isSearching = isOptionsMode ? isOptionsSearching : isStockSearching;
-  const error = isOptionsMode ? optionsError : stockError;
-  const debouncedQuery = isOptionsMode ? inputValue : stockDebouncedQuery;
-
-  // Track if we've hit rate limit (no results after search completes)
-  const [rateLimitReached, setRateLimitReached] = useState(false);
+  // Use Tradier results for options mode, Finnhub for stock mode
+  const searchResults = isOptionsMode ? tradierSearchResults : stockSearchResults;
+  const isSearching = isOptionsMode ? isTradierSearching : isStockSearching;
+  const error = isOptionsMode ? tradierError : stockError;
+  const debouncedQuery = isOptionsMode ? tradierDebouncedQuery : stockDebouncedQuery;
 
   useEffect(() => {
     if (error) {
-      console.error('[SymbolAutocomplete] Search error:', error);
+      logger.error('[SymbolAutocomplete] Search error', error);
     }
   }, [error]);
-
-  useEffect(() => {
-    // Check if we got no results after a completed search
-    if (!isSearching && debouncedQuery && debouncedQuery.length >= 1 && searchResults.length === 0 && !error) {
-      setRateLimitReached(true);
-    } else if (searchResults.length > 0) {
-      setRateLimitReached(false);
-    }
-  }, [searchResults, isSearching, debouncedQuery, error]);
 
   // Update input value when prop changes (e.g., pre-filled from sell button)
   useEffect(() => {
@@ -137,14 +131,14 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
   // Show dropdown when:
   // 1. Dropdown is open AND
   // 2. We have input (length >= 1) AND
-  // 3. Either searching, have results, or have an error/rate limit message
-  const showDropdown = isOpen && inputValue.length >= 1 && (isSearching || searchResults.length > 0 || rateLimitReached || error);
+  // 3. Either searching or have results (don't show "no results" message)
+  const showDropdown = isOpen && inputValue.length >= 1 && (isSearching || searchResults.length > 0);
 
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
         <Search
-          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
           size={18}
         />
         <input
@@ -156,30 +150,19 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
           placeholder={placeholder}
           required={required}
           disabled={disabled}
-          className={`w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 ${className}`}
+          className={`w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 ${className}`}
           autoComplete="off"
         />
         {isSearching && (
-          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 animate-spin" size={18} />
+          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400 animate-spin" size={18} />
         )}
       </div>
 
       {showDropdown && (
-        <div className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-60 overflow-auto">
           {isSearching ? (
-            <div className="px-4 py-3 text-sm text-slate-400 text-center">
+            <div className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 text-center">
               Searching...
-            </div>
-          ) : rateLimitReached ? (
-            <div className="px-4 py-3 text-sm text-amber-400 text-center">
-              <div className="font-medium mb-1">No results found</div>
-              <div className="text-xs text-amber-500">
-                Try a different search term or check your spelling
-              </div>
-            </div>
-          ) : searchResults.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-400 text-center">
-              No symbols found
             </div>
           ) : (
             <ul className="py-1">
@@ -187,14 +170,14 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
                 <li
                   key={result.symbol}
                   onClick={() => handleSelectSymbol(result.symbol)}
-                  className="px-4 py-2 hover:bg-slate-700 cursor-pointer transition-colors"
+                  className="px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="font-semibold text-slate-100">{result.symbol}</div>
-                      <div className="text-xs text-slate-400">{result.name}</div>
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">{result.symbol}</div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400">{result.name}</div>
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-500">
                       {result.type} • {result.region}
                     </div>
                   </div>

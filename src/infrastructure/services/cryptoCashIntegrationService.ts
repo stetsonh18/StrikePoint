@@ -31,6 +31,7 @@ export class CryptoCashIntegrationService {
       process_date: transaction.process_date,
       settle_date: transaction.settle_date,
       symbol: transaction.underlying_symbol || transaction.instrument || null,
+      transaction_id: transaction.id,
       tags: ['crypto', 'purchase'],
     };
 
@@ -80,6 +81,7 @@ export class CryptoCashIntegrationService {
       process_date: transaction.process_date,
       settle_date: transaction.settle_date,
       symbol: transaction.underlying_symbol || transaction.instrument || null,
+      transaction_id: transaction.id,
       tags: ['crypto', 'sale'],
     };
 

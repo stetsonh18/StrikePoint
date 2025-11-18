@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type {
   FuturesContractSpec,
   FuturesContractSpecInsert,
@@ -22,8 +23,9 @@ export class FuturesContractSpecRepository {
       .order('symbol', { ascending: true });
 
     if (error) {
-      console.error('Error fetching futures contract specs:', error);
-      throw new Error(`Failed to fetch futures contract specs: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.getAll' });
+      throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -40,8 +42,9 @@ export class FuturesContractSpecRepository {
       .order('symbol', { ascending: true });
 
     if (error) {
-      console.error('Error fetching active futures contract specs:', error);
-      throw new Error(`Failed to fetch active futures contract specs: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.getActive' });
+      throw new Error(`Failed to fetch active futures contract specs: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -62,8 +65,9 @@ export class FuturesContractSpecRepository {
         // No rows returned
         return null;
       }
-      console.error(`Error fetching futures contract spec for ${symbol}:`, error);
-      throw new Error(`Failed to fetch futures contract spec: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.getBySymbol', symbol });
+      throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -84,8 +88,9 @@ export class FuturesContractSpecRepository {
         // No rows returned
         return null;
       }
-      console.error(`Error fetching futures contract spec for ID ${id}:`, error);
-      throw new Error(`Failed to fetch futures contract spec: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.getById', id });
+      throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -102,8 +107,9 @@ export class FuturesContractSpecRepository {
       .order('symbol', { ascending: true });
 
     if (error) {
-      console.error('Error searching futures contract specs:', error);
-      throw new Error(`Failed to search futures contract specs: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.search', query });
+      throw new Error(`Failed to search futures contract specs: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -120,8 +126,9 @@ export class FuturesContractSpecRepository {
       .single();
 
     if (error) {
-      console.error('Error creating futures contract spec:', error);
-      throw new Error(`Failed to create futures contract spec: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.create', spec });
+      throw new Error(`Failed to create futures contract spec: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -142,8 +149,9 @@ export class FuturesContractSpecRepository {
       .single();
 
     if (error) {
-      console.error(`Error updating futures contract spec ${id}:`, error);
-      throw new Error(`Failed to update futures contract spec: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.update', id, updates });
+      throw new Error(`Failed to update futures contract spec: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -174,8 +182,9 @@ export class FuturesContractSpecRepository {
       .eq('id', id);
 
     if (error) {
-      console.error(`Error deleting futures contract spec ${id}:`, error);
-      throw new Error(`Failed to delete futures contract spec: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.delete', id });
+      throw new Error(`Failed to delete futures contract spec: ${parsed.message}`, { cause: error });
     }
   }
 
@@ -194,8 +203,9 @@ export class FuturesContractSpecRepository {
       .order('symbol', { ascending: true });
 
     if (error) {
-      console.error('Error fetching futures contract specs by symbols:', error);
-      throw new Error(`Failed to fetch futures contract specs: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.getBySymbols', symbols });
+      throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
     return data || [];

@@ -1,5 +1,7 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { getOptionQuotes, getOptionQuote, type OptionQuote } from '@/infrastructure/services/optionsMarketDataService';
+import { logger } from '@/shared/utils/logger';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 
 /**
  * Hook for fetching real-time option quotes for multiple symbols
@@ -10,9 +12,7 @@ export function useOptionQuotes(
   enabled: boolean = true,
   options?: Omit<UseQueryOptions<Record<string, OptionQuote>, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  // Create stable query key by sorting symbols
-  const sortedSymbols = [...optionSymbols].sort();
-  const queryKey = ['option-quotes', sortedSymbols] as const;
+  const queryKey = queryKeys.marketData.optionQuotes.list(optionSymbols);
 
   return useQuery<Record<string, OptionQuote>, Error>({
     queryKey,
@@ -20,9 +20,9 @@ export function useOptionQuotes(
       try {
         return await getOptionQuotes(optionSymbols);
       } catch (error) {
-        console.error('[useOptionQuotes] Error fetching quotes:', error);
-        // Return empty object on error to prevent UI from breaking
-        return {};
+        logger.error('[useOptionQuotes] Error fetching quotes', error);
+        // Re-throw to let React Query handle the error properly
+        throw error;
       }
     },
     enabled: enabled && optionSymbols.length > 0,
@@ -41,7 +41,7 @@ export function useOptionQuote(
   enabled: boolean = true,
   options?: Omit<UseQueryOptions<OptionQuote | null, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['option-quote', optionSymbol] as const;
+  const queryKey = queryKeys.marketData.optionQuotes.detail(optionSymbol);
 
   return useQuery<OptionQuote | null, Error>({
     queryKey,
@@ -49,8 +49,9 @@ export function useOptionQuote(
       try {
         return await getOptionQuote(optionSymbol);
       } catch (error) {
-        console.error('[useOptionQuote] Error fetching quote:', error);
-        return null;
+        logger.error('[useOptionQuote] Error fetching quote', error);
+        // Re-throw to let React Query handle the error properly
+        throw error;
       }
     },
     enabled: enabled && !!optionSymbol,

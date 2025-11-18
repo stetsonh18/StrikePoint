@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type { TransactionCode } from '@/domain/types';
 
 /**
@@ -17,8 +18,9 @@ export class TransactionCodeRepository {
       .order('trans_code', { ascending: true });
 
     if (error) {
-      console.error('Error fetching transaction codes:', error);
-      throw new Error(`Failed to fetch transaction codes: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionCodeRepository.getAll' });
+      throw new Error(`Failed to fetch transaction codes: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -35,8 +37,9 @@ export class TransactionCodeRepository {
       .order('trans_code', { ascending: true });
 
     if (error) {
-      console.error('Error fetching transaction codes by category:', error);
-      throw new Error(`Failed to fetch transaction codes: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionCodeRepository.getByCategory', category });
+      throw new Error(`Failed to fetch transaction codes: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -56,8 +59,9 @@ export class TransactionCodeRepository {
       if (error.code === 'PGRST116') {
         return null; // Not found
       }
-      console.error('Error fetching transaction code:', error);
-      throw new Error(`Failed to fetch transaction code: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'TransactionCodeRepository.getByCode', transCode });
+      throw new Error(`Failed to fetch transaction code: ${parsed.message}`, { cause: error });
     }
 
     return data;

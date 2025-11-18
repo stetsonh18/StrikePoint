@@ -309,6 +309,9 @@ export interface CashTransaction {
   // Optional symbol for dividends/interest from specific securities
   symbol: string | null;
   
+  // Foreign key to transactions (nullable for multi-leg options where one cash transaction links to multiple transactions)
+  transaction_id: string | null;
+  
   // Metadata
   tags: string[];
   
@@ -324,6 +327,20 @@ export interface CashTransaction {
 export type ImportInsert = Omit<Import, 'id' | 'created_at'>;
 
 export type TransactionInsert = Omit<Transaction, 'id' | 'created_at' | 'updated_at'>;
+
+/**
+ * Transaction Statistics
+ * Aggregated statistics for transactions
+ */
+export interface TransactionStatistics {
+  total: number;
+  byAssetType: Record<string, number>;
+  totalAmount: number;
+  dateRange: {
+    start: string | null;
+    end: string | null;
+  };
+}
 
 export type StrategyInsert = Omit<Strategy, 'id' | 'created_at' | 'updated_at' | 'closed_at'>;
 

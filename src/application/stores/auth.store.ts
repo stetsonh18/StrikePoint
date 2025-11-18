@@ -1,12 +1,16 @@
 import { create } from 'zustand';
 import { supabase } from '../../infrastructure/api/supabase';
 import { RealtimeService } from '../../infrastructure/services/realtimeService';
-import type { Session } from '@supabase/supabase-js';
+import { EarlyAdopterService } from '../../infrastructure/services/earlyAdopterService';
+import { logger } from '../../shared/utils/logger';
+import { setSentryUser, clearSentryUser } from '../../infrastructure/monitoring/sentry';
+import { trackUserAction, trackConversion, identifyUser } from '../../infrastructure/analytics/analytics';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import type { AuthStore } from '../../domain/types/auth.types';
 import type { User } from '../../domain/types/user.types';
 
 // Helper function to map Supabase user to our User type
-const mapSupabaseUser = (supabaseUser: any): User => ({
+const mapSupabaseUser = (supabaseUser: SupabaseUser): User => ({
   id: supabaseUser.id,
   email: supabaseUser.email!,
   fullName: supabaseUser.user_metadata.full_name,
@@ -34,6 +38,19 @@ export const useAuthStore = create<AuthStore>()((set) => {
           isAuthenticated: true,
         });
         
+        // Set Sentry user context
+        setSentryUser({
+          id: mappedUser.id,
+          email: mappedUser.email,
+          username: mappedUser.fullName || undefined,
+        });
+        
+        // Identify user for analytics
+        identifyUser(mappedUser.id, {
+          email: mappedUser.email,
+          fullName: mappedUser.fullName,
+        });
+        
         // Set up realtime subscriptions on sign in
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           RealtimeService.setupSubscriptions(mappedUser.id);
@@ -44,6 +61,9 @@ export const useAuthStore = create<AuthStore>()((set) => {
         if (currentUser) {
           RealtimeService.cleanupSubscriptions(currentUser.id);
         }
+        
+        // Clear Sentry user context
+        clearSentryUser();
         
         set({
           user: null,
@@ -77,7 +97,7 @@ export const useAuthStore = create<AuthStore>()((set) => {
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error) {
-          console.error('Error getting session:', error);
+          logger.error('Error getting session', error);
           throw error;
         }
 
@@ -90,9 +110,19 @@ export const useAuthStore = create<AuthStore>()((set) => {
             isLoading: false,
           });
           
+          // Set Sentry user context
+          setSentryUser({
+            id: mappedUser.id,
+            email: mappedUser.email,
+            username: mappedUser.fullName || undefined,
+          });
+          
           // Set up realtime subscriptions for this user
           RealtimeService.setupSubscriptions(mappedUser.id);
         } else {
+          // Clear Sentry user context
+          clearSentryUser();
+          
           set({
             user: null,
             session: null,
@@ -104,7 +134,7 @@ export const useAuthStore = create<AuthStore>()((set) => {
         // Set up listener after initial session check
         setupAuthListener();
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        logger.error('Error initializing auth', error);
         set({
           user: null,
           session: null,
@@ -120,8 +150,13 @@ export const useAuthStore = create<AuthStore>()((set) => {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        trackUserAction('sign_in_failed', 'authentication', { error: error.message });
+        throw error;
+      }
 
+      trackUserAction('sign_in_success', 'authentication');
+      
       // Auth state change listener will handle the state update
       if (!authSubscription) {
         setupAuthListener();
@@ -129,7 +164,7 @@ export const useAuthStore = create<AuthStore>()((set) => {
     },
 
     signUp: async (email: string, password: string, fullName?: string) => {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -139,12 +174,30 @@ export const useAuthStore = create<AuthStore>()((set) => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        trackUserAction('sign_up_failed', 'authentication', { error: error.message });
+        throw error;
+      }
+
+      // Track successful signup conversion
+      trackConversion('signup', undefined, { hasFullName: !!fullName });
+
+      // Check and set early adopter status after successful signup
+      if (data.user) {
+        try {
+          await EarlyAdopterService.checkAndSetEarlyAdopter(data.user.id);
+        } catch (earlyAdopterError) {
+          // Log error but don't fail signup if early adopter check fails
+          logger.error('Error setting early adopter status', earlyAdopterError, { userId: data.user.id });
+        }
+      }
 
       // Auth state change listener will handle the state update
       if (!authSubscription) {
         setupAuthListener();
       }
+
+      return data;
     },
 
     signOut: async () => {
@@ -157,11 +210,22 @@ export const useAuthStore = create<AuthStore>()((set) => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
 
+      // Clear Sentry user context
+      clearSentryUser();
+
       set({
         user: null,
         session: null,
         isAuthenticated: false,
       });
+    },
+
+    resetPassword: async (email: string) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
     },
 
     setUser: (user: User | null) => {

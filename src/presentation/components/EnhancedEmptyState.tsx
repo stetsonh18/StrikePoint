@@ -36,22 +36,22 @@ export const EnhancedEmptyState = ({
   const Icon = icon || DEFAULT_ICONS.default;
 
   return (
-    <div className={`bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-12 text-center ${className}`}>
+    <div className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-12 text-center shadow-sm dark:shadow-none ${className}`}>
       {/* Illustration or Icon */}
       {illustration ? (
         <div className="mb-6">{illustration}</div>
       ) : (
         <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 flex items-center justify-center">
-          <Icon className="w-8 h-8 text-emerald-400" aria-hidden="true" />
+          <Icon className="w-8 h-8 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         </div>
       )}
 
       {/* Title */}
-      <h3 className="text-xl font-semibold text-slate-200 mb-2">{title}</h3>
+      <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-200 mb-2">{title}</h3>
 
       {/* Description */}
       {description && (
-        <p className="text-slate-400 text-sm mb-6 max-w-md mx-auto">{description}</p>
+        <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 max-w-md mx-auto">{description}</p>
       )}
 
       {/* Action Button */}
@@ -60,8 +60,8 @@ export const EnhancedEmptyState = ({
           onClick={action.onClick}
           className={`px-6 py-3 rounded-xl font-medium transition-all ${
             action.variant === 'secondary'
-              ? 'bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 text-slate-300 hover:text-slate-100'
-              : 'bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300'
+              ? 'bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
+              : 'bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300'
           }`}
         >
           {action.label}
@@ -70,14 +70,14 @@ export const EnhancedEmptyState = ({
 
       {/* Tips */}
       {tips && tips.length > 0 && (
-        <div className="mt-8 pt-6 border-t border-slate-800/50">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+        <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800/50">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-500 uppercase tracking-wider mb-3">
             Quick Tips
           </p>
           <ul className="space-y-2 text-left max-w-md mx-auto">
             {tips.map((tip, index) => (
-              <li key={index} className="flex items-start gap-2 text-sm text-slate-400">
-                <span className="text-emerald-400 mt-0.5">•</span>
+              <li key={index} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <span className="text-emerald-600 dark:text-emerald-400 mt-0.5">•</span>
                 <span>{tip}</span>
               </li>
             ))}

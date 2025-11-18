@@ -145,7 +145,7 @@ export interface FuturesContract {
   multiplier: number; // Contract multiplier
   tickSize: number;
   tickValue: number;
-  expirationDate: string;
+  expirationDate: string | null;
   marginRequirement?: number;
   createdAt: string;
   updatedAt: string;

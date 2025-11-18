@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { parseError, logError } from '@/shared/utils/errorHandler';
 import type {
   CashBalance,
   CashBalanceInsert,
@@ -23,8 +24,9 @@ export class CashBalanceRepository {
       .single();
 
     if (error) {
-      console.error('Error creating cash balance:', error);
-      throw new Error(`Failed to create cash balance: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'CashBalanceRepository.create', balance });
+      throw new Error(`Failed to create cash balance: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -44,8 +46,9 @@ export class CashBalanceRepository {
 
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
-      console.error('Error fetching current balance:', error);
-      throw new Error(`Failed to fetch current balance: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'CashBalanceRepository.getCurrentBalance', userId });
+      throw new Error(`Failed to fetch current balance: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -76,8 +79,9 @@ export class CashBalanceRepository {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching balance history:', error);
-      throw new Error(`Failed to fetch balance history: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'CashBalanceRepository.getBalanceHistory', userId, startDate, endDate });
+      throw new Error(`Failed to fetch balance history: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
@@ -99,8 +103,9 @@ export class CashBalanceRepository {
 
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
-      console.error('Error fetching balance by date:', error);
-      throw new Error(`Failed to fetch balance: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'CashBalanceRepository.getBalanceByDate', userId, date });
+      throw new Error(`Failed to fetch balance: ${parsed.message}`, { cause: error });
     }
 
     return data;
@@ -250,8 +255,9 @@ export class CashBalanceRepository {
         .single();
 
       if (error) {
-        console.error('Error updating cash balance:', error);
-        throw new Error(`Failed to update cash balance: ${error.message}`);
+        const parsed = parseError(error);
+        logError(error, { context: 'CashBalanceRepository.updateBalance', userId, balance, existingId: existing.id });
+        throw new Error(`Failed to update cash balance: ${parsed.message}`, { cause: error });
       }
 
       return data;
@@ -268,8 +274,9 @@ export class CashBalanceRepository {
     const { error } = await supabase.from('cash_balances').delete().eq('id', id);
 
     if (error) {
-      console.error('Error deleting cash balance:', error);
-      throw new Error(`Failed to delete cash balance: ${error.message}`);
+      const parsed = parseError(error);
+      logError(error, { context: 'CashBalanceRepository.delete', id });
+      throw new Error(`Failed to delete cash balance: ${parsed.message}`, { cause: error });
     }
   }
 }

@@ -1,6 +1,10 @@
 import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../application/stores/auth.store';
+import { EarlyAdopterService } from '../../infrastructure/services/earlyAdopterService';
+import { useToast } from '../../shared/hooks/useToast';
+import { logger } from '../../shared/utils/logger';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 export function Signup() {
   const [email, setEmail] = useState('');
@@ -11,6 +15,7 @@ export function Signup() {
 
   const signUp = useAuthStore((state) => state.signUp);
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -18,23 +23,45 @@ export function Signup() {
     setIsLoading(true);
 
     try {
-      await signUp(email, password, fullName);
+      const { data } = await signUp(email, password, fullName);
+      
+      // Check early adopter status and show message
+      if (data?.user) {
+        try {
+          const earlyAdopterResult = await EarlyAdopterService.checkAndSetEarlyAdopter(data.user.id);
+          if (earlyAdopterResult.isEarlyAdopter) {
+            toast.success(
+              `🎉 Early Adopter! You've locked in $${earlyAdopterResult.subscriptionPrice}/month forever!`,
+              { duration: 5000 }
+            );
+          }
+        } catch (earlyAdopterError) {
+          // Silently fail - early adopter check shouldn't block signup
+          logger.error('Early adopter check failed', earlyAdopterError, { userId: data.user.id });
+        }
+      }
+      
       navigate('/');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign up');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to sign up';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/20 via-slate-950 to-slate-950 pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40 pointer-events-none" />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-50/50 via-slate-50 to-slate-50 dark:from-emerald-900/20 dark:via-slate-950 dark:to-slate-950 pointer-events-none" />
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20 dark:opacity-40 pointer-events-none" />
+      
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
       
       <div className="relative max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <h2 className="mt-6 text-center text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Create your account
           </h2>
         </div>
@@ -55,7 +82,7 @@ export function Signup() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-slate-800/50 placeholder-slate-500 text-slate-200 bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
+                className="appearance-none relative block w-full px-3 py-2 border border-slate-200 dark:border-slate-800/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
                 placeholder="Full Name (optional)"
               />
             </div>
@@ -71,7 +98,7 @@ export function Signup() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-slate-800/50 placeholder-slate-500 text-slate-200 bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
+                className="appearance-none relative block w-full px-3 py-2 border border-slate-200 dark:border-slate-800/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
                 placeholder="Email address"
               />
             </div>
@@ -87,7 +114,7 @@ export function Signup() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-slate-800/50 placeholder-slate-500 text-slate-200 bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
+                className="appearance-none relative block w-full px-3 py-2 border border-slate-200 dark:border-slate-800/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-900/50 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 focus:z-10 sm:text-sm transition-all"
                 placeholder="Password"
               />
             </div>
@@ -97,7 +124,7 @@ export function Signup() {
             <button
               type="submit"
               disabled={isLoading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-slate-950 bg-gradient-to-r from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-glow-sm"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white dark:text-slate-950 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 dark:from-emerald-400 dark:to-emerald-600 dark:hover:from-emerald-500 dark:hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-glow-sm"
             >
               {isLoading ? 'Creating account...' : 'Sign up'}
             </button>
@@ -106,7 +133,7 @@ export function Signup() {
           <div className="text-center">
             <Link
               to="/login"
-              className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
             >
               Already have an account? Sign in
             </Link>

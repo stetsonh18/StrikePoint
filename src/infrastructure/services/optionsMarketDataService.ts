@@ -1,15 +1,18 @@
 /**
  * Options Market Data Service
- * Handles fetching options chain data and option quotes from MarketData.app API
- * All API calls go through the Express backend to:
- * 1. Keep API keys secure (server-side only)
- * 2. Provide a stable IP address for API providers that require IP whitelisting (MarketData.app)
+ * Handles fetching options chain data and option quotes from Tradier API
+ * All API calls go through Supabase Edge Functions to keep API keys secure.
  */
 
 import type { OptionChainEntry, OptionsChain, OptionQuote } from '@/domain/types';
 
-// Backend API URL - uses Vite proxy in development (/api), direct URL in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Get Supabase URL and construct Edge Functions base URL
+import { env } from '@/shared/utils/envValidation';
+
+const supabaseUrl = env.supabaseUrl;
+const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
+  ? `${supabaseUrl}/functions/v1`
+  : '/functions/v1';
 
 /**
  * Get options chain for an underlying symbol
@@ -30,17 +33,19 @@ export async function getOptionsChain(
   }
 
   try {
-    // Build query parameters
+    // Build query parameters - use underlyingSymbol as query param for better compatibility
     const params = new URLSearchParams();
     params.append('underlyingSymbol', underlyingSymbol);
     if (expiration) params.append('expiration', expiration);
     if (strike) params.append('strike', strike.toString());
     if (side) params.append('side', side);
 
-    const chainUrl = `${API_BASE_URL}/marketdata/options/chain?${params.toString()}`;
+    const chainUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-options-chain?${params.toString()}`;
+    const supabaseAnonKey = env.supabaseAnonKey;
 
     const response = await fetch(chainUrl, {
       headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -206,17 +211,34 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
   }
 
   try {
-    const quoteUrl = `${API_BASE_URL}/marketdata/options/quote/${encodeURIComponent(optionSymbol)}`;
+    const quoteUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-options-quote/${encodeURIComponent(optionSymbol)}`;
+    const supabaseAnonKey = env.supabaseAnonKey;
 
     const response = await fetch(quoteUrl, {
       headers: {
+        'Authorization': `Bearer ${supabaseAnonKey}`,
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[getOptionQuote] API error for ${optionSymbol}: ${response.status} ${response.statusText}`, errorText);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: errorText };
+      }
+      
+      console.error(`[getOptionQuote] API error for ${optionSymbol}: ${response.status} ${response.statusText}`, errorData);
+      
+      // If it's a 404 or 500 with "not available" message, return null instead of throwing
+      // This allows the UI to gracefully handle missing quotes
+      if (response.status === 404 || (response.status === 500 && errorData.message?.includes('not available'))) {
+        console.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}:`, errorData.message || errorData.error);
+        return null;
+      }
+      
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
@@ -224,8 +246,14 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
 
     // Check for error in response
     if (data.error) {
-      console.error(`[getOptionQuote] Error in response for ${optionSymbol}:`, data.error);
-      throw new Error(data.error);
+      console.error(`[getOptionQuote] Error in response for ${optionSymbol}:`, data.error, data.message);
+      // If it's a 404 (not found) or indicates quote not available, return null instead of throwing
+      // This allows the UI to gracefully handle missing quotes
+      if (response.status === 404 || data.message?.includes('not available') || data.error === 'Option quote not available') {
+        console.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}:`, data.message);
+        return null;
+      }
+      throw new Error(data.message || data.error);
     }
 
     // Transform response to OptionQuote format

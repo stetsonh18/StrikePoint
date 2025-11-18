@@ -4,6 +4,7 @@ import { useCreateFuturesContractSpec, useUpdateFuturesContractSpec } from '@/ap
 import type { FuturesContractSpec, FuturesContractSpecInsert, FuturesContractSpecUpdate } from '@/domain/types';
 import { ALL_MONTHS, QUARTERLY_MONTHS, FUTURES_MONTH_CODES } from '@/domain/types/futures.types';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
+import { logger } from '@/shared/utils/logger';
 
 interface ContractSpecFormProps {
   contract?: FuturesContractSpec | null;
@@ -109,7 +110,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
       }
       onSuccess();
     } catch (error) {
-      console.error('Error saving contract spec:', error);
+      logger.error('Error saving contract spec', error);
     }
   };
 
@@ -197,29 +198,29 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
     >
       <div
         ref={modalRef as React.RefObject<HTMLDivElement>}
-        className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 p-6 flex items-center justify-between">
+        <div className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-emerald-500/10">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
+              <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h2 id="contract-spec-title" className="text-xl font-semibold text-slate-100">
+              <h2 id="contract-spec-title" className="text-xl font-semibold text-slate-900 dark:text-slate-100">
                 {isEditing ? 'Edit Contract Specification' : 'Add Contract Specification'}
               </h2>
-              <p id="contract-spec-description" className="text-sm text-slate-400">
+              <p id="contract-spec-description" className="text-sm text-slate-600 dark:text-slate-400">
                 Define futures contract parameters and margin requirements
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             aria-label="Close modal"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X className="w-5 h-5 text-slate-600 dark:text-slate-400" />
           </button>
         </div>
 
@@ -227,13 +228,13 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
-            <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
+            <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               Basic Information
             </h3>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Symbol *
                 </label>
                 <input
@@ -241,15 +242,15 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.symbol}
                   onChange={(e) => handleInputChange('symbol', e.target.value)}
                   placeholder="ES, NQ, CL, GC..."
-                  className={`w-full px-4 py-2 bg-slate-800/50 border ${
-                    errors.symbol ? 'border-red-500' : 'border-slate-700'
-                  } rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
+                  className={`w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border ${
+                    errors.symbol ? 'border-red-500' : 'border-slate-300 dark:border-slate-700'
+                  } rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
                 />
-                {errors.symbol && <p className="mt-1 text-sm text-red-400">{errors.symbol}</p>}
+                {errors.symbol && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.symbol}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Exchange
                 </label>
                 <input
@@ -257,13 +258,13 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.exchange || ''}
                   onChange={(e) => handleInputChange('exchange', e.target.value || null)}
                   placeholder="CME, CBOT, NYMEX..."
-                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Name *
               </label>
               <input
@@ -271,15 +272,15 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="E-mini S&P 500, Crude Oil, Gold..."
-                className={`w-full px-4 py-2 bg-slate-800/50 border ${
-                  errors.name ? 'border-red-500' : 'border-slate-700'
-                } rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
+                className={`w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border ${
+                  errors.name ? 'border-red-500' : 'border-slate-300 dark:border-slate-700'
+                } rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
               />
-              {errors.name && <p className="mt-1 text-sm text-red-400">{errors.name}</p>}
+              {errors.name && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.name}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Description
               </label>
               <textarea
@@ -287,20 +288,20 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                 onChange={(e) => handleInputChange('description', e.target.value || null)}
                 placeholder="Additional notes about the contract..."
                 rows={2}
-                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
               />
             </div>
           </div>
 
           {/* Contract Specifications */}
           <div className="space-y-4">
-            <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
+            <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               Contract Specifications
             </h3>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Multiplier *
                 </label>
                 <input
@@ -309,16 +310,16 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.multiplier}
                   onChange={(e) => handleInputChange('multiplier', parseFloat(e.target.value) || 0)}
                   placeholder="50"
-                  className={`w-full px-4 py-2 bg-slate-800/50 border ${
-                    errors.multiplier ? 'border-red-500' : 'border-slate-700'
-                  } rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
+                  className={`w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border ${
+                    errors.multiplier ? 'border-red-500' : 'border-slate-300 dark:border-slate-700'
+                  } rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
                 />
-                {errors.multiplier && <p className="mt-1 text-sm text-red-400">{errors.multiplier}</p>}
-                <p className="mt-1 text-xs text-slate-500">Contract size multiplier</p>
+                {errors.multiplier && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.multiplier}</p>}
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">Contract size multiplier</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Fees per Contract
                 </label>
                 <input
@@ -327,15 +328,15 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.fees_per_contract}
                   onChange={(e) => handleInputChange('fees_per_contract', parseFloat(e.target.value) || 0)}
                   placeholder="2.50"
-                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
-                <p className="mt-1 text-xs text-slate-500">Typical commission per contract</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">Typical commission per contract</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Tick Size *
                 </label>
                 <input
@@ -344,16 +345,16 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.tick_size}
                   onChange={(e) => handleInputChange('tick_size', parseFloat(e.target.value) || 0)}
                   placeholder="0.25"
-                  className={`w-full px-4 py-2 bg-slate-800/50 border ${
-                    errors.tick_size ? 'border-red-500' : 'border-slate-700'
-                  } rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
+                  className={`w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border ${
+                    errors.tick_size ? 'border-red-500' : 'border-slate-300 dark:border-slate-700'
+                  } rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
                 />
-                {errors.tick_size && <p className="mt-1 text-sm text-red-400">{errors.tick_size}</p>}
-                <p className="mt-1 text-xs text-slate-500">Minimum price movement</p>
+                {errors.tick_size && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.tick_size}</p>}
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">Minimum price movement</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Tick Value *
                 </label>
                 <input
@@ -362,25 +363,25 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.tick_value}
                   onChange={(e) => handleInputChange('tick_value', parseFloat(e.target.value) || 0)}
                   placeholder="12.50"
-                  className={`w-full px-4 py-2 bg-slate-800/50 border ${
-                    errors.tick_value ? 'border-red-500' : 'border-slate-700'
-                  } rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
+                  className={`w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border ${
+                    errors.tick_value ? 'border-red-500' : 'border-slate-300 dark:border-slate-700'
+                  } rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50`}
                 />
-                {errors.tick_value && <p className="mt-1 text-sm text-red-400">{errors.tick_value}</p>}
-                <p className="mt-1 text-xs text-slate-500">Dollar value per tick</p>
+                {errors.tick_value && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.tick_value}</p>}
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">Dollar value per tick</p>
               </div>
             </div>
           </div>
 
           {/* Margin Requirements */}
           <div className="space-y-4">
-            <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
+            <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               Margin Requirements
             </h3>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Initial Margin
                 </label>
                 <input
@@ -389,13 +390,13 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.initial_margin || ''}
                   onChange={(e) => handleInputChange('initial_margin', e.target.value ? parseFloat(e.target.value) : null)}
                   placeholder="13200"
-                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
-                <p className="mt-1 text-xs text-slate-500">USD required to open position</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">USD required to open position</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Maintenance Margin
                 </label>
                 <input
@@ -404,9 +405,9 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   value={formData.maintenance_margin || ''}
                   onChange={(e) => handleInputChange('maintenance_margin', e.target.value ? parseFloat(e.target.value) : null)}
                   placeholder="12000"
-                  className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
-                <p className="mt-1 text-xs text-slate-500">USD to maintain position</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">USD to maintain position</p>
               </div>
             </div>
           </div>
@@ -414,28 +415,28 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
           {/* Contract Months */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
+              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                 Contract Months
               </h3>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={selectQuarterlyMonths}
-                  className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 rounded text-slate-300 transition-colors"
+                  className="text-xs px-2 py-1 bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-300 transition-colors"
                 >
                   Quarterly
                 </button>
                 <button
                   type="button"
                   onClick={selectAllMonths}
-                  className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 rounded text-slate-300 transition-colors"
+                  className="text-xs px-2 py-1 bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-300 transition-colors"
                 >
                   All
                 </button>
                 <button
                   type="button"
                   onClick={clearAllMonths}
-                  className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 rounded text-slate-300 transition-colors"
+                  className="text-xs px-2 py-1 bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-300 transition-colors"
                 >
                   Clear
                 </button>
@@ -450,8 +451,8 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
                   onClick={() => toggleMonth(month)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     selectedMonths.has(month)
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                      ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   <div className="text-center">
@@ -462,9 +463,9 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
               ))}
             </div>
             {errors.contract_months && (
-              <p className="text-sm text-red-400">{errors.contract_months}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">{errors.contract_months}</p>
             )}
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-500">
               Select valid expiration months for this contract
             </p>
           </div>
@@ -476,27 +477,27 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
               id="is_active"
               checked={formData.is_active}
               onChange={(e) => handleInputChange('is_active', e.target.checked)}
-              className="w-4 h-4 text-emerald-500 bg-slate-900 border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
+              className="w-4 h-4 text-emerald-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 rounded focus:ring-2 focus:ring-emerald-500/50"
             />
-            <label htmlFor="is_active" className="text-sm text-slate-300">
+            <label htmlFor="is_active" className="text-sm text-slate-700 dark:text-slate-300">
               Contract is active and tradeable
             </label>
           </div>
 
           {/* Form Actions */}
-          <div className="flex gap-3 pt-4 border-t border-slate-700">
+          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
             <button
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="flex-1 px-4 py-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl text-slate-300 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
-              className="flex-1 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Save size={18} />
               {isPending ? 'Saving...' : isEditing ? 'Update Contract' : 'Create Contract'}

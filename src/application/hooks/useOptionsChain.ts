@@ -1,5 +1,7 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { getOptionsChain, type OptionsChain } from '@/infrastructure/services/optionsMarketDataService';
+import { logger } from '@/shared/utils/logger';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 
 /**
  * Hook for fetching options chain data
@@ -17,7 +19,7 @@ export function useOptionsChain(
   enabled: boolean = true,
   options?: Omit<UseQueryOptions<OptionsChain | null, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['options-chain', underlyingSymbol, expiration, strike, side] as const;
+  const queryKey = queryKeys.marketData.optionsChain(underlyingSymbol, expiration, strike, side);
 
   return useQuery<OptionsChain | null, Error>({
     queryKey,
@@ -25,8 +27,9 @@ export function useOptionsChain(
       try {
         return await getOptionsChain(underlyingSymbol, expiration, strike, side);
       } catch (error) {
-        console.error('[useOptionsChain] Error fetching options chain:', error);
-        return null;
+        logger.error('[useOptionsChain] Error fetching options chain', error);
+        // Re-throw to let React Query handle the error properly
+        throw error;
       }
     },
     enabled: enabled && !!underlyingSymbol,

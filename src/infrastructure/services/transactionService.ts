@@ -1,10 +1,12 @@
 import { TransactionRepository } from '../repositories/transaction.repository';
+import { PositionRepository } from '../repositories/position.repository';
 import { PositionMatchingService } from './positionMatchingService';
 import { StrategyDetectionService } from './strategyDetectionService';
 import { CashBalanceService } from './cashBalanceService';
 import { StockCashIntegrationService } from './stockCashIntegrationService';
 import { CryptoCashIntegrationService } from './cryptoCashIntegrationService';
 import { FuturesCashIntegrationService } from './futuresCashIntegrationService';
+import { OptionsCashIntegrationService } from './optionsCashIntegrationService';
 import type { TransactionInsert, Transaction } from '@/domain/types';
 
 /**
@@ -31,7 +33,7 @@ export class TransactionService {
 
     // Process position matching for non-cash transactions
     if (transaction.asset_type !== 'cash') {
-      // Create corresponding cash transaction for stock/crypto trades FIRST
+      // Create corresponding cash transaction for stock/crypto/options/futures trades FIRST
       // This ensures cash is updated even if position matching fails
       if (transaction.asset_type === 'stock') {
         try {
@@ -49,38 +51,78 @@ export class TransactionService {
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to create cash transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      } else if (transaction.asset_type === 'futures') {
+      } else if (transaction.asset_type === 'option') {
         try {
-          // For futures, we need to determine if this is opening or closing
-          // For now, assume opening - the form should handle closing separately with entry data
-          await FuturesCashIntegrationService.processFuturesTransaction(createdTransaction);
+          await OptionsCashIntegrationService.processOptionsTransaction(createdTransaction);
         } catch (error) {
-          console.error('Error creating cash transaction for futures trade:', error);
+          console.error('Error creating cash transaction for options trade:', error);
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to create cash transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
+      } else if (transaction.asset_type === 'futures') {
+        // For futures, we need to determine if this is opening or closing
+        // Process position matching first to see if this matches an existing position
+        try {
+          await PositionMatchingService.matchTransactions(
+            transaction.user_id,
+            undefined // No import_id for manual transactions
+          );
+          
+          // After matching, check if the transaction was matched to a position
+          // If matched, it's a closing transaction - process cash transactions accordingly
+          const matchedTransaction = await TransactionRepository.getById(createdTransaction.id);
+          if (matchedTransaction?.position_id) {
+            // This is a closing transaction - get the position to get entry price
+            const position = await PositionRepository.getById(matchedTransaction.position_id);
+            if (position) {
+              // Calculate entry price from position (average opening price)
+              const entryPrice = position.average_opening_price;
+              const entryQuantity = Math.abs(transaction.quantity || 0);
+              await FuturesCashIntegrationService.recordFuturesClose(
+                matchedTransaction,
+                entryPrice,
+                entryQuantity
+              );
+            }
+          } else {
+            // This is an opening transaction
+            await FuturesCashIntegrationService.processFuturesTransaction(createdTransaction);
+          }
+
+          // Process assignments and exercises
+          await PositionMatchingService.processAssignmentsAndExercises(transaction.user_id);
+
+          // Process expirations
+          await PositionMatchingService.processExpirations(transaction.user_id);
+        } catch (error) {
+          console.error('Error processing futures transaction:', error);
+          // Re-throw to ensure user knows about the issue
+          throw new Error(`Failed to process futures transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
 
-      // Then process position matching
-      try {
-        await PositionMatchingService.matchTransactions(
-          transaction.user_id,
-          undefined // No import_id for manual transactions
-        );
+      // For all non-cash asset types, process position matching after cash transactions
+      if (transaction.asset_type !== 'cash' && transaction.asset_type !== 'futures') {
+        try {
+          await PositionMatchingService.matchTransactions(
+            transaction.user_id,
+            undefined // No import_id for manual transactions
+          );
 
-        // Process assignments and exercises
-        await PositionMatchingService.processAssignmentsAndExercises(transaction.user_id);
+          // Process assignments and exercises
+          await PositionMatchingService.processAssignmentsAndExercises(transaction.user_id);
 
-        // Process expirations
-        await PositionMatchingService.processExpirations(transaction.user_id);
+          // Process expirations
+          await PositionMatchingService.processExpirations(transaction.user_id);
 
-        // Detect strategies for options
-        if (transaction.asset_type === 'option') {
-          await StrategyDetectionService.detectStrategies(transaction.user_id);
+          // Detect strategies for options
+          if (transaction.asset_type === 'option') {
+            await StrategyDetectionService.detectStrategies(transaction.user_id);
+          }
+        } catch (error) {
+          console.error('Error processing position matching:', error);
+          // Don't fail the transaction creation if matching fails, but cash transaction is already created
         }
-      } catch (error) {
-        console.error('Error processing position matching:', error);
-        // Don't fail the transaction creation if matching fails, but cash transaction is already created
       }
     } else {
       // Update cash balance for cash transactions
@@ -156,6 +198,12 @@ export class TransactionService {
           for (const cryptoTx of createdTransactions.filter(t => t.asset_type === 'crypto')) {
             await CryptoCashIntegrationService.processCryptoTransaction(cryptoTx);
           }
+        } else if (assetType === 'option') {
+          // For multi-leg options, create a single cash transaction for the sum of all legs
+          await OptionsCashIntegrationService.processMultiLegOptionsTransactions(
+            createdTransactions,
+            userId
+          );
         } else if (assetType === 'futures') {
           for (const futuresTx of createdTransactions.filter(t => t.asset_type === 'futures')) {
             await FuturesCashIntegrationService.processFuturesTransaction(futuresTx);

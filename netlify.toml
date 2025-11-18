@@ -7,3 +7,64 @@
   to = "/index.html"
   status = 200
 
+# Security Headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Content Security Policy
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.io;
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: https: blob:;
+      font-src 'self' data:;
+      connect-src 'self' https://*.supabase.co https://*.supabase.io https://*.sentry.io https://*.ingest.sentry.io wss://*.supabase.co wss://*.supabase.io;
+      frame-src 'self' https://*.supabase.co;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors 'none';
+      upgrade-insecure-requests;
+    """
+    # XSS Protection
+    X-XSS-Protection = "1; mode=block"
+    # Prevent MIME type sniffing
+    X-Content-Type-Options = "nosniff"
+    # Clickjacking protection
+    X-Frame-Options = "DENY"
+    # Referrer Policy
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Permissions Policy
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+    # Strict Transport Security (HSTS) - only if using HTTPS
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Cache fonts
+[[headers]]
+  for = "/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Don't cache HTML
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# SEO: robots.txt and sitemap.xml
+[[redirects]]
+  from = "/robots.txt"
+  to = "/robots.txt"
+  status = 200
+
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "/sitemap.xml"
+  status = 200
+

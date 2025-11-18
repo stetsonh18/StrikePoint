@@ -1,5 +1,7 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { getStockQuotes, getStockQuote, type StockQuote } from '@/infrastructure/services/marketDataService';
+import { logger } from '@/shared/utils/logger';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 
 /**
  * Hook for fetching real-time stock quotes
@@ -10,9 +12,7 @@ export function useStockQuotes(
   enabled: boolean = true,
   options?: Omit<UseQueryOptions<Record<string, StockQuote>, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  // Create stable query key by sorting symbols
-  const sortedSymbols = [...symbols].sort();
-  const queryKey = ['stock-quotes', sortedSymbols] as const;
+  const queryKey = queryKeys.marketData.stockQuotes.list(symbols);
 
   return useQuery<Record<string, StockQuote>, Error>({
     queryKey,
@@ -20,9 +20,9 @@ export function useStockQuotes(
       try {
         return await getStockQuotes(symbols);
       } catch (error) {
-        console.error('[useStockQuotes] Error fetching quotes:', error);
-        // Return empty object on error to prevent UI from breaking
-        return {};
+        logger.error('[useStockQuotes] Error fetching quotes', error);
+        // Re-throw to let React Query handle the error properly
+        throw error;
       }
     },
     enabled: enabled && symbols.length > 0,
@@ -41,7 +41,7 @@ export function useStockQuote(
   enabled: boolean = true,
   options?: Omit<UseQueryOptions<StockQuote, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = ['stock-quote', symbol] as const;
+  const queryKey = queryKeys.marketData.stockQuotes.detail(symbol);
 
   return useQuery<StockQuote, Error>({
     queryKey,

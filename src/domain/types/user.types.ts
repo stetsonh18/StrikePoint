@@ -15,4 +15,6 @@ export interface UserPreferences {
     email: boolean;
     desktop: boolean;
   };
+  isEarlyAdopter?: boolean;
+  subscriptionPrice?: number;
 }
