@@ -385,9 +385,9 @@ export const Dashboard = () => {
       </div>
 
       {/* Zone 3: Secondary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {portfolioLoading || statsLoading ? (
-          <StatCardSkeleton count={4} />
+          <StatCardSkeleton count={3} />
         ) : (
           <>
             <StatCard
@@ -411,19 +411,23 @@ export const Dashboard = () => {
               iconColor={unrealizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}
               bgColor={unrealizedPL >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
             />
-            {winRateMetrics && winRateMetrics.totalTrades > 0 && (
-              <StatCard
-                title="Profit Factor"
-                value={winRateMetrics.profitFactor.toFixed(2)}
-                icon={BarChart3}
-                iconColor={winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'}
-                bgColor={winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
-                subtitle={`${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}`}
-              />
-            )}
           </>
         )}
       </div>
+
+      {/* Profit Factor - Separate row if available */}
+      {!portfolioLoading && !statsLoading && winRateMetrics && winRateMetrics.totalTrades > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="Profit Factor"
+            value={winRateMetrics.profitFactor.toFixed(2)}
+            icon={BarChart3}
+            iconColor={winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'}
+            bgColor={winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
+            subtitle={`${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}`}
+          />
+        </div>
+      )}
 
       {/* Zone 4: Asset Allocation - Enhanced with Values */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
