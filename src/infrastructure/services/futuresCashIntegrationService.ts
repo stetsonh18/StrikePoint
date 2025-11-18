@@ -31,9 +31,9 @@ export class FuturesCashIntegrationService {
       return;
     }
 
-    const contractSpec = await FuturesContractSpecRepository.getBySymbol(contractSymbol.symbol);
+    const contractSpec = await FuturesContractSpecRepository.getBySymbol(contractSymbol.symbol, transaction.user_id);
     if (!contractSpec) {
-      console.error('Contract spec not found for symbol:', contractSymbol.symbol);
+      console.error('Contract spec not found for symbol:', contractSymbol.symbol, 'user:', transaction.user_id);
       return;
     }
 
@@ -110,9 +110,9 @@ export class FuturesCashIntegrationService {
       return;
     }
 
-    const contractSpec = await FuturesContractSpecRepository.getBySymbol(contractSymbol.symbol);
+    const contractSpec = await FuturesContractSpecRepository.getBySymbol(contractSymbol.symbol, transaction.user_id);
     if (!contractSpec) {
-      console.error('Contract spec not found for symbol:', contractSymbol.symbol);
+      console.error('Contract spec not found for symbol:', contractSymbol.symbol, 'user:', transaction.user_id);
       return;
     }
 

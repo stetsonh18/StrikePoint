@@ -28,7 +28,7 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: contractSpecs = [], isLoading: specsLoading } = useActiveFuturesContractSpecs();
+  const { data: contractSpecs = [], isLoading: specsLoading } = useActiveFuturesContractSpecs(userId);
 
   // Form fields
   const [selectedContractId, setSelectedContractId] = useState(initialValues?.contractId || '');

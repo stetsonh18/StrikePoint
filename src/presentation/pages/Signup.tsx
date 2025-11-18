@@ -41,7 +41,11 @@ export function Signup() {
         }
       }
       
-      navigate('/');
+      // Redirect to checkout to start free trial
+      toast.success('Account created! Starting your 14-day free trial...', {
+        description: 'You\'ll be redirected to checkout.',
+      });
+      navigate('/checkout');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign up';
       setError(errorMessage);

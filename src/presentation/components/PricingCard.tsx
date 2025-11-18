@@ -59,6 +59,9 @@ export function PricingCard({ className = '' }: PricingCardProps) {
                 <div className="text-xl text-slate-400 dark:text-slate-500 line-through">$19.99</div>
               </div>
               <div className="text-slate-600 dark:text-slate-400 mb-2">per month</div>
+              <div className="text-emerald-600 dark:text-emerald-400 text-sm font-medium mb-2">
+                ✨ 14-day free trial
+              </div>
               {spotsRemaining > 0 && spotsRemaining <= 10 && (
                 <div className="text-emerald-600 dark:text-emerald-400 text-sm font-semibold mb-4">
                   Only {spotsRemaining} {spotsRemaining === 1 ? 'spot' : 'spots'} remaining!
@@ -73,7 +76,10 @@ export function PricingCard({ className = '' }: PricingCardProps) {
           ) : (
             <>
               <div className="text-4xl font-bold text-slate-900 dark:text-slate-100 mb-2">$19.99</div>
-              <div className="text-slate-600 dark:text-slate-400 mb-6">per month</div>
+              <div className="text-slate-600 dark:text-slate-400 mb-2">per month</div>
+              <div className="text-emerald-600 dark:text-emerald-400 text-sm font-medium mb-6">
+                ✨ 14-day free trial
+              </div>
             </>
           )}
 

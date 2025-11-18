@@ -43,7 +43,7 @@ const Futures: React.FC = () => {
   const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch contract specs for finding contract IDs
-  const { data: contractSpecs = [] } = useActiveFuturesContractSpecs();
+  const { data: contractSpecs = [] } = useActiveFuturesContractSpecs(userId);
 
   // Fetch open futures positions
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {

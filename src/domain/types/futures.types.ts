@@ -5,6 +5,7 @@
 
 export interface FuturesContractSpec {
   id: string;
+  user_id: string | null;           // User ID for user-specific specs, null for system defaults
   symbol: string;                  // ES, NQ, CL, GC, etc.
   name: string;                     // E-mini S&P 500, E-mini Nasdaq-100, etc.
   exchange: string | null;          // CME, CBOT, NYMEX, COMEX
@@ -22,6 +23,7 @@ export interface FuturesContractSpec {
 }
 
 export interface FuturesContractSpecInsert {
+  user_id?: string | null;          // User ID for user-specific specs
   symbol: string;
   name: string;
   exchange?: string | null;
@@ -37,6 +39,7 @@ export interface FuturesContractSpecInsert {
 }
 
 export interface FuturesContractSpecUpdate {
+  user_id?: string | null;          // User ID for user-specific specs
   symbol?: string;
   name?: string;
   exchange?: string | null;

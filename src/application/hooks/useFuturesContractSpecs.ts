@@ -8,13 +8,15 @@ import type {
 
 /**
  * Hook for fetching all futures contract specifications
+ * @param userId - User ID to filter by. If not provided, fetches all specs (for backward compatibility)
  */
 export function useFuturesContractSpecs(
+  userId?: string,
   options?: Omit<UseQueryOptions<FuturesContractSpec[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<FuturesContractSpec[], Error>({
-    queryKey: ['futures-contract-specs'] as const,
-    queryFn: () => FuturesContractSpecRepository.getAll(),
+    queryKey: ['futures-contract-specs', userId] as const,
+    queryFn: () => FuturesContractSpecRepository.getAll(userId),
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes (contract specs don't change often)
     ...options,
   });
@@ -22,13 +24,15 @@ export function useFuturesContractSpecs(
 
 /**
  * Hook for fetching active futures contract specifications
+ * @param userId - User ID to filter by. If not provided, fetches all active specs (for backward compatibility)
  */
 export function useActiveFuturesContractSpecs(
+  userId?: string,
   options?: Omit<UseQueryOptions<FuturesContractSpec[], Error>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery<FuturesContractSpec[], Error>({
-    queryKey: ['futures-contract-specs', 'active'] as const,
-    queryFn: () => FuturesContractSpecRepository.getActive(),
+    queryKey: ['futures-contract-specs', 'active', userId] as const,
+    queryFn: () => FuturesContractSpecRepository.getActive(userId),
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
     ...options,
   });
@@ -36,14 +40,17 @@ export function useActiveFuturesContractSpecs(
 
 /**
  * Hook for fetching a single futures contract specification by symbol
+ * @param symbol - Contract symbol (e.g., 'ES', 'NQ')
+ * @param userId - User ID to filter by. If not provided, fetches first match (for backward compatibility)
  */
 export function useFuturesContractSpec(
   symbol: string,
+  userId?: string,
   options?: Omit<UseQueryOptions<FuturesContractSpec | null, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   return useQuery<FuturesContractSpec | null, Error>({
-    queryKey: ['futures-contract-spec', symbol] as const,
-    queryFn: () => FuturesContractSpecRepository.getBySymbol(symbol),
+    queryKey: ['futures-contract-spec', symbol, userId] as const,
+    queryFn: () => FuturesContractSpecRepository.getBySymbol(symbol, userId),
     enabled: !!symbol,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
     ...options,
@@ -59,9 +66,13 @@ export function useCreateFuturesContractSpec() {
   return useMutation({
     mutationFn: (spec: FuturesContractSpecInsert) =>
       FuturesContractSpecRepository.create(spec),
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Invalidate all contract specs queries to refetch fresh data
       queryClient.invalidateQueries({ queryKey: ['futures-contract-specs'] });
+      // Also invalidate user-specific queries if user_id is present
+      if (data.user_id) {
+        queryClient.invalidateQueries({ queryKey: ['futures-contract-specs', data.user_id] });
+      }
     },
   });
 }
@@ -126,14 +137,17 @@ export function useDeleteFuturesContractSpec() {
 
 /**
  * Hook for searching futures contract specifications
+ * @param query - Search query string
+ * @param userId - User ID to filter by. If not provided, searches all specs (for backward compatibility)
  */
 export function useSearchFuturesContractSpecs(
   query: string,
+  userId?: string,
   options?: Omit<UseQueryOptions<FuturesContractSpec[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   return useQuery<FuturesContractSpec[], Error>({
-    queryKey: ['futures-contract-specs', 'search', query] as const,
-    queryFn: () => FuturesContractSpecRepository.search(query),
+    queryKey: ['futures-contract-specs', 'search', query, userId] as const,
+    queryFn: () => FuturesContractSpecRepository.search(query, userId),
     enabled: !!query && query.length >= 1,
     staleTime: 5 * 60 * 1000, // Cache search results for 5 minutes
     ...options,

@@ -14,17 +14,23 @@ export class FuturesContractSpecRepository {
   private static tableName = 'futures_contract_specs';
 
   /**
-   * Get all futures contract specifications
+   * Get all futures contract specifications for a user
+   * @param userId - User ID to filter by. If not provided, returns all specs (for backward compatibility)
    */
-  static async getAll(): Promise<FuturesContractSpec[]> {
-    const { data, error } = await supabase
+  static async getAll(userId?: string): Promise<FuturesContractSpec[]> {
+    let query = supabase
       .from(this.tableName)
-      .select('*')
-      .order('symbol', { ascending: true });
+      .select('*');
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.order('symbol', { ascending: true });
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getAll' });
+      logError(error, { context: 'FuturesContractSpecRepository.getAll', userId });
       throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -32,18 +38,24 @@ export class FuturesContractSpecRepository {
   }
 
   /**
-   * Get all active futures contract specifications
+   * Get all active futures contract specifications for a user
+   * @param userId - User ID to filter by. If not provided, returns all active specs (for backward compatibility)
    */
-  static async getActive(): Promise<FuturesContractSpec[]> {
-    const { data, error } = await supabase
+  static async getActive(userId?: string): Promise<FuturesContractSpec[]> {
+    let query = supabase
       .from(this.tableName)
       .select('*')
-      .eq('is_active', true)
-      .order('symbol', { ascending: true });
+      .eq('is_active', true);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.order('symbol', { ascending: true });
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getActive' });
+      logError(error, { context: 'FuturesContractSpecRepository.getActive', userId });
       throw new Error(`Failed to fetch active futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -52,13 +64,20 @@ export class FuturesContractSpecRepository {
 
   /**
    * Get a futures contract specification by symbol
+   * @param symbol - Contract symbol (e.g., 'ES', 'NQ')
+   * @param userId - User ID to filter by. If not provided, returns first match (for backward compatibility)
    */
-  static async getBySymbol(symbol: string): Promise<FuturesContractSpec | null> {
-    const { data, error } = await supabase
+  static async getBySymbol(symbol: string, userId?: string): Promise<FuturesContractSpec | null> {
+    let query = supabase
       .from(this.tableName)
       .select('*')
-      .eq('symbol', symbol)
-      .single();
+      .eq('symbol', symbol);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -66,7 +85,7 @@ export class FuturesContractSpecRepository {
         return null;
       }
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getBySymbol', symbol });
+      logError(error, { context: 'FuturesContractSpecRepository.getBySymbol', symbol, userId });
       throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: error });
     }
 
@@ -98,17 +117,24 @@ export class FuturesContractSpecRepository {
 
   /**
    * Search futures contract specifications by name or symbol
+   * @param query - Search query string
+   * @param userId - User ID to filter by. If not provided, searches all specs (for backward compatibility)
    */
-  static async search(query: string): Promise<FuturesContractSpec[]> {
-    const { data, error} = await supabase
+  static async search(query: string, userId?: string): Promise<FuturesContractSpec[]> {
+    let dbQuery = supabase
       .from(this.tableName)
       .select('*')
-      .or(`symbol.ilike.%${query}%,name.ilike.%${query}%`)
-      .order('symbol', { ascending: true });
+      .or(`symbol.ilike.%${query}%,name.ilike.%${query}%`);
+
+    if (userId) {
+      dbQuery = dbQuery.eq('user_id', userId);
+    }
+
+    const { data, error} = await dbQuery.order('symbol', { ascending: true });
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.search', query });
+      logError(error, { context: 'FuturesContractSpecRepository.search', query, userId });
       throw new Error(`Failed to search futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -190,24 +216,48 @@ export class FuturesContractSpecRepository {
 
   /**
    * Get contract specifications for specific symbols
+   * @param symbols - Array of contract symbols
+   * @param userId - User ID to filter by. If not provided, returns all matching specs (for backward compatibility)
    */
-  static async getBySymbols(symbols: string[]): Promise<FuturesContractSpec[]> {
+  static async getBySymbols(symbols: string[], userId?: string): Promise<FuturesContractSpec[]> {
     if (symbols.length === 0) {
       return [];
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from(this.tableName)
       .select('*')
-      .in('symbol', symbols)
-      .order('symbol', { ascending: true });
+      .in('symbol', symbols);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.order('symbol', { ascending: true });
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getBySymbols', symbols });
+      logError(error, { context: 'FuturesContractSpecRepository.getBySymbols', symbols, userId });
       throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
     return data || [];
+  }
+
+  /**
+   * Delete all futures contract specifications for a user
+   * @param userId - User ID to delete specs for
+   */
+  static async deleteAllForUser(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from(this.tableName)
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      const parsed = parseError(error);
+      logError(error, { context: 'FuturesContractSpecRepository.deleteAllForUser', userId });
+      throw new Error(`Failed to delete user futures contract specs: ${parsed.message}`, { cause: error });
+    }
   }
 }

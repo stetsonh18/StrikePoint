@@ -369,7 +369,7 @@ export class PositionMatchingService {
     
     if (baseSymbol) {
       try {
-        const contractSpec = await FuturesContractSpecRepository.getBySymbol(baseSymbol);
+        const contractSpec = await FuturesContractSpecRepository.getBySymbol(baseSymbol, tx.user_id);
         if (contractSpec) {
           multiplier = contractSpec.multiplier;
           tickSize = contractSpec.tick_size;
@@ -377,7 +377,7 @@ export class PositionMatchingService {
           marginRequirement = contractSpec.initial_margin;
         }
       } catch (error) {
-        logger.warn('Failed to fetch contract spec', error, { baseSymbol });
+        logger.warn('Failed to fetch contract spec', error, { baseSymbol, userId: tx.user_id });
         // Continue with null values - defaults will be used in transformer
       }
     }

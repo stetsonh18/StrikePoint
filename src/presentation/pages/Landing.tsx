@@ -98,9 +98,12 @@ export function Landing() {
             <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
               Your Complete Trading Journal
             </h1>
-            <p className="text-xl md:text-2xl text-slate-600 dark:text-slate-400 mb-8 max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl text-slate-600 dark:text-slate-400 mb-4 max-w-3xl mx-auto">
               Track, analyze, and optimize your trading performance with AI-powered insights
               across stocks, options, crypto, and futures.
+            </p>
+            <p className="text-lg text-emerald-600 dark:text-emerald-400 font-semibold mb-8">
+              🎁 Start your 14-day free trial today - No credit card required!
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
               <Link
@@ -160,8 +163,11 @@ export function Landing() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 text-slate-900 dark:text-slate-100">
               Simple, Transparent Pricing
             </h2>
-            <p className="text-lg text-slate-600 dark:text-slate-400">
+            <p className="text-lg text-slate-600 dark:text-slate-400 mb-2">
               One price. All features. No hidden fees.
+            </p>
+            <p className="text-base text-emerald-600 dark:text-emerald-400 font-medium">
+              ✨ 14-day free trial - Try all features risk-free
             </p>
           </div>
 

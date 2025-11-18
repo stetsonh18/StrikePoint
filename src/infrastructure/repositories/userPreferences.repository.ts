@@ -31,6 +31,11 @@ export class UserPreferencesRepository {
         },
         isEarlyAdopter: data.is_early_adopter ?? false,
         subscriptionPrice: data.subscription_price ? parseFloat(data.subscription_price) : undefined,
+        stripeCustomerId: data.stripe_customer_id || undefined,
+        stripeSubscriptionId: data.stripe_subscription_id || undefined,
+        discountCode: data.discount_code || undefined,
+        isFreeForever: data.is_free_forever ?? false,
+        subscriptionStatus: data.subscription_status || undefined,
       };
     }
 
@@ -75,6 +80,34 @@ export class UserPreferencesRepository {
       }
     }
 
+    if (preferences.isEarlyAdopter !== undefined) {
+      updateData.is_early_adopter = preferences.isEarlyAdopter;
+    }
+
+    if (preferences.subscriptionPrice !== undefined) {
+      updateData.subscription_price = preferences.subscriptionPrice;
+    }
+
+    if (preferences.stripeCustomerId !== undefined) {
+      updateData.stripe_customer_id = preferences.stripeCustomerId;
+    }
+
+    if (preferences.stripeSubscriptionId !== undefined) {
+      updateData.stripe_subscription_id = preferences.stripeSubscriptionId;
+    }
+
+    if (preferences.discountCode !== undefined) {
+      updateData.discount_code = preferences.discountCode;
+    }
+
+    if (preferences.isFreeForever !== undefined) {
+      updateData.is_free_forever = preferences.isFreeForever;
+    }
+
+    if (preferences.subscriptionStatus !== undefined) {
+      updateData.subscription_status = preferences.subscriptionStatus;
+    }
+
     // Try to update first
     const { data: updatedData, error: updateError } = await supabase
       .from('user_preferences')
@@ -113,6 +146,11 @@ export class UserPreferencesRepository {
         },
         isEarlyAdopter: insertedData.is_early_adopter ?? false,
         subscriptionPrice: insertedData.subscription_price ? parseFloat(insertedData.subscription_price) : undefined,
+        stripeCustomerId: insertedData.stripe_customer_id || undefined,
+        stripeSubscriptionId: insertedData.stripe_subscription_id || undefined,
+        discountCode: insertedData.discount_code || undefined,
+        isFreeForever: insertedData.is_free_forever ?? false,
+        subscriptionStatus: insertedData.subscription_status || undefined,
       };
     }
 
@@ -126,6 +164,11 @@ export class UserPreferencesRepository {
       },
       isEarlyAdopter: updatedData.is_early_adopter ?? false,
       subscriptionPrice: updatedData.subscription_price ? parseFloat(updatedData.subscription_price) : undefined,
+      stripeCustomerId: updatedData.stripe_customer_id || undefined,
+      stripeSubscriptionId: updatedData.stripe_subscription_id || undefined,
+      discountCode: updatedData.discount_code || undefined,
+      isFreeForever: updatedData.is_free_forever ?? false,
+      subscriptionStatus: updatedData.subscription_status || undefined,
     };
   }
 

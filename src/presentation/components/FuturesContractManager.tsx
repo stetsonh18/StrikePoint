@@ -1,16 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, Plus, Edit2, Power, Search, AlertCircle } from 'lucide-react';
 import { useFuturesContractSpecs, useDeactivateFuturesContractSpec, useActivateFuturesContractSpec } from '@/application/hooks/useFuturesContractSpecs';
+import { useAuthStore } from '@/application/stores/auth.store';
 import { ContractSpecForm } from './ContractSpecForm';
 import type { FuturesContractSpec } from '@/domain/types';
 
 export const FuturesContractManager: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
+  const userId = user?.id || '';
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingContract, setEditingContract] = useState<FuturesContractSpec | null>(null);
   const [showInactive, setShowInactive] = useState(false);
 
-  const { data: allContracts = [], isLoading } = useFuturesContractSpecs();
+  const { data: allContracts = [], isLoading } = useFuturesContractSpecs(userId);
   const deactivateMutation = useDeactivateFuturesContractSpec();
   const activateMutation = useActivateFuturesContractSpec();
 
@@ -244,6 +247,7 @@ export const FuturesContractManager: React.FC = () => {
       {showForm && (
         <ContractSpecForm
           contract={editingContract}
+          userId={userId}
           onClose={() => {
             setShowForm(false);
             setEditingContract(null);

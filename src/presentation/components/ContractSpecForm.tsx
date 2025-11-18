@@ -8,11 +8,12 @@ import { logger } from '@/shared/utils/logger';
 
 interface ContractSpecFormProps {
   contract?: FuturesContractSpec | null;
+  userId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, onClose, onSuccess }) => {
+export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, userId, onClose, onSuccess }) => {
   const isEditing = !!contract;
   const createMutation = useCreateFuturesContractSpec();
   const updateMutation = useUpdateFuturesContractSpec();
@@ -97,6 +98,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, on
       ...formData,
       symbol: formData.symbol.toUpperCase(),
       contract_months: Array.from(selectedMonths),
+      user_id: userId || null, // Include user_id for user-specific specs
     };
 
     try {

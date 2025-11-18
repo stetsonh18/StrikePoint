@@ -17,4 +17,9 @@ export interface UserPreferences {
   };
   isEarlyAdopter?: boolean;
   subscriptionPrice?: number;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  discountCode?: string;
+  isFreeForever?: boolean;
+  subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete' | 'incomplete_expired' | 'unpaid' | 'paused';
 }

@@ -30,6 +30,7 @@ const Futures = createRouteWithErrorBoundary(() => import('./presentation/pages/
 const Journal = createRouteWithErrorBoundary(() => import('./presentation/pages/Journal'));
 const AIInsights = createRouteWithErrorBoundary(() => import('./presentation/pages/AIInsights'));
 const News = createRouteWithErrorBoundary(() => import('./presentation/pages/News'));
+const Checkout = createRouteWithErrorBoundary(() => import('./presentation/pages/Checkout').then(module => ({ default: module.Checkout })));
 
 function App() {
   useTheme();
@@ -57,6 +58,7 @@ function App() {
               <Route path="/signup" element={<Signup />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/landing" element={<Landing />} />
+              <Route path="/checkout" element={<Checkout />} />
               <Route
                 path="/"
                 element={

@@ -7,7 +7,12 @@ import { DailyBalanceTable } from '../components/DailyBalanceTable';
 import { supabase } from '@/infrastructure/api/supabase';
 import { useToast } from '@/shared/hooks/useToast';
 import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
+import { AIInsightRepository } from '@/infrastructure/repositories/aiInsight.repository';
+import { FuturesContractSpecRepository } from '@/infrastructure/repositories/futuresContractSpec.repository';
 import { logger } from '@/shared/utils/logger';
+import { SubscriptionService } from '@/infrastructure/services/subscription.service';
+import { getSubscriptionStatus, cancelSubscription, createBillingPortalSession } from '@/infrastructure/services/stripe.service';
+import { CreditCard, XCircle, Loader2 } from 'lucide-react';
 
 export const Settings = () => {
   const user = useAuthStore((state) => state.user);
@@ -28,10 +33,34 @@ export const Settings = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Subscription state
+  const [subscriptionInfo, setSubscriptionInfo] = useState<Awaited<ReturnType<typeof SubscriptionService.getSubscriptionInfo>> | null>(null);
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   
   // Load user preferences
   const { data: preferences, isLoading: preferencesLoading } = useUserPreferences(userId);
   const updatePreferences = useUpdateUserPreferences(userId);
+
+  // Load subscription info
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadSubscription = async () => {
+      try {
+        const info = await SubscriptionService.getSubscriptionInfo(userId);
+        setSubscriptionInfo(info);
+      } catch (error) {
+        logger.error('Error loading subscription info', error);
+      } finally {
+        setIsLoadingSubscription(false);
+      }
+    };
+
+    loadSubscription();
+  }, [userId]);
 
   // Format currency function (moved outside conditional render)
   const formatCurrency = useCallback((amount: number) => {
@@ -184,7 +213,13 @@ export const Settings = () => {
       // 8. Delete portfolio_snapshots (portfolio history)
       await PortfolioSnapshotRepository.deleteAllForUser(userId);
 
-      // 9. Delete imports
+      // 9. Delete AI insights
+      await AIInsightRepository.deleteAllForUser(userId);
+
+      // 10. Delete futures contract specs
+      await FuturesContractSpecRepository.deleteAllForUser(userId);
+
+      // 11. Delete imports
       const { error: importsError } = await supabase
         .from('imports')
         .delete()
@@ -192,7 +227,7 @@ export const Settings = () => {
 
       if (importsError) throw importsError;
 
-      // 10. Delete user_preferences (will be recreated on next load)
+      // 12. Delete user_preferences (will be recreated on next load)
       const { error: preferencesError } = await supabase
         .from('user_preferences')
         .delete()
@@ -421,6 +456,135 @@ export const Settings = () => {
                 </div>
               </div>
 
+              {/* Subscription Management */}
+              <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                    Subscription
+                  </h3>
+                </div>
+                
+                {isLoadingSubscription ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
+                    <span className="ml-2 text-slate-600 dark:text-slate-400">Loading subscription info...</span>
+                  </div>
+                ) : subscriptionInfo ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800/50 rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Status</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          subscriptionInfo.isActive 
+                            ? subscriptionInfo.status === 'trialing'
+                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                            : subscriptionInfo.status === 'canceled'
+                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
+                        }`}>
+                          {subscriptionInfo.status === 'trialing' ? 'Free Trial' : 
+                           subscriptionInfo.status === 'active' ? 'Active' :
+                           subscriptionInfo.status === 'canceled' ? 'Canceled' :
+                           subscriptionInfo.status === 'past_due' ? 'Past Due' :
+                           subscriptionInfo.status === 'unpaid' ? 'Unpaid' :
+                           subscriptionInfo.status || 'No Subscription'}
+                        </span>
+                      </div>
+                      {subscriptionInfo.price !== null && subscriptionInfo.price > 0 && (
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Price</span>
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            ${subscriptionInfo.price.toFixed(2)}/month
+                          </span>
+                        </div>
+                      )}
+                      {subscriptionInfo.isEarlyAdopter && (
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Plan</span>
+                          <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                            Early Adopter (Locked In)
+                          </span>
+                        </div>
+                      )}
+                      {subscriptionInfo.isFreeForever && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Plan</span>
+                          <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                            Free Forever
+                          </span>
+                        </div>
+                      )}
+                      {!subscriptionInfo.isActive && !subscriptionInfo.isFreeForever && !subscriptionInfo.subscriptionId && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            Start your 14-day free trial today. No credit card required until after the trial period.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3">
+                      {subscriptionInfo.customerId && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const { url } = await createBillingPortalSession(userId);
+                              window.location.href = url;
+                            } catch (error) {
+                              toast.error('Failed to open billing portal', {
+                                description: error instanceof Error ? error.message : 'Please try again.',
+                              });
+                            }
+                          }}
+                          className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-slate-200 rounded-lg font-medium transition-all"
+                        >
+                          Manage Billing
+                        </button>
+                      )}
+                      {(subscriptionInfo.isActive || subscriptionInfo.status === 'trialing') && !subscriptionInfo.isFreeForever && subscriptionInfo.subscriptionId && (
+                        <button
+                          onClick={() => setShowCancelDialog(true)}
+                          className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Cancel Subscription
+                        </button>
+                      )}
+                      {!subscriptionInfo.isActive && !subscriptionInfo.isFreeForever && !subscriptionInfo.subscriptionId && (
+                        <button
+                          onClick={() => {
+                            window.location.href = '/checkout';
+                          }}
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-lg font-medium transition-all"
+                        >
+                          Subscribe Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800/50 rounded-xl">
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                        You don't have an active subscription. Start your 14-day free trial today!
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        window.location.href = '/checkout';
+                      }}
+                      className="w-full px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-lg font-medium transition-all"
+                    >
+                      Start Free Trial
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Danger Zone */}
               <div className="bg-gradient-to-br from-red-50 dark:from-red-950/30 to-red-100 dark:to-red-900/20 backdrop-blur-sm rounded-2xl border border-red-200 dark:border-red-800/50 p-6 shadow-sm dark:shadow-none">
                 <div className="flex items-center gap-3 mb-6">
@@ -494,6 +658,8 @@ export const Settings = () => {
                   <li>All cash transactions and balances</li>
                   <li>All strategies and journal entries</li>
                   <li>All imports and position matches</li>
+                  <li>All AI insights</li>
+                  <li>All futures contract specifications</li>
                   <li>Your preferences (will be reset to defaults)</li>
                 </ul>
               </div>
@@ -545,6 +711,82 @@ export const Settings = () => {
           </div>
         </div>
       )}
+
+      {/* Cancel Subscription Dialog */}
+      {showCancelDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-white dark:from-slate-900 to-slate-50 dark:to-slate-800 rounded-2xl border border-red-200 dark:border-red-800/50 shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-xl bg-red-500/10">
+                <XCircle className="w-6 h-6 text-red-400" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                Cancel Subscription
+              </h3>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Are you sure you want to cancel your subscription? Your subscription will remain active until the end of your current billing period, and you'll continue to have access to all features until then.
+              </p>
+
+              {subscriptionInfo?.status === 'trialing' && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-xl">
+                  <p className="text-sm text-amber-800 dark:text-amber-400">
+                    <strong>Note:</strong> You're currently in your free trial period. Canceling now will end your trial immediately.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowCancelDialog(false)}
+                  disabled={isCanceling}
+                  className="flex-1 px-4 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed text-slate-900 dark:text-slate-200 rounded-xl font-semibold transition-all"
+                >
+                  Keep Subscription
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsCanceling(true);
+                    try {
+                      await cancelSubscription(userId);
+                      toast.success('Subscription canceled', {
+                        description: 'Your subscription will remain active until the end of the billing period.',
+                      });
+                      setShowCancelDialog(false);
+                      // Reload subscription info
+                      const info = await SubscriptionService.getSubscriptionInfo(userId);
+                      setSubscriptionInfo(info);
+                    } catch (error) {
+                      toast.error('Failed to cancel subscription', {
+                        description: error instanceof Error ? error.message : 'Please try again.',
+                      });
+                    } finally {
+                      setIsCanceling(false);
+                    }
+                  }}
+                  disabled={isCanceling}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-900/50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  {isCanceling ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Canceling...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      Cancel Subscription
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
