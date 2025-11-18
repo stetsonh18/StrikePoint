@@ -57,6 +57,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       exclude: ['lucide-react'],
+      include: ['react', 'react-dom'],
     },
     build: {
       // Generate source maps for production (will be uploaded to Sentry)
@@ -68,24 +69,33 @@ export default defineConfig(({ mode }) => {
       // Optimize chunk splitting
       rollupOptions: {
         output: {
+          // Ensure proper chunk dependencies
+          chunkFileNames: (chunkInfo) => {
+            return isProduction 
+              ? 'assets/js/[name]-[hash].js'
+              : 'assets/js/[name].js';
+          },
           manualChunks: (id) => {
             // Separate vendor chunks for better caching
             if (id.includes('node_modules')) {
-              // React ecosystem
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              // React ecosystem - must be first to ensure React is available
+              if (
+                id.includes('react') || 
+                id.includes('react-dom') || 
+                id.includes('react-router') ||
+                id.includes('@tanstack/react-query') ||
+                id.includes('@tanstack/react-table') ||
+                id.includes('zustand')
+              ) {
                 return 'react-vendor';
               }
-              // TanStack Query
-              if (id.includes('@tanstack/react-query')) {
-                return 'query-vendor';
-              }
-              // UI libraries
+              // UI libraries (may depend on React)
               if (id.includes('lucide-react') || id.includes('sonner')) {
-                return 'ui-vendor';
+                return 'react-vendor'; // Put in react-vendor to ensure React is available
               }
-              // Charts
+              // Charts (may depend on React)
               if (id.includes('recharts')) {
-                return 'chart-vendor';
+                return 'react-vendor'; // Put in react-vendor to ensure React is available
               }
               // Supabase
               if (id.includes('@supabase')) {
@@ -95,14 +105,11 @@ export default defineConfig(({ mode }) => {
               if (id.includes('@sentry')) {
                 return 'sentry-vendor';
               }
-              // Other vendor code
-              return 'vendor';
+              // Everything else - put in react-vendor to ensure React is available
+              // This prevents issues where vendor code tries to access React before it's loaded
+              return 'react-vendor';
             }
           },
-          // Optimize chunk file names
-          chunkFileNames: isProduction 
-            ? 'assets/js/[name]-[hash].js'
-            : 'assets/js/[name].js',
           entryFileNames: isProduction
             ? 'assets/js/[name]-[hash].js'
             : 'assets/js/[name].js',

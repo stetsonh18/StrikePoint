@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
 import type { AssetType, OptionChainEntry } from '@/domain/types';
 import { TransactionService } from '@/infrastructure/services/transactionService';
@@ -98,7 +98,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const { data: categories = [], isLoading: categoriesLoading } = useTransactionCodeCategories();
   
   // Filter categories relevant to cash transactions
-  const cashRelevantCategories = React.useMemo(() => {
+  const cashRelevantCategories = useMemo(() => {
     return categories.filter(cat => 
       ['Cash Movement', 'Fees'].includes(cat)
     );
@@ -110,7 +110,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   );
   
   // Set default category when categories are loaded
-  React.useEffect(() => {
+  useEffect(() => {
     if (cashRelevantCategories.length > 0 && !cashTransactionCategory) {
       // Default to Cash Movement
       setCashTransactionCategory('Cash Movement');
@@ -118,7 +118,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   }, [cashRelevantCategories, cashTransactionCategory]);
   
   // Set default transaction code when codes are loaded for selected category
-  React.useEffect(() => {
+  useEffect(() => {
     if (transactionCodes.length > 0 && !cashTransactionCode) {
       // Default to first code in the list
       setCashTransactionCode(transactionCodes[0].trans_code);
@@ -126,7 +126,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   }, [transactionCodes, cashTransactionCode]);
   
   // Reset transaction code when category changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (cashTransactionCategory) {
       setCashTransactionCode('');
     }

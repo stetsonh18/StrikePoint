@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Calendar, TrendingUp, TrendingDown, Filter } from 'lucide-react';
 import { useOptionsChain } from '@/application/hooks/useOptionsChain';
 import type { OptionChainEntry } from '@/domain/types';
@@ -34,7 +34,7 @@ export const OptionsChain: React.FC<OptionsChainProps> = ({
   }, [chainData]);
 
   // Set first expiration as default
-  React.useEffect(() => {
+  useEffect(() => {
     if (expirations.length > 0 && !selectedExpiration) {
       setSelectedExpiration(expirations[0]);
     }
