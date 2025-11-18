@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { SubscriptionService } from '@/infrastructure/services/subscription.service';
@@ -17,23 +17,23 @@ export function Checkout() {
   const [isLoading, setIsLoading] = useState(false);
   const [pricing, setPricing] = useState<Awaited<ReturnType<typeof SubscriptionService.getPricing>> | null>(null);
   const [isLoadingPricing, setIsLoadingPricing] = useState(true);
+  const [isValidatingCode, setIsValidatingCode] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get discount code from URL if present
-  useEffect(() => {
-    const code = searchParams.get('code');
-    if (code) {
-      setDiscountCode(code);
-    }
-  }, [searchParams]);
-
-  // Load pricing
+  // Get discount code from URL if present and load initial pricing
   useEffect(() => {
     if (!userId) return;
 
+    const code = searchParams.get('code');
+    const initialCode = code || discountCode;
+
     const loadPricing = async () => {
       try {
-        const pricingData = await SubscriptionService.getPricing(userId, discountCode || undefined);
+        const pricingData = await SubscriptionService.getPricing(userId, initialCode || undefined);
         setPricing(pricingData);
+        if (code) {
+          setDiscountCode(code);
+        }
       } catch (error) {
         toast.error('Failed to load pricing', {
           description: error instanceof Error ? error.message : 'Please try again.',
@@ -44,7 +44,7 @@ export function Checkout() {
     };
 
     loadPricing();
-  }, [userId, discountCode, toast]);
+  }, [userId, searchParams, toast]); // Only run once when userId or URL changes
 
   const handleCheckout = async () => {
     if (!userId || !pricing) return;
@@ -90,21 +90,38 @@ export function Checkout() {
     }
   };
 
-  const handleDiscountCodeChange = async (code: string) => {
+  const handleDiscountCodeChange = (code: string) => {
     setDiscountCode(code);
-    setIsLoadingPricing(true);
     
-    try {
-      const pricingData = await SubscriptionService.getPricing(userId, code || undefined);
-      setPricing(pricingData);
-    } catch (error) {
-      toast.error('Invalid discount code', {
-        description: error instanceof Error ? error.message : 'Please check your code and try again.',
-      });
-    } finally {
-      setIsLoadingPricing(false);
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+    
+    // Debounce the pricing update (wait 500ms after user stops typing)
+    setIsValidatingCode(true);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const pricingData = await SubscriptionService.getPricing(userId, code || undefined);
+        setPricing(pricingData);
+      } catch (error) {
+        toast.error('Invalid discount code', {
+          description: error instanceof Error ? error.message : 'Please check your code and try again.',
+        });
+      } finally {
+        setIsValidatingCode(false);
+      }
+    }, 500);
   };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!user) {
     navigate('/login');
@@ -202,17 +219,24 @@ export function Checkout() {
             <label htmlFor="discount-code" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
               Discount Code (Optional)
             </label>
-            <div className="flex gap-2">
-              <input
-                id="discount-code"
-                type="text"
-                value={discountCode}
-                onChange={(e) => handleDiscountCodeChange(e.target.value)}
-                placeholder="Enter discount code"
-                className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+            <div className="flex gap-2 items-center">
+              <div className="flex-1 relative">
+                <input
+                  id="discount-code"
+                  type="text"
+                  value={discountCode}
+                  onChange={(e) => handleDiscountCodeChange(e.target.value)}
+                  placeholder="Enter discount code"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {isValidatingCode && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                  </div>
+                )}
+              </div>
             </div>
-            {discountCode && discountCode.toLowerCase() === 'free4ever' && (
+            {discountCode && !isValidatingCode && pricing?.isFreeForever && (
               <p className="text-sm text-emerald-600 dark:text-emerald-400">
                 ✓ Valid discount code! You'll get free access forever.
               </p>
