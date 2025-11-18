@@ -6,6 +6,7 @@ import { FuturesContractManager } from '../components/FuturesContractManager';
 import { DailyBalanceTable } from '../components/DailyBalanceTable';
 import { supabase } from '@/infrastructure/api/supabase';
 import { useToast } from '@/shared/hooks/useToast';
+import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { logger } from '@/shared/utils/logger';
 
 export const Settings = () => {
@@ -180,7 +181,10 @@ export const Settings = () => {
 
       if (journalError) throw journalError;
 
-      // 8. Delete imports
+      // 8. Delete portfolio_snapshots (portfolio history)
+      await PortfolioSnapshotRepository.deleteAllForUser(userId);
+
+      // 9. Delete imports
       const { error: importsError } = await supabase
         .from('imports')
         .delete()
@@ -188,7 +192,7 @@ export const Settings = () => {
 
       if (importsError) throw importsError;
 
-      // 9. Delete user_preferences (will be recreated on next load)
+      // 10. Delete user_preferences (will be recreated on next load)
       const { error: preferencesError } = await supabase
         .from('user_preferences')
         .delete()
@@ -435,7 +439,7 @@ export const Settings = () => {
                           Delete All Data
                         </h4>
                         <p className="text-sm text-slate-600 dark:text-slate-400">
-                          Permanently delete all positions, transactions, cash transactions, strategies, journal entries, and other data. This action cannot be undone.
+                          Permanently delete all positions, transactions, cash transactions, strategies, journal entries, portfolio history, and other data. This action cannot be undone.
                         </p>
                       </div>
                       <button
