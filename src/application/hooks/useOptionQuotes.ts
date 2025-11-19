@@ -27,7 +27,7 @@ export function useOptionQuotes(
     },
     enabled: enabled && optionSymbols.length > 0,
     staleTime: 30 * 1000, // Cache for 30 seconds (real-time data)
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 1, // Only retry once on failure
     ...options,
   });
@@ -56,7 +56,7 @@ export function useOptionQuote(
     },
     enabled: enabled && !!optionSymbol,
     staleTime: 30 * 1000, // Cache for 30 seconds
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 1,
     ...options,
   });

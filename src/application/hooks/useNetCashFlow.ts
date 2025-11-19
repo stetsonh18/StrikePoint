@@ -35,7 +35,7 @@ export function useNetCashFlow(
     },
     enabled: !!userId,
     staleTime: 30 * 1000, // Cache for 30 seconds
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     ...options,
   });
 }

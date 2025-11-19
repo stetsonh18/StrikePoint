@@ -27,7 +27,7 @@ export function useStockQuotes(
     },
     enabled: enabled && symbols.length > 0,
     staleTime: 30 * 1000, // Cache for 30 seconds (real-time data)
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 1, // Only retry once on failure
     ...options,
   });
@@ -48,7 +48,7 @@ export function useStockQuote(
     queryFn: () => getStockQuote(symbol),
     enabled: enabled && !!symbol,
     staleTime: 30 * 1000, // Cache for 30 seconds
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     ...options,
   });
 }

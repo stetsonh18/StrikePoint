@@ -56,8 +56,9 @@ export const InputField: React.FC<InputFieldProps> = ({
     <FormField label={label} error={error} required={required} hint={hint}>
       <input
         className={`
-          w-full px-4 py-3 bg-slate-800/50 border rounded-xl text-slate-300 
+          w-full px-4 py-3 md:py-2.5 bg-slate-800/50 border rounded-xl text-slate-300 
           placeholder-slate-500 focus:outline-none focus:ring-2 transition-all
+          text-base md:text-sm
           ${error 
             ? 'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50' 
             : 'border-slate-700/50 focus:ring-emerald-500/50 focus:border-emerald-500/50'
@@ -89,8 +90,9 @@ export const TextareaField: React.FC<TextareaFieldProps> = ({
     <FormField label={label} error={error} required={required} hint={hint}>
       <textarea
         className={`
-          w-full px-4 py-3 bg-slate-800/50 border rounded-xl text-slate-300 
+          w-full px-4 py-3 md:py-2.5 bg-slate-800/50 border rounded-xl text-slate-300 
           placeholder-slate-500 focus:outline-none focus:ring-2 transition-all resize-none
+          text-base md:text-sm
           ${error 
             ? 'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50' 
             : 'border-slate-700/50 focus:ring-emerald-500/50 focus:border-emerald-500/50'
@@ -124,8 +126,9 @@ export const SelectField: React.FC<SelectFieldProps> = ({
     <FormField label={label} error={error} required={required} hint={hint}>
       <select
         className={`
-          w-full px-4 py-3 bg-slate-800/50 border rounded-xl text-slate-300 
+          w-full px-4 py-3 md:py-2.5 bg-slate-800/50 border rounded-xl text-slate-300 
           focus:outline-none focus:ring-2 transition-all
+          text-base md:text-sm
           [&>option]:bg-slate-800 [&>option]:text-slate-300
           ${error 
             ? 'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50' 

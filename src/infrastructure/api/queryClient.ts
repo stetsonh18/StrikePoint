@@ -8,7 +8,7 @@ export const queryClient = new QueryClient({
       gcTime: 1000 * 60 * 10, // 10 minutes (formerly cacheTime)
       refetchOnWindowFocus: true, // Refetch when user returns to tab
       refetchOnReconnect: true,
-      refetchInterval: 60 * 1000, // Auto-refetch every minute as fallback
+      refetchInterval: 5 * 60 * 1000, // Auto-refetch every 5 minutes as fallback
       // Query deduplication is enabled by default in React Query
       // Multiple components requesting the same query will share the same request
       structuralSharing: true, // Ensure queries with the same key are deduplicated

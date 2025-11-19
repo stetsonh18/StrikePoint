@@ -46,4 +46,17 @@
     min-height: 300px;
     width: 100%;
   }
+
+  /* Mobile touch targets - minimum 44x44px for accessibility */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Mobile-friendly table wrapper */
+  @media (max-width: 768px) {
+    .table-wrapper {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
 }

@@ -34,7 +34,7 @@ export function useOptionsChain(
     },
     enabled: enabled && !!underlyingSymbol,
     staleTime: 60 * 1000, // Cache for 1 minute (options data changes frequently)
-    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 1,
     ...options,
   });

@@ -23,7 +23,7 @@ export const RootLayout = () => {
       <Sidebar />
       <div className="relative flex-1 flex flex-col overflow-hidden w-full md:w-auto">
         <Header />
-        <main id="main-content" className="flex-1 overflow-auto px-4 md:px-6 py-4 md:py-6" tabIndex={-1}>
+        <main id="main-content" className="flex-1 overflow-auto px-3 md:px-6 py-3 md:py-6" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

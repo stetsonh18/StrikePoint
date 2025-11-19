@@ -36,7 +36,7 @@ export function useMarketStatus(assetType: AssetType): {
           return 'closed' as MarketStatus;
       }
     },
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     staleTime: 30000, // Consider data stale after 30 seconds
   });
 

@@ -20,7 +20,7 @@ export function useCryptoQuotes(
     queryFn: () => getCryptoQuotes(coinIds),
     enabled: enabled && coinIds.length > 0,
     staleTime: 60 * 1000, // Cache for 60 seconds (crypto prices update frequently)
-    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     ...options,
   });
 }
@@ -40,7 +40,7 @@ export function useCryptoQuote(
     queryFn: () => getCryptoQuote(coinId),
     enabled: enabled && !!coinId,
     staleTime: 60 * 1000, // Cache for 60 seconds
-    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     ...options,
   });
 }

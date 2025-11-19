@@ -19,7 +19,7 @@ export function useSubscriptionStatus() {
     },
     enabled: !!userId,
     staleTime: 30 * 1000, // Consider data stale after 30 seconds
-    refetchInterval: 30 * 1000, // Refetch every 30 seconds to catch subscription updates
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 2,
   });
 }
@@ -41,7 +41,7 @@ export function useNeedsSubscription() {
     },
     enabled: !!userId,
     staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     retry: 2,
   });
 }

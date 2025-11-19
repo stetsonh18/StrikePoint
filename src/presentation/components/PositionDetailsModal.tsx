@@ -74,7 +74,7 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
     optionSymbols,
     optionSymbols.length > 0,
     {
-      refetchInterval: 30 * 1000, // Refetch every 30 seconds for real-time updates
+      refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
     }
   );
 

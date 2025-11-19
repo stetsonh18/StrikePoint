@@ -468,7 +468,7 @@ export const Dashboard = () => {
       )}
 
       {/* Zone 1: Primary Metrics - Most Important */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
         {portfolioLoading || statsLoading ? (
           <StatCardSkeleton count={3} />
         ) : (
@@ -504,7 +504,7 @@ export const Dashboard = () => {
       {/* Zone 2: Performance Summary Card */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Performance Summary</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
           <div className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-800/30 rounded-xl">
             <div>
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Today</p>
@@ -594,7 +594,7 @@ export const Dashboard = () => {
       {/* Zone 4: Asset Allocation - Enhanced with Values */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Asset Allocation</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           <AssetTypeCard
             title="Stocks"
             count={assetBreakdown.stocks.count}
@@ -634,7 +634,7 @@ export const Dashboard = () => {
       </div>
 
       {/* Main Content Area - 2 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Left Column - Top Performing Positions */}
         <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
           <div className="flex items-center gap-2 mb-4">
