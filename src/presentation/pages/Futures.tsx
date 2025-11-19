@@ -20,6 +20,7 @@ import { SortableTableHeader } from '@/presentation/components/SortableTableHead
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
 import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
+import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
 const Futures: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -133,7 +134,7 @@ const Futures: React.FC = () => {
       filtered = filtered.filter(
         (tx) =>
           tx.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          tx.contractName.toLowerCase().includes(searchQuery.toLowerCase())
+          tx.contractMonth.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     return sortData(filtered, transactionSort);
@@ -156,29 +157,6 @@ const Futures: React.FC = () => {
       contractsCount: positions.reduce((sum, pos) => sum + pos.quantity, 0),
     };
   }, [positions, closedPositions]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
-
-  const formatPercent = (percent: number) => {
-    return `${percent >= 0 ? '+' : ''}${percent.toFixed(2)}%`;
-  };
-
-  const formatDate = formatDateUtil;
-
-  const getDaysToExpiration = (expirationDate: string | null) => {
-    if (!expirationDate) return 0;
-    const today = new Date();
-    const expDate = new Date(expirationDate);
-    const diffTime = expDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
 
   // Helper function to parse contract month (e.g., "DEC25" -> { monthCode: "Z", year: "25" })
   const parseContractMonth = useCallback((contractMonth: string): { monthCode: string; year: string } | null => {
@@ -210,6 +188,50 @@ const Futures: React.FC = () => {
 
     return null;
   }, []);
+
+  // Compute close form initial values
+  const closeFormInitialValues = useMemo(() => {
+    if (!showCloseForm || !selectedPositionForClose) return null;
+    
+    // Parse contract month to get month code and year
+    const parsedMonth = parseContractMonth(selectedPositionForClose.contractMonth);
+    const monthCode = parsedMonth?.monthCode || '';
+    const year = parsedMonth?.year || '';
+
+    // Find contract spec by symbol
+    const contractSpec = contractSpecs.find(spec => spec.symbol === selectedPositionForClose.symbol);
+
+    return {
+      contractId: contractSpec?.id || '',
+      transactionType: 'Sell' as const,
+      maxQuantity: selectedPositionForClose.quantity,
+      contractMonth: monthCode,
+      contractYear: year,
+    };
+  }, [showCloseForm, selectedPositionForClose, contractSpecs, parseContractMonth]);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const formatPercent = (percent: number) => {
+    return `${percent >= 0 ? '+' : ''}${percent.toFixed(2)}%`;
+  };
+
+  const formatDate = formatDateUtil;
+
+  const getDaysToExpiration = (expirationDate: string | null) => {
+    if (!expirationDate) return 0;
+    const today = new Date();
+    const expDate = new Date(expirationDate);
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
 
   const handleClosePosition = useCallback((position: FuturesContract) => {
     setSelectedPositionForClose(position);
@@ -264,14 +286,14 @@ const Futures: React.FC = () => {
   }, [confirmation, deletePositionMutation, allPositions]);
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Futures
           </h1>
-          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-sm md:text-lg">
             Track your futures positions and contracts
           </p>
           <div className="mt-3 flex items-center gap-3">
@@ -282,14 +304,14 @@ const Futures: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <button className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all touch-target w-full sm:w-auto">
             <Download size={18} className="inline mr-2" />
             Export
           </button>
           <button
             onClick={() => setShowTransactionForm(true)}
-            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
+            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all touch-target w-full sm:w-auto"
           >
             <Plus size={18} className="inline mr-2" />
             Add Transaction
@@ -298,7 +320,7 @@ const Futures: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-6">
         <StatCard
           title="Realized P&L"
           value={formatCurrency(portfolioSummary.realizedPL)}
@@ -337,7 +359,7 @@ const Futures: React.FC = () => {
         <div className="flex border-b border-slate-200 dark:border-slate-800/50">
           <button
             onClick={() => setActiveTab('positions')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`flex-1 px-4 md:px-6 py-3 font-medium transition-all touch-target ${
               activeTab === 'positions'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -347,7 +369,7 @@ const Futures: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('transactions')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`flex-1 px-4 md:px-6 py-3 font-medium transition-all touch-target ${
               activeTab === 'transactions'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -376,8 +398,95 @@ const Futures: React.FC = () => {
 
         {/* Positions Tab */}
         {activeTab === 'positions' && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <>
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {positionsLoading ? (
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 animate-pulse">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 mb-3"></div>
+                      <div className="space-y-2">
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredPositions.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  No positions found
+                </div>
+              ) : (
+                filteredPositions.map((position) => {
+                  const daysToExp = getDaysToExpiration(position.expirationDate);
+                  return (
+                    <MobileTableCard key={position.id}>
+                      <MobileTableCardHeader
+                        title={position.symbol}
+                        subtitle={position.contractName}
+                        actions={
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditPosition(position);
+                              }}
+                              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                              title="Edit position"
+                            >
+                              <Edit size={18} />
+                            </button>
+                          </div>
+                        }
+                      />
+                      <MobileTableCardRow label="Month" value={position.contractMonth} />
+                      <MobileTableCardRow 
+                        label="Expiration" 
+                        value={
+                          <div className="flex items-center gap-1.5">
+                            <Calendar size={14} className="text-slate-500 dark:text-slate-400" />
+                            <span>{formatDateUtil(position.expirationDate)}</span>
+                            <span className={`text-xs ${daysToExp < 7 ? 'text-red-500 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                              ({daysToExp}d)
+                            </span>
+                          </div>
+                        } 
+                      />
+                      <MobileTableCardRow label="Contracts" value={position.quantity} />
+                      <MobileTableCardRow label="Avg Price" value={formatCurrency(position.averagePrice)} />
+                      <MobileTableCardRow label="Current Price" value={formatCurrency(position.currentPrice || 0)} />
+                      <MobileTableCardRow
+                        label="Unrealized P&L"
+                        value={formatCurrency(position.unrealizedPL || 0)}
+                        positive={(position.unrealizedPL || 0) >= 0}
+                        negative={(position.unrealizedPL || 0) < 0}
+                        highlight
+                      />
+                      {position.marginRequirement && (
+                        <MobileTableCardRow label="Margin" value={formatCurrency(position.marginRequirement)} />
+                      )}
+                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClosePosition(position);
+                          }}
+                          className="w-full px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all touch-target"
+                        >
+                          Close Position
+                        </button>
+                      </div>
+                    </MobileTableCard>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto table-wrapper">
+              <table className="w-full">
               <thead className="bg-slate-100 dark:bg-slate-800/50">
                 <tr>
                   <SortableTableHeader
@@ -554,12 +663,84 @@ const Futures: React.FC = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Transactions Tab */}
         {activeTab === 'transactions' && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <>
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {transactionsLoading ? (
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 animate-pulse">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 mb-3"></div>
+                      <div className="space-y-2">
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredTransactions.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  No transactions found
+                </div>
+              ) : (
+                filteredTransactions.map((transaction) => (
+                  <MobileTableCard key={transaction.id}>
+                    <MobileTableCardHeader
+                      title={transaction.symbol}
+                      subtitle={formatDateUtil(transaction.activityDate)}
+                      badge={
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            transaction.transactionType === 'buy'
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30'
+                          }`}
+                        >
+                          {transaction.transactionType.toUpperCase()}
+                        </span>
+                      }
+                      actions={
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditTransaction(transaction);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                            title="Edit transaction"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTransaction(transaction);
+                            }}
+                            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors touch-target"
+                            title="Delete transaction"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      }
+                    />
+                    <MobileTableCardRow label="Contracts" value={transaction.quantity} />
+                    <MobileTableCardRow label="Price" value={formatCurrency(transaction.price || 0)} />
+                    <MobileTableCardRow label="Fees" value={formatCurrency(transaction.fees || 0)} />
+                    <MobileTableCardRow label="Amount" value={formatCurrency(Math.abs(transaction.amount || 0))} highlight />
+                  </MobileTableCard>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto table-wrapper">
+              <table className="w-full">
               <thead className="bg-slate-100 dark:bg-slate-800/50">
                 <tr>
                   <SortableTableHeader
@@ -629,23 +810,25 @@ const Futures: React.FC = () => {
                   filteredTransactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-slate-100 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
-                        {formatDate(tx.date)}
+                        {formatDate(tx.activityDate)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="font-medium text-slate-900 dark:text-slate-100">{tx.symbol}</div>
-                          <div className="text-sm text-slate-500 dark:text-slate-400">{tx.contractName}</div>
+                          {tx.contractMonth && (
+                            <div className="text-sm text-slate-500 dark:text-slate-400">{tx.contractMonth}</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            tx.transactionType === 'Buy'
+                            tx.transactionType === 'buy'
                               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                               : 'bg-red-500/20 text-red-400 border border-red-500/30'
                           }`}
                         >
-                          {tx.transactionType}
+                          {tx.transactionType.charAt(0).toUpperCase() + tx.transactionType.slice(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
@@ -694,6 +877,7 @@ const Futures: React.FC = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
@@ -758,39 +942,23 @@ const Futures: React.FC = () => {
       />
 
       {/* Close Position Form Modal */}
-      {showCloseForm && selectedPositionForClose && (() => {
-        // Parse contract month to get month code and year
-        const parsedMonth = parseContractMonth(selectedPositionForClose.contractMonth);
-        const monthCode = parsedMonth?.monthCode || '';
-        const year = parsedMonth?.year || '';
-
-        // Find contract spec by symbol
-        const contractSpec = contractSpecs.find(spec => spec.symbol === selectedPositionForClose.symbol);
-
-        return (
-          <FuturesTransactionForm
-            userId={userId}
-            initialValues={{
-              contractId: contractSpec?.id || '',
-              transactionType: 'Sell',
-              maxQuantity: selectedPositionForClose.quantity,
-              contractMonth: monthCode,
-              contractYear: year,
-            }}
-            onClose={() => {
-              setShowCloseForm(false);
-              setSelectedPositionForClose(null);
-            }}
-            onSuccess={() => {
-              queryClient.invalidateQueries({ queryKey: ['positions'] });
-              queryClient.invalidateQueries({ queryKey: ['transactions'] });
-              queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
-              setShowCloseForm(false);
-              setSelectedPositionForClose(null);
-            }}
-          />
-        );
-      })()}
+      {showCloseForm && selectedPositionForClose && closeFormInitialValues && (
+        <FuturesTransactionForm
+          userId={userId}
+          initialValues={closeFormInitialValues}
+          onClose={() => {
+            setShowCloseForm(false);
+            setSelectedPositionForClose(null);
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['positions'] });
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+            setShowCloseForm(false);
+            setSelectedPositionForClose(null);
+          }}
+        />
+      )}
     </div>
   );
 };

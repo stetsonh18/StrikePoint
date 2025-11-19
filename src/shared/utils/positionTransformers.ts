@@ -9,7 +9,7 @@ import type {
   CryptoTransaction,
   FuturesTransaction,
 } from '@/domain/types';
-import { parseContractSymbol, calculateExpirationDate } from '@/domain/types/futures.types';
+import { parseContractSymbol, calculateExpirationDate, FUTURES_MONTH_CODES } from '@/domain/types/futures.types';
 
 /**
  * Transform database Position to StockPosition
@@ -357,17 +357,37 @@ export function toCryptoTransaction(transaction: Transaction): CryptoTransaction
  * Transform database Transaction to FuturesTransaction
  */
 export function toFuturesTransaction(transaction: Transaction): FuturesTransaction {
+  // Parse contract month from instrument field (e.g., "ESH25" -> "MAR25")
+  let contractMonth = '';
+  if (transaction.instrument) {
+    const parsed = parseContractSymbol(transaction.instrument);
+    if (parsed) {
+      const monthName = FUTURES_MONTH_CODES[parsed.monthCode];
+      const year = parsed.year.length === 2 ? `20${parsed.year}` : parsed.year;
+      contractMonth = monthName 
+        ? `${monthName.toUpperCase().slice(0, 3)}${year.slice(-2)}` 
+        : `${parsed.monthCode}${parsed.year}`;
+    }
+  }
+
+  // Convert transaction code to lowercase for type compatibility
+  const transactionCode = transaction.transaction_code?.toLowerCase() || 'buy';
+  const transactionType = (transactionCode === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell';
+
   return {
     id: transaction.id,
-    date: transaction.activity_date,
+    userId: transaction.user_id,
     symbol: transaction.underlying_symbol || transaction.instrument || '',
-    contractName: transaction.instrument || '',
-    transactionType: transaction.transaction_code as 'Buy' | 'Sell',
+    contractMonth,
+    transactionType,
     quantity: Math.abs(transaction.quantity || 0),
     price: transaction.price || 0,
-    fees: transaction.fees || 0,
     amount: transaction.amount || 0,
-    description: transaction.description || '',
+    fees: transaction.fees || 0,
+    activityDate: transaction.activity_date,
+    processDate: transaction.process_date,
+    settleDate: transaction.settle_date,
+    createdAt: transaction.created_at,
   };
 }
 
