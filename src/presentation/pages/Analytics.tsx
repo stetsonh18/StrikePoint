@@ -317,20 +317,20 @@ export const Analytics = () => {
   );
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Analytics
           </h1>
-          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-sm md:text-lg">
             Detailed insights into your trading performance
           </p>
         </div>
         <div className="relative" ref={timePeriodMenuRef}>
           <button
             onClick={() => setShowTimePeriodMenu(!showTimePeriodMenu)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-xl font-medium transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-xl font-medium transition-all touch-target w-full sm:w-auto"
           >
             <Calendar className="w-4 h-4" />
             {TIME_PERIOD_LABELS[timePeriod]}
@@ -364,10 +364,10 @@ export const Analytics = () => {
 
       {/* Tabs */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 overflow-hidden shadow-sm dark:shadow-none">
-        <div className="flex border-b border-slate-200 dark:border-slate-800/50">
+        <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-800/50 scrollbar-hide">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
               activeTab === 'all'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -377,7 +377,7 @@ export const Analytics = () => {
           </button>
           <button
             onClick={() => setActiveTab('stocks')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
               activeTab === 'stocks'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -387,7 +387,7 @@ export const Analytics = () => {
           </button>
           <button
             onClick={() => setActiveTab('options')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
               activeTab === 'options'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -397,7 +397,7 @@ export const Analytics = () => {
           </button>
           <button
             onClick={() => setActiveTab('crypto')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
               activeTab === 'crypto'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -407,7 +407,7 @@ export const Analytics = () => {
           </button>
           <button
             onClick={() => setActiveTab('futures')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
               activeTab === 'futures'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -418,7 +418,7 @@ export const Analytics = () => {
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {isLoading ? (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

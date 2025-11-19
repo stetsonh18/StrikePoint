@@ -20,6 +20,7 @@ import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog
 import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
 import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
+import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
 const Crypto: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -257,11 +258,11 @@ const Crypto: React.FC = () => {
   }, [confirmation, deleteTransactionMutation]);
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Cryptocurrency
           </h1>
           <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
@@ -271,14 +272,14 @@ const Crypto: React.FC = () => {
             <MarketStatusIndicator assetType="crypto" />
           </div>
         </div>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <button className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all touch-target w-full sm:w-auto">
             <Download size={18} className="inline mr-2" />
             Export
           </button>
           <button
             onClick={() => setShowTransactionForm(true)}
-            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all touch-target w-full sm:w-auto"
           >
             <Plus size={18} className="inline mr-2" />
             Add Trade
@@ -287,7 +288,7 @@ const Crypto: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-6">
         <StatCard
           title="Total Value"
           value={formatCurrency(portfolioSummary.totalValue)}
@@ -326,7 +327,7 @@ const Crypto: React.FC = () => {
         <div className="flex border-b border-slate-200 dark:border-slate-800/50">
           <button
             onClick={() => setActiveTab('positions')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`flex-1 px-4 md:px-6 py-3 font-medium transition-all touch-target ${
               activeTab === 'positions'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -336,7 +337,7 @@ const Crypto: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('transactions')}
-            className={`px-6 py-3 font-medium transition-all ${
+            className={`flex-1 px-4 md:px-6 py-3 font-medium transition-all touch-target ${
               activeTab === 'transactions'
                 ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
@@ -364,7 +365,153 @@ const Crypto: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="overflow-x-auto">
+        {/* Mobile Card Views */}
+        {activeTab === 'positions' && (
+          <div className="md:hidden space-y-3">
+            {positionsLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 animate-pulse">
+                    <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 mb-3"></div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredPositions.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                No positions found
+              </div>
+            ) : (
+              filteredPositions.map((position) => (
+                <MobileTableCard key={position.id}>
+                  <MobileTableCardHeader
+                    title={position.symbol}
+                    subtitle={position.name}
+                    actions={
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditPosition(position);
+                          }}
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                          title="Edit position"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePosition(position);
+                          }}
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors touch-target"
+                          title="Delete position"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    }
+                  />
+                  <MobileTableCardRow label="Quantity" value={position.quantity.toFixed(8)} />
+                  <MobileTableCardRow label="Avg Price" value={formatCurrency(position.averagePrice)} />
+                  <MobileTableCardRow label="Current Price" value={formatCurrency(position.currentPrice || 0)} />
+                  <MobileTableCardRow label="Market Value" value={formatCurrency(position.marketValue || 0)} highlight />
+                  <MobileTableCardRow
+                    label="Unrealized P&L"
+                    value={formatCurrency(position.unrealizedPL || 0)}
+                    positive={(position.unrealizedPL || 0) >= 0}
+                    negative={(position.unrealizedPL || 0) < 0}
+                    highlight
+                  />
+                  <MobileTableCardRow
+                    label="P&L %"
+                    value={formatPercent(position.unrealizedPLPercent || 0)}
+                    positive={(position.unrealizedPLPercent || 0) >= 0}
+                    negative={(position.unrealizedPLPercent || 0) < 0}
+                  />
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSellClick(position);
+                      }}
+                      className="w-full px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all touch-target"
+                    >
+                      Sell Position
+                    </button>
+                  </div>
+                </MobileTableCard>
+              ))
+            )}
+          </div>
+        )}
+
+        {activeTab === 'transactions' && (
+          <div className="md:hidden space-y-3">
+            {transactionsLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 animate-pulse">
+                    <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 mb-3"></div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredTransactions.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                No transactions found
+              </div>
+            ) : (
+              filteredTransactions.map((transaction) => (
+                <MobileTableCard key={transaction.id}>
+                  <MobileTableCardHeader
+                    title={transaction.symbol}
+                    subtitle={formatDateUtil(transaction.activityDate)}
+                    actions={
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditTransaction(transaction);
+                          }}
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                          title="Edit transaction"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTransaction(transaction);
+                          }}
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors touch-target"
+                          title="Delete transaction"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    }
+                  />
+                  <MobileTableCardRow label="Type" value={transaction.transactionType} />
+                  <MobileTableCardRow label="Quantity" value={transaction.quantity.toFixed(8)} />
+                  <MobileTableCardRow label="Price" value={formatCurrency(transaction.price || 0)} />
+                  <MobileTableCardRow label="Amount" value={formatCurrency(Math.abs(transaction.amount || 0))} highlight />
+                  <MobileTableCardRow label="Fees" value={formatCurrency(transaction.fees || 0)} />
+                </MobileTableCard>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Desktop Table Views */}
+        <div className="hidden md:block overflow-x-auto table-wrapper">
           {activeTab === 'positions' ? (
             <table className="w-full">
               <thead className="bg-slate-100 dark:bg-slate-800/50">

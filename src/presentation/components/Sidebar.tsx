@@ -40,11 +40,16 @@ export const Sidebar = () => {
           flex flex-col transition-all duration-300 relative
           fixed md:static inset-y-0 left-0 z-50
           ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          ${isMobileOpen ? 'pointer-events-auto' : 'pointer-events-none md:pointer-events-auto'}
+          hidden md:flex
         `}
+        style={{
+          display: isMobileOpen ? 'flex' : undefined
+        }}
       >
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 dark:from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
 
-      <div className="relative p-6 flex items-center justify-between">
+      <div className="relative p-6 flex items-center justify-between pointer-events-auto">
         {!isCollapsed && (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-glow-sm">
@@ -68,7 +73,7 @@ export const Sidebar = () => {
       {/* Close button for mobile */}
       <button
         onClick={closeMobileMenu}
-        className="absolute top-4 right-4 md:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
+        className="absolute top-4 right-4 md:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10 pointer-events-auto touch-target"
         aria-label="Close sidebar"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -87,7 +92,7 @@ export const Sidebar = () => {
         )}
       </button>
 
-      <nav className="relative flex-1 px-3 py-4 space-y-1.5">
+      <nav className="relative flex-1 px-3 py-4 space-y-1.5 pointer-events-auto">
         {NAVIGATION_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
@@ -102,7 +107,7 @@ export const Sidebar = () => {
               }}
               className={({ isActive }) =>
                 `
-                group relative flex items-center px-4 py-3.5 rounded-xl transition-all duration-200
+                group relative flex items-center px-4 py-3.5 rounded-xl transition-all duration-200 pointer-events-auto touch-target
                 ${
                   isActive
                     ? 'bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 text-emerald-400 shadow-glow-sm'

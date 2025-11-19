@@ -199,20 +199,20 @@ const Journal: React.FC = () => {
   const formatDate = formatDateUtil;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
             Trading Journal
           </h1>
-          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-sm md:text-lg">
             Document your trades, track lessons learned, and improve your strategy
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all"
+          className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-medium transition-all touch-target w-full sm:w-auto"
         >
           <Plus size={18} className="inline mr-2" />
           New Entry
@@ -220,7 +220,7 @@ const Journal: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
         <StatCard
           title="Total Entries"
           value={stats?.totalEntries.toString() || '0'}
@@ -256,11 +256,11 @@ const Journal: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 shadow-sm dark:shadow-none">
-        <div className="space-y-4">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-3 md:p-4 shadow-sm dark:shadow-none">
+        <div className="space-y-3 md:space-y-4">
           {/* First Row: Search and Entry Type */}
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="relative flex-1 min-w-[300px]">
+          <div className="flex flex-col sm:flex-row gap-3 md:gap-4 items-stretch sm:items-center">
+            <div className="relative flex-1">
               <Search
                 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400"
                 size={18}
@@ -270,30 +270,31 @@ const Journal: React.FC = () => {
                 placeholder="Search entries..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="w-full pl-10 pr-4 py-2.5 md:py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 text-base md:text-sm"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <Filter size={18} className="text-slate-500 dark:text-slate-400" />
+              <Filter size={18} className="text-slate-500 dark:text-slate-400 hidden sm:block" />
               <Select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as JournalEntryType | 'all')}
                 options={ENTRY_TYPE_OPTIONS}
                 size="sm"
+                className="flex-1 sm:flex-none"
               />
             </div>
           </div>
 
           {/* Second Row: Date Range */}
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 dark:text-slate-400">Date Range:</span>
+          <div className="flex flex-col sm:flex-row gap-3 md:gap-4 items-stretch sm:items-center">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap">Date Range:</span>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                className="flex-1 min-w-[140px] px-3 py-2.5 md:py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 placeholder="Start date"
               />
               <span className="text-slate-600 dark:text-slate-400">to</span>
@@ -447,14 +448,14 @@ const Journal: React.FC = () => {
           filteredEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all shadow-sm dark:shadow-none"
+              className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 hover:border-emerald-500/30 transition-all shadow-sm dark:shadow-none"
             >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+              <div className="flex justify-between items-start mb-3 gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
+                    <h3 className="text-lg md:text-xl font-semibold text-slate-900 dark:text-slate-100 break-words">{entry.title}</h3>
                     {entry.isFavorite && (
-                      <Star size={18} className="text-emerald-400 fill-current" />
+                      <Star size={18} className="text-emerald-400 fill-current flex-shrink-0" />
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 items-center">
@@ -465,16 +466,16 @@ const Journal: React.FC = () => {
                     >
                       {entry.entryType.replace('_', ' ').toUpperCase()}
                     </span>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">{formatDate(entry.entryDate)}</span>
+                    <span className="text-xs md:text-sm text-slate-600 dark:text-slate-400">{formatDate(entry.entryDate)}</span>
                     {entry.strategy && (
-                      <span className="text-sm text-slate-600 dark:text-slate-400">Strategy: {entry.strategy}</span>
+                      <span className="text-xs md:text-sm text-slate-600 dark:text-slate-400">Strategy: {entry.strategy}</span>
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 md:gap-2 flex-shrink-0">
                   <button
                     onClick={() => handleEdit(entry)}
-                    className="p-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                    className="p-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors touch-target"
                     title="Edit entry"
                   >
                     <Edit size={18} />
@@ -482,7 +483,7 @@ const Journal: React.FC = () => {
                   <button
                     onClick={() => handleDelete(entry.id)}
                     disabled={deletingEntryId === entry.id}
-                    className="p-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                    className="p-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50 touch-target"
                     title="Delete entry"
                   >
                     <Trash2 size={18} />
@@ -490,7 +491,7 @@ const Journal: React.FC = () => {
                 </div>
               </div>
 
-              <p className="text-slate-700 dark:text-slate-300 mb-4">{entry.content}</p>
+              <p className="text-sm md:text-base text-slate-700 dark:text-slate-300 mb-4 break-words">{entry.content}</p>
 
               {/* Linked Symbols */}
               {entry.linkedSymbols && entry.linkedSymbols.length > 0 && (

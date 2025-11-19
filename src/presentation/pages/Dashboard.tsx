@@ -398,35 +398,36 @@ export const Dashboard = () => {
   }, []);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent break-words">
             Dashboard
           </h1>
-          <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
+          <p className="text-slate-600 dark:text-slate-500 mt-2 text-sm md:text-lg break-words">
             Portfolio overview and key metrics
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Quick Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => navigate('/analytics')}
-              className="px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-purple-400 hover:text-purple-300 text-sm font-medium transition-all flex items-center gap-2"
+              className="px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-purple-400 hover:text-purple-300 text-sm font-medium transition-all flex items-center gap-2 touch-target"
             >
               <FileText className="w-4 h-4" />
-              Analytics
+              <span className="hidden sm:inline">Analytics</span>
             </button>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => generateSnapshotMutation.mutate()}
                 disabled={generateSnapshotMutation.isPending}
-                className="px-3 py-2 bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600/50 rounded-lg text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600/50 rounded-lg text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 text-xs sm:text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed touch-target whitespace-nowrap"
               >
                 <Camera className="w-4 h-4" />
-                {generateSnapshotMutation.isPending ? 'Generating...' : 'Generate Snapshot'}
+                <span className="hidden sm:inline">{generateSnapshotMutation.isPending ? 'Generating...' : 'Generate Snapshot'}</span>
+                <span className="sm:hidden">{generateSnapshotMutation.isPending ? '...' : 'Snapshot'}</span>
               </button>
               <div className="relative group">
                 <Info className="w-4 h-4 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-help transition-colors" />
@@ -502,8 +503,8 @@ export const Dashboard = () => {
       </div>
 
       {/* Zone 2: Performance Summary Card */}
-      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Performance Summary</h3>
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
+        <h3 className="text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3 md:mb-4">Performance Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
           <div className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-800/30 rounded-xl">
             <div>
@@ -592,7 +593,7 @@ export const Dashboard = () => {
       </div>
 
       {/* Zone 4: Asset Allocation - Enhanced with Values */}
-      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+      <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Asset Allocation</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           <AssetTypeCard
@@ -636,7 +637,7 @@ export const Dashboard = () => {
       {/* Main Content Area - 2 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Left Column - Top Performing Positions */}
-        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
           <div className="flex items-center gap-2 mb-4">
             <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
@@ -675,7 +676,7 @@ export const Dashboard = () => {
         </div>
 
         {/* Right Column - Market Overview - Collapsible */}
-        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Newspaper className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
@@ -737,7 +738,7 @@ export const Dashboard = () => {
           onClick={() => setIsChartExpanded(false)}
         />
       )}
-      <div className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none ${isChartExpanded ? 'fixed inset-4 z-50 overflow-auto bg-white dark:bg-slate-900 shadow-2xl' : 'relative'}`}>
+      <div className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none ${isChartExpanded ? 'fixed inset-2 md:inset-4 z-50 overflow-auto bg-white dark:bg-slate-900 shadow-2xl' : 'relative'}`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <LineChart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
@@ -761,7 +762,7 @@ export const Dashboard = () => {
       {/* Bottom Section - Recent Transactions and Asset Allocation */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Transactions */}
-        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
               Recent Transactions
@@ -820,7 +821,7 @@ export const Dashboard = () => {
         </div>
 
         {/* Asset Allocation */}
-        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
+        <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
           <div className="flex items-center gap-2 mb-4">
             <PieChart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
@@ -882,16 +883,16 @@ interface StatCardProps {
 }
 
 const StatCard = memo(({ title, value, icon: Icon, iconColor = 'text-emerald-400', bgColor = 'bg-emerald-500/10', subtitle }: StatCardProps) => (
-  <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-slate-300 dark:hover:border-slate-700/50 transition-all shadow-sm dark:shadow-none">
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</span>
-      <div className={`p-2 rounded-lg ${bgColor}`}>
-        <Icon className={`w-5 h-5 ${iconColor}`} />
+  <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 hover:border-slate-300 dark:hover:border-slate-700/50 transition-all shadow-sm dark:shadow-none">
+    <div className="flex items-center justify-between mb-2 md:mb-3">
+      <span className="text-xs md:text-sm font-medium text-slate-600 dark:text-slate-400 break-words min-w-0 flex-1 pr-2">{title}</span>
+      <div className={`p-1.5 md:p-2 rounded-lg ${bgColor} flex-shrink-0`}>
+        <Icon className={`w-4 h-4 md:w-5 md:h-5 ${iconColor}`} />
       </div>
     </div>
-    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">{value}</p>
+    <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1 break-words">{value}</p>
     {subtitle && (
-      <p className="text-xs text-slate-500 dark:text-slate-500">{subtitle}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-500 break-words">{subtitle}</p>
     )}
   </div>
 ));

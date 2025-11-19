@@ -12,6 +12,7 @@ import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import type { CashTransaction } from '@/domain/types';
 import { logger } from '@/shared/utils/logger';
+import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
 const CashTransactions: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -159,27 +160,27 @@ const CashTransactions: React.FC = () => {
   }, [confirmation, deleteMutation, toast]);
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 dark:from-slate-100 to-slate-600 dark:to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-slate-900 dark:from-slate-100 to-slate-600 dark:to-slate-400 bg-clip-text text-transparent">
             Cash Transactions
           </h1>
           <p className="text-slate-600 dark:text-slate-500 mt-2 text-lg">
             Track deposits, withdrawals, dividends, and interest payments
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <button
-            className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all"
+            className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-700 dark:text-slate-300 text-sm font-medium transition-all touch-target w-full sm:w-auto"
             onClick={() => {/* TODO: Export to CSV */}}
           >
             <Download size={18} className="inline mr-2" />
             Export
           </button>
           <button
-            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all"
+            className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all touch-target w-full sm:w-auto"
             onClick={() => setShowAddModal(true)}
           >
             <Plus size={18} className="inline mr-2" />
@@ -189,7 +190,7 @@ const CashTransactions: React.FC = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <StatCard
           title="Total Deposits"
           value={formatCurrency(summary.totalDeposits)}
@@ -252,7 +253,80 @@ const CashTransactions: React.FC = () => {
 
       {/* Transactions Table */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 overflow-hidden shadow-sm dark:shadow-none">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="md:hidden p-4 space-y-3">
+          {transactionsLoading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/50 rounded-xl p-4 animate-pulse">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/3 mb-3"></div>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+              No transactions found
+            </div>
+          ) : (
+            filteredTransactions.map((transaction) => (
+              <MobileTableCard key={transaction.id}>
+                <MobileTableCardHeader
+                  title={transaction.description || transaction.transaction_code}
+                  subtitle={formatDate(transaction.activity_date)}
+                  badge={
+                    <div className="flex items-center gap-2">
+                      {getTransactionIcon(transaction.transaction_code, transaction.amount)}
+                      <span className="text-slate-900 dark:text-slate-100 text-xs font-medium">
+                        {transaction.transaction_code}
+                      </span>
+                    </div>
+                  }
+                  actions={
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(transaction);
+                        }}
+                        className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                        title="Edit transaction"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(transaction);
+                        }}
+                        className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors touch-target"
+                        title="Delete transaction"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  }
+                />
+                {transaction.symbol && (
+                  <MobileTableCardRow label="Symbol" value={transaction.symbol} />
+                )}
+                <MobileTableCardRow
+                  label="Amount"
+                  value={formatCurrency(transaction.amount)}
+                  positive={transaction.amount >= 0}
+                  negative={transaction.amount < 0}
+                  highlight
+                />
+              </MobileTableCard>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto table-wrapper">
           <table className="w-full">
             <thead className="bg-slate-100 dark:bg-slate-800/50">
               <tr>
