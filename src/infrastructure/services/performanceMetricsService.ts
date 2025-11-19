@@ -57,18 +57,88 @@ export class PerformanceMetricsService {
   /**
    * Calculate win rate from closed positions
    * Includes fully closed positions and partially closed positions (with realized P/L)
+   * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
   static async calculateWinRate(userId: string): Promise<WinRateMetrics> {
-    // Get all positions
+    // Get all positions and strategies
     const allPositions = await PositionRepository.getAll(userId);
+    const allStrategies = await StrategyRepository.getAll(userId);
     
-    // Include fully closed positions and partially closed positions (have realized P/L)
-    const positionsWithRealizedPL = allPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    // Get strategies that should be counted as trades
+    // Include strategies that are:
+    // 1. Not open (closed, partially_closed, assigned, or expired), OR
+    // 2. Have realized_pl (even if still marked as open - this handles cases where positions are closed but strategy status wasn't updated)
+    // 3. Have all positions closed (calculate realized_pl from positions if strategy doesn't have it)
+    const strategiesWithRealizedPL = allStrategies.filter((s) => {
+      // If strategy is not open, include it
+      if (s.status !== 'open') {
+        return true;
+      }
+      
+      // If strategy has realized_pl, include it
+      if ((s.realized_pl || 0) !== 0) {
+        return true;
+      }
+      
+      // If strategy is open but has no realized_pl, check if all its positions are closed
+      // If so, calculate realized_pl from positions and include it
+      const strategyPositions = allPositions.filter(p => p.strategy_id === s.id);
+      if (strategyPositions.length > 0) {
+        const allPositionsClosed = strategyPositions.every(p => p.status === 'closed');
+        if (allPositionsClosed) {
+          // Calculate realized_pl from positions
+          const calculatedPL = strategyPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+          // Update the strategy's realized_pl for this calculation
+          s.realized_pl = calculatedPL;
+          return calculatedPL !== 0; // Only include if there's actual P/L
+        }
+      }
+      
+      return false;
+    });
+    
+    // Log for debugging
+    console.log('[PerformanceMetrics] Strategies found:', {
+      total: allStrategies.length,
+      withRealizedPL: strategiesWithRealizedPL.length,
+      strategies: strategiesWithRealizedPL.map(s => ({
+        id: s.id,
+        status: s.status,
+        realized_pl: s.realized_pl,
+        underlying: s.underlying_symbol
+      }))
+    });
+    
+    // Get individual positions with realized P/L
+    // CRITICAL: Exclude ALL positions that are part of a strategy (regardless of strategy status)
+    // Multi-leg strategies should ONLY be counted at the strategy level, never at the individual position level
+    // This ensures a multi-leg strategy counts as a single win or loss based on the strategy's total P/L
+    const individualPositionsWithRealizedPL = allPositions.filter(
+      (p) => {
+        const hasRealizedPL = p.status === 'closed' || 
+          (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity);
+        
+        if (!hasRealizedPL) return false;
+        
+        // If position is part of ANY strategy, exclude it - the strategy will be counted instead
+        // This prevents double-counting and ensures multi-leg strategies are treated as single trades
+        if (p.strategy_id) {
+          return false; // Always exclude positions that are part of a strategy
+        }
+        
+        // Only include positions that are NOT part of a strategy
+        return true;
+      }
     );
 
-    // Calculate realized P&L from all positions (closed and partially closed)
-    const realizedPL = positionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+    // Calculate realized P&L from strategies (multi-leg trades count as one)
+    const strategyRealizedPL = strategiesWithRealizedPL.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
+    
+    // Calculate realized P&L from individual positions (single-leg trades)
+    const individualRealizedPL = individualPositionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+    
+    // Total realized P&L
+    const realizedPL = strategyRealizedPL + individualRealizedPL;
     
     // Calculate unrealized P&L from open positions
     // Use stored unrealized_pl value (should be updated by real-time price services)
@@ -81,8 +151,11 @@ export class PerformanceMetricsService {
       return sum + (p.unrealized_pl || 0);
     }, 0);
     
+    // Total number of trades = strategies + individual positions
+    const totalTrades = strategiesWithRealizedPL.length + individualPositionsWithRealizedPL.length;
+    
     // Calculate average P&L per trade
-    const averagePLPerTrade = positionsWithRealizedPL.length > 0 ? realizedPL / positionsWithRealizedPL.length : 0;
+    const averagePLPerTrade = totalTrades > 0 ? realizedPL / totalTrades : 0;
     
     // Calculate initial investment (sum of deposits)
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
@@ -105,7 +178,7 @@ export class PerformanceMetricsService {
     // Full portfolio value would require market quotes, which is handled in the hook
     const currentBalance = netCashFlow + unrealizedPL;
 
-    if (positionsWithRealizedPL.length === 0) {
+    if (totalTrades === 0) {
       return {
         winRate: 0,
         totalTrades: 0,
@@ -128,53 +201,63 @@ export class PerformanceMetricsService {
       };
     }
 
-    // Separate winning and losing trades
-    const winningTrades = positionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
-    const losingTrades = positionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
+    // Separate winning and losing strategies
+    const winningStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) > 0);
+    const losingStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) < 0);
+    
+    // Separate winning and losing individual positions
+    const winningIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
+    const losingIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
+    
+    // Combine all winning and losing trades
+    const winningTrades = [...winningStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
+                          ...winningIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
+    const losingTrades = [...losingStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
+                          ...losingIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
 
     // Calculate totals
-    const totalGains = winningTrades.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, p) => sum + (p.realized_pl || 0), 0));
+    const totalGains = winningTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0));
 
     // Calculate averages
     const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
     const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
 
     // Calculate win rate
-    const winRate = (winningTrades.length / positionsWithRealizedPL.length) * 100;
+    const winRate = (winningTrades.length / totalTrades) * 100;
 
     // Calculate profit factor
     const profitFactor = totalLosses > 0 ? totalGains / totalLosses : (totalGains > 0 ? Infinity : 0);
 
     // Calculate largest win and loss
     const largestWin = winningTrades.length > 0 
-      ? Math.max(...winningTrades.map(p => p.realized_pl || 0))
+      ? Math.max(...winningTrades.map(t => t.realized_pl || 0))
       : 0;
     const largestLoss = losingTrades.length > 0
-      ? Math.min(...losingTrades.map(p => p.realized_pl || 0))
+      ? Math.min(...losingTrades.map(t => t.realized_pl || 0))
       : 0;
 
     // Calculate expectancy: (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
-    const lossRate = (losingTrades.length / positionsWithRealizedPL.length) * 100;
+    const lossRate = (losingTrades.length / totalTrades) * 100;
     const expectancy = (winRate / 100) * averageGain - (lossRate / 100) * averageLoss;
 
     // Calculate average holding period
     let totalHoldingDays = 0;
-    let positionsWithDates = 0;
-    positionsWithRealizedPL.forEach((p) => {
-      if (p.opened_at && p.closed_at) {
-        const opened = new Date(p.opened_at);
-        const closed = new Date(p.closed_at);
+    let tradesWithDates = 0;
+    [...winningTrades, ...losingTrades].forEach((t) => {
+      if (t.opened_at && t.closed_at) {
+        const opened = new Date(t.opened_at);
+        const closed = new Date(t.closed_at);
         const days = Math.max(1, Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24)));
         totalHoldingDays += days;
-        positionsWithDates++;
+        tradesWithDates++;
       }
     });
-    const averageHoldingPeriodDays = positionsWithDates > 0 ? totalHoldingDays / positionsWithDates : 0;
+    const averageHoldingPeriodDays = tradesWithDates > 0 ? totalHoldingDays / tradesWithDates : 0;
 
     return {
       winRate,
-      totalTrades: positionsWithRealizedPL.length,
+      totalTrades,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       averageGain,
@@ -219,19 +302,93 @@ export class PerformanceMetricsService {
   /**
    * Calculate win rate from closed positions filtered by asset type
    * Includes fully closed positions and partially closed positions (with realized P/L)
+   * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
   static async calculateWinRateByAssetType(userId: string, assetType: AssetType): Promise<WinRateMetrics> {
-    // Get all positions
+    // Get all positions and strategies
     const allPositions = await PositionRepository.getAll(userId);
+    const allStrategies = await StrategyRepository.getAll(userId);
     
-    // Include fully closed positions and partially closed positions (have realized P/L) for this asset type
-    const positionsWithRealizedPL = allPositions.filter(
-      (p) => p.asset_type === assetType && 
-        (p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity))
+    // Filter strategies by asset type (only option strategies for now, as multi-leg is primarily for options)
+    // For other asset types, we'll only count individual positions
+    // Include strategies that are not open OR have realized_pl OR have all positions closed
+    const strategiesWithRealizedPL = assetType === 'option' 
+      ? allStrategies.filter((s) => {
+          // For options, check if strategy has underlying_symbol OR if its positions are options
+          const strategyPositions = allPositions.filter(p => p.strategy_id === s.id && p.asset_type === assetType);
+          if (strategyPositions.length === 0) return false; // No positions of this asset type
+          
+          // If strategy is not open, include it
+          if (s.status !== 'open') {
+            return true;
+          }
+          
+          // If strategy has realized_pl, include it
+          if ((s.realized_pl || 0) !== 0) {
+            return true;
+          }
+          
+          // If strategy is open but has no realized_pl, check if all its positions are closed
+          const allPositionsClosed = strategyPositions.every(p => p.status === 'closed');
+          if (allPositionsClosed) {
+            // Calculate realized_pl from positions
+            const calculatedPL = strategyPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+            // Update the strategy's realized_pl for this calculation
+            s.realized_pl = calculatedPL;
+            return calculatedPL !== 0; // Only include if there's actual P/L
+          }
+          
+          return false;
+        })
+      : [];
+    
+    // Log for debugging
+    if (assetType === 'option') {
+      console.log(`[PerformanceMetrics] ${assetType} strategies found:`, {
+        total: allStrategies.length,
+        withRealizedPL: strategiesWithRealizedPL.length,
+        strategies: strategiesWithRealizedPL.map(s => ({
+          id: s.id,
+          status: s.status,
+          realized_pl: s.realized_pl,
+          underlying: s.underlying_symbol,
+          positions: allPositions.filter(p => p.strategy_id === s.id && p.asset_type === assetType).length
+        }))
+      });
+    }
+    
+    // Get individual positions with realized P/L for this asset type
+    // CRITICAL: Exclude ALL positions that are part of a strategy (regardless of strategy status)
+    // Multi-leg strategies should ONLY be counted at the strategy level, never at the individual position level
+    // This ensures a multi-leg strategy counts as a single win or loss based on the strategy's total P/L
+    const individualPositionsWithRealizedPL = allPositions.filter(
+      (p) => {
+        if (p.asset_type !== assetType) return false;
+        
+        const hasRealizedPL = p.status === 'closed' || 
+          (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity);
+        
+        if (!hasRealizedPL) return false;
+        
+        // If position is part of ANY strategy, exclude it - the strategy will be counted instead
+        // This prevents double-counting and ensures multi-leg strategies are treated as single trades
+        if (p.strategy_id) {
+          return false; // Always exclude positions that are part of a strategy
+        }
+        
+        // Only include positions that are NOT part of a strategy
+        return true;
+      }
     );
 
-    // Calculate realized P&L from all positions (closed and partially closed) for this asset type
-    const realizedPL = positionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+    // Calculate realized P&L from strategies (multi-leg trades count as one)
+    const strategyRealizedPL = strategiesWithRealizedPL.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
+    
+    // Calculate realized P&L from individual positions (single-leg trades)
+    const individualRealizedPL = individualPositionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+    
+    // Total realized P&L
+    const realizedPL = strategyRealizedPL + individualRealizedPL;
     
     // Calculate unrealized P&L from open positions for this asset type
     // Use stored unrealized_pl value (should be updated by real-time price services)
@@ -241,8 +398,11 @@ export class PerformanceMetricsService {
       return sum + (p.unrealized_pl || 0);
     }, 0);
     
+    // Total number of trades = strategies + individual positions
+    const totalTrades = strategiesWithRealizedPL.length + individualPositionsWithRealizedPL.length;
+    
     // Calculate average P&L per trade
-    const averagePLPerTrade = positionsWithRealizedPL.length > 0 ? realizedPL / positionsWithRealizedPL.length : 0;
+    const averagePLPerTrade = totalTrades > 0 ? realizedPL / totalTrades : 0;
     
     // Calculate initial investment (sum of deposits)
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
@@ -261,7 +421,7 @@ export class PerformanceMetricsService {
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     const currentBalance = netCashFlow + unrealizedPL;
 
-    if (positionsWithRealizedPL.length === 0) {
+    if (totalTrades === 0) {
       return {
         winRate: 0,
         totalTrades: 0,
@@ -284,53 +444,63 @@ export class PerformanceMetricsService {
       };
     }
 
-    // Separate winning and losing trades
-    const winningTrades = positionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
-    const losingTrades = positionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
+    // Separate winning and losing strategies
+    const winningStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) > 0);
+    const losingStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) < 0);
+    
+    // Separate winning and losing individual positions
+    const winningIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
+    const losingIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
+    
+    // Combine all winning and losing trades
+    const winningTrades = [...winningStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
+                          ...winningIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
+    const losingTrades = [...losingStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
+                          ...losingIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
 
     // Calculate totals
-    const totalGains = winningTrades.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, p) => sum + (p.realized_pl || 0), 0));
+    const totalGains = winningTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0));
 
     // Calculate averages
     const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
     const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
 
     // Calculate win rate
-    const winRate = (winningTrades.length / positionsWithRealizedPL.length) * 100;
+    const winRate = (winningTrades.length / totalTrades) * 100;
 
     // Calculate profit factor
     const profitFactor = totalLosses > 0 ? totalGains / totalLosses : (totalGains > 0 ? Infinity : 0);
 
     // Calculate largest win and loss
     const largestWin = winningTrades.length > 0 
-      ? Math.max(...winningTrades.map(p => p.realized_pl || 0))
+      ? Math.max(...winningTrades.map(t => t.realized_pl || 0))
       : 0;
     const largestLoss = losingTrades.length > 0
-      ? Math.min(...losingTrades.map(p => p.realized_pl || 0))
+      ? Math.min(...losingTrades.map(t => t.realized_pl || 0))
       : 0;
 
     // Calculate expectancy: (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
-    const lossRate = (losingTrades.length / positionsWithRealizedPL.length) * 100;
+    const lossRate = (losingTrades.length / totalTrades) * 100;
     const expectancy = (winRate / 100) * averageGain - (lossRate / 100) * averageLoss;
 
     // Calculate average holding period
     let totalHoldingDays = 0;
-    let positionsWithDates = 0;
-    positionsWithRealizedPL.forEach((p) => {
-      if (p.opened_at && p.closed_at) {
-        const opened = new Date(p.opened_at);
-        const closed = new Date(p.closed_at);
+    let tradesWithDates = 0;
+    [...winningTrades, ...losingTrades].forEach((t) => {
+      if (t.opened_at && t.closed_at) {
+        const opened = new Date(t.opened_at);
+        const closed = new Date(t.closed_at);
         const days = Math.max(1, Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24)));
         totalHoldingDays += days;
-        positionsWithDates++;
+        tradesWithDates++;
       }
     });
-    const averageHoldingPeriodDays = positionsWithDates > 0 ? totalHoldingDays / positionsWithDates : 0;
+    const averageHoldingPeriodDays = tradesWithDates > 0 ? totalHoldingDays / tradesWithDates : 0;
 
     return {
       winRate,
-      totalTrades: positionsWithRealizedPL.length,
+      totalTrades,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       averageGain,

@@ -47,9 +47,16 @@ export function useCreateJournalEntry() {
   return useMutation<JournalEntry, Error, JournalEntryInsert>({
     mutationFn: (entry: JournalEntryInsert) => JournalRepository.create(entry),
     onSuccess: (data) => {
-      // Invalidate and refetch journal entries for the user
-      queryClient.invalidateQueries({ queryKey: queryKeys.journal.list(data.userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.journal.stats(data.userId) });
+      // Invalidate all journal list queries for the user (with any filters)
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.journal.lists(),
+        exact: false 
+      });
+      // Invalidate stats queries
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.journal.stats(data.userId),
+        exact: false 
+      });
     },
   });
 }
@@ -64,10 +71,16 @@ export function useUpdateJournalEntry() {
     mutationFn: ({ id, updates }: { id: string; updates: JournalEntryUpdate }) =>
       JournalRepository.update(id, updates),
     onSuccess: (data) => {
-      // Invalidate and refetch journal entries for the user
-      queryClient.invalidateQueries({ queryKey: queryKeys.journal.list(data.userId) });
+      // Invalidate all journal list queries for the user (with any filters)
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.journal.lists(),
+        exact: false 
+      });
       queryClient.invalidateQueries({ queryKey: queryKeys.journal.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.journal.stats(data.userId) });
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.journal.stats(data.userId),
+        exact: false 
+      });
     },
   });
 }

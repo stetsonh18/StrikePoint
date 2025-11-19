@@ -1,4 +1,4 @@
-import { useMemo, memo, useCallback, useState } from 'react';
+import { useMemo, memo, useCallback, useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, Activity, PieChart, Award, Newspaper, ExternalLink, LineChart, Bitcoin, Zap, FileText, Camera, BarChart3, ChevronDown, ChevronUp, Maximize2, Minimize2, Info } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
@@ -8,7 +8,11 @@ import { useTransactions } from '@/application/hooks/useTransactions';
 import { usePortfolioValue } from '@/application/hooks/usePortfolioValue';
 import { useMarketNews } from '@/application/hooks/useMarketNews';
 import { useStockQuotes } from '@/application/hooks/useStockQuotes';
+import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
+import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
 import { useInitialInvestment } from '@/application/hooks/useInitialInvestment';
+import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
+import { getCoinIdFromSymbol } from '@/infrastructure/services/cryptoMarketDataService';
 import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
 import { useDailyPerformance } from '@/application/hooks/useDailyPerformance';
 import { useWeeklyPerformance } from '@/application/hooks/useWeeklyPerformance';
@@ -40,7 +44,7 @@ export const Dashboard = () => {
   const { data: positionStats, isLoading: statsLoading, error: statsError } = usePositionStatistics(userId);
   const { data: transactions, isLoading: transactionsLoading, error: transactionsError } = useTransactions(userId);
   const { data: allPositions, isLoading: positionsLoading, error: positionsError } = usePositions(userId);
-  const { portfolioValue, netCashFlow, unrealizedPL: portfolioUnrealizedPL, isLoading: portfolioLoading, error: portfolioError } = usePortfolioValue(userId);
+  const { portfolioValue, netCashFlow, unrealizedPL: portfolioUnrealizedPL, totalMarketValue, isLoading: portfolioLoading, error: portfolioError } = usePortfolioValue(userId);
   const { articles: marketNews = [], isLoading: newsLoading, error: newsError } = useMarketNews('general', undefined, true);
   const { data: initialInvestment = 0 } = useInitialInvestment(userId);
   const { data: winRateMetrics } = useWinRateMetrics(userId);
@@ -84,31 +88,75 @@ export const Dashboard = () => {
     return allPositions.filter((p: Position) => p.status === 'open');
   }, [allPositions]);
 
-  // Get unique symbols from positions for quotes
-  const positionSymbols = useMemo(() => {
+  // Separate stock and crypto symbols for quotes
+  const stockSymbols = useMemo(() => {
     const symbols = new Set<string>();
     openPositions.forEach((p: Position) => {
-      if (p.symbol) symbols.add(p.symbol);
+      if (p.symbol && p.asset_type === 'stock') {
+        symbols.add(p.symbol);
+      }
     });
     return Array.from(symbols);
   }, [openPositions]);
 
-  // Fetch quotes for positions
-  const { data: quotesData } = useStockQuotes(positionSymbols, positionSymbols.length > 0);
-  const quotes = useMemo(() => {
-    if (!quotesData) return {};
-    // Handle both array and record formats
-    if (Array.isArray(quotesData)) {
-      const quotesRecord: Record<string, any> = {};
-      quotesData.forEach((quote: any) => {
-        if (quote?.symbol) quotesRecord[quote.symbol] = quote;
-      });
-      return quotesRecord;
-    }
-    return quotesData as Record<string, any>;
-  }, [quotesData]);
+  const cryptoSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    openPositions.forEach((p: Position) => {
+      if (p.symbol && p.asset_type === 'crypto') {
+        symbols.add(p.symbol);
+      }
+    });
+    return Array.from(symbols);
+  }, [openPositions]);
 
-  // Calculate asset type breakdown with values
+  // Build Tradier option symbols for all open option positions
+  const optionSymbols = useMemo(() => {
+    const symbols: string[] = [];
+    openPositions.forEach((p: Position) => {
+      if (p.asset_type === 'option' && p.symbol && p.expiration_date && p.strike_price && p.option_type) {
+        try {
+          const tradierSymbol = buildTradierOptionSymbol(
+            p.symbol,
+            p.expiration_date,
+            p.option_type as 'call' | 'put',
+            p.strike_price
+          );
+          symbols.push(tradierSymbol);
+        } catch (e) {
+          console.error('Error building Tradier option symbol:', e, p);
+        }
+      }
+    });
+    return symbols;
+  }, [openPositions]);
+
+  // Fetch quotes for positions
+  const { data: stockQuotes = {} } = useStockQuotes(stockSymbols, stockSymbols.length > 0);
+  
+  // For crypto, we need to convert symbols to coin IDs
+  const [cryptoCoinIds, setCryptoCoinIds] = useState<string[]>([]);
+  useEffect(() => {
+    const fetchCoinIds = async () => {
+      const ids: string[] = [];
+      for (const symbol of cryptoSymbols) {
+        const coinId = await getCoinIdFromSymbol(symbol);
+        if (coinId) {
+          ids.push(coinId);
+        }
+      }
+      setCryptoCoinIds(ids);
+    };
+    if (cryptoSymbols.length > 0) {
+      fetchCoinIds();
+    } else {
+      setCryptoCoinIds([]);
+    }
+  }, [cryptoSymbols]);
+
+  const { data: cryptoQuotes = {} } = useCryptoQuotes(cryptoCoinIds, cryptoCoinIds.length > 0);
+  const { data: optionQuotes = {} } = useOptionQuotes(optionSymbols, optionSymbols.length > 0);
+
+  // Calculate asset type breakdown with values - using same logic as usePortfolioValue
   const assetBreakdown = useMemo(() => {
     const breakdown = {
       stocks: { count: 0, value: 0 },
@@ -118,28 +166,87 @@ export const Dashboard = () => {
       cash: { count: 1, value: cashBalance }, // Always 1 cash account
     };
 
-    openPositions.forEach((p: Position) => {
-      const quote = quotes[p.symbol];
-      const currentPrice = quote?.price || p.average_opening_price || 0;
-      const marketValue = (p.current_quantity || 0) * currentPrice;
-      
-      if (p.asset_type === 'stock') {
-        breakdown.stocks.count++;
-        breakdown.stocks.value += marketValue;
-      } else if (p.asset_type === 'option') {
-        breakdown.options.count++;
-        breakdown.options.value += marketValue;
-      } else if (p.asset_type === 'crypto') {
-        breakdown.crypto.count++;
-        breakdown.crypto.value += marketValue;
-      } else if (p.asset_type === 'futures') {
+    openPositions.forEach((position) => {
+      // For stocks, calculate dynamically if we have current quotes
+      if (position.asset_type === 'stock' && position.symbol) {
+        const quote = stockQuotes[position.symbol];
+        if (quote && position.current_quantity && position.average_opening_price) {
+          const currentPrice = quote.price;
+          const marketValue = currentPrice * position.current_quantity;
+          breakdown.stocks.count++;
+          breakdown.stocks.value += marketValue;
+          return;
+        }
+      }
+
+      // For crypto, calculate dynamically if we have current quotes
+      if (position.asset_type === 'crypto' && position.symbol) {
+        const quote = cryptoQuotes[position.symbol];
+        if (quote && position.current_quantity && position.average_opening_price) {
+          const currentPrice = quote.current_price;
+          const marketValue = currentPrice * position.current_quantity;
+          breakdown.crypto.count++;
+          breakdown.crypto.value += marketValue;
+          return;
+        }
+      }
+
+      // For options, calculate dynamically if we have option quotes
+      if (position.asset_type === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
+        try {
+          const tradierSymbol = buildTradierOptionSymbol(
+            position.symbol,
+            position.expiration_date,
+            position.option_type as 'call' | 'put',
+            position.strike_price
+          );
+
+          const quote = optionQuotes[tradierSymbol];
+
+          if (quote && position.current_quantity) {
+            const currentPrice = quote.last ||
+              (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
+
+            const multiplier = position.multiplier || 100;
+            const marketValue = position.current_quantity * multiplier * currentPrice;
+
+            breakdown.options.count++;
+            breakdown.options.value += marketValue;
+            return;
+          }
+        } catch (e) {
+          console.error('Error calculating option market value:', e, position);
+        }
+      }
+
+      // For futures, or if no quote available, use stored unrealized_pl
+      const storedUnrealizedPL = position.unrealized_pl || 0;
+
+      // For futures: Only add unrealized P&L (margin-based)
+      // For others: Add cost basis + unrealized P&L = market value
+      if (position.asset_type === 'futures') {
         breakdown.futures.count++;
-        breakdown.futures.value += (p.unrealized_pl || 0);
+        breakdown.futures.value += storedUnrealizedPL;
+      } else {
+        // Fallback for positions without quotes
+        const costBasis = Math.abs(position.total_cost_basis || 0);
+        const marketValue = costBasis + storedUnrealizedPL;
+        
+        if (position.asset_type === 'stock') {
+          breakdown.stocks.count++;
+          breakdown.stocks.value += marketValue;
+        } else if (position.asset_type === 'option') {
+          breakdown.options.count++;
+          breakdown.options.value += marketValue;
+        } else if (position.asset_type === 'crypto') {
+          breakdown.crypto.count++;
+          breakdown.crypto.value += marketValue;
+        }
       }
     });
 
     return breakdown;
-  }, [openPositions, quotes, cashBalance]);
+  }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, cashBalance]);
 
   // Calculate top performing positions with details
   const topPositions = useMemo(() => {
@@ -147,9 +254,46 @@ export const Dashboard = () => {
 
     return openPositions
       .map((p: Position) => {
-        const quote = quotes[p.symbol];
-        const currentPrice = quote?.price || p.average_opening_price || 0;
-        const marketValue = (p.current_quantity || 0) * currentPrice;
+        let currentPrice = p.average_opening_price || 0;
+        let marketValue = 0;
+
+        // Get price from appropriate quote source
+        if (p.asset_type === 'stock' && p.symbol) {
+          const quote = stockQuotes[p.symbol];
+          if (quote) {
+            currentPrice = quote.price;
+            marketValue = (p.current_quantity || 0) * currentPrice;
+          }
+        } else if (p.asset_type === 'crypto' && p.symbol) {
+          const quote = cryptoQuotes[p.symbol];
+          if (quote) {
+            currentPrice = quote.current_price;
+            marketValue = (p.current_quantity || 0) * currentPrice;
+          }
+        } else if (p.asset_type === 'option' && p.symbol && p.expiration_date && p.strike_price && p.option_type) {
+          try {
+            const tradierSymbol = buildTradierOptionSymbol(
+              p.symbol,
+              p.expiration_date,
+              p.option_type as 'call' | 'put',
+              p.strike_price
+            );
+            const quote = optionQuotes[tradierSymbol];
+            if (quote && p.current_quantity) {
+              currentPrice = quote.last || (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : currentPrice);
+              const multiplier = p.multiplier || 100;
+              marketValue = p.current_quantity * multiplier * currentPrice;
+            }
+          } catch (e) {
+            // Fallback to stored values
+          }
+        }
+
+        // Fallback calculation if no quote
+        if (marketValue === 0) {
+          marketValue = (p.current_quantity || 0) * currentPrice;
+        }
+
         const costBasis = Math.abs(p.total_cost_basis || 0);
         const totalPL = (p.realized_pl || 0) + (p.unrealized_pl || 0);
         const plPercent = costBasis > 0 ? (totalPL / costBasis) * 100 : 0;
@@ -169,33 +313,55 @@ export const Dashboard = () => {
       })
       .sort((a, b) => b.totalPL - a.totalPL)
       .slice(0, 10);
-  }, [openPositions, quotes]);
+  }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes]);
 
-  // Calculate asset allocation for pie chart
+  // Calculate asset allocation for pie chart - use assetBreakdown values
   const assetAllocation = useMemo(() => {
-    if (!openPositions || openPositions.length === 0) return [];
+    const allocation: Array<{ name: string; value: number; percent: number }> = [];
+    const total = assetBreakdown.stocks.value + assetBreakdown.options.value + 
+                  assetBreakdown.crypto.value + assetBreakdown.futures.value + 
+                  assetBreakdown.cash.value;
 
-    const allocation = new Map<string, number>();
-    
-    openPositions.forEach((p: Position) => {
-      const quote = quotes[p.symbol];
-      const currentPrice = quote?.price || p.average_opening_price || 0;
-      const marketValue = (p.current_quantity || 0) * currentPrice;
-      const assetType = p.asset_type.charAt(0).toUpperCase() + p.asset_type.slice(1);
-      allocation.set(assetType, (allocation.get(assetType) || 0) + marketValue);
-    });
-
-    const total = Array.from(allocation.values()).reduce((sum, val) => sum + val, 0);
     if (total === 0) return [];
 
-    return Array.from(allocation.entries())
-      .map(([name, value]) => ({
-        name,
-        value: Number(value.toFixed(2)),
-        percent: Number(((value / total) * 100).toFixed(1)),
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [openPositions, quotes]);
+    if (assetBreakdown.stocks.value > 0) {
+      allocation.push({
+        name: 'Stock',
+        value: Number(assetBreakdown.stocks.value.toFixed(2)),
+        percent: Number(((assetBreakdown.stocks.value / total) * 100).toFixed(1)),
+      });
+    }
+    if (assetBreakdown.options.value > 0) {
+      allocation.push({
+        name: 'Option',
+        value: Number(assetBreakdown.options.value.toFixed(2)),
+        percent: Number(((assetBreakdown.options.value / total) * 100).toFixed(1)),
+      });
+    }
+    if (assetBreakdown.crypto.value > 0) {
+      allocation.push({
+        name: 'Crypto',
+        value: Number(assetBreakdown.crypto.value.toFixed(2)),
+        percent: Number(((assetBreakdown.crypto.value / total) * 100).toFixed(1)),
+      });
+    }
+    if (assetBreakdown.futures.value > 0) {
+      allocation.push({
+        name: 'Futures',
+        value: Number(assetBreakdown.futures.value.toFixed(2)),
+        percent: Number(((assetBreakdown.futures.value / total) * 100).toFixed(1)),
+      });
+    }
+    if (assetBreakdown.cash.value > 0) {
+      allocation.push({
+        name: 'Cash',
+        value: Number(assetBreakdown.cash.value.toFixed(2)),
+        percent: Number(((assetBreakdown.cash.value / total) * 100).toFixed(1)),
+      });
+    }
+
+    return allocation.sort((a, b) => b.value - a.value);
+  }, [assetBreakdown]);
 
   // Memoize colors array
   const COLORS = useMemo(() => ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'], []);
@@ -384,10 +550,10 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Zone 3: Secondary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Zone 3: Secondary Metrics - Includes Profit Factor when available */}
+      <div className={`grid gap-4 ${!portfolioLoading && !statsLoading && winRateMetrics && winRateMetrics.totalTrades > 0 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
         {portfolioLoading || statsLoading ? (
-          <StatCardSkeleton count={3} />
+          <StatCardSkeleton count={winRateMetrics && winRateMetrics.totalTrades > 0 ? 4 : 3} />
         ) : (
           <>
             <StatCard
@@ -411,28 +577,24 @@ export const Dashboard = () => {
               iconColor={unrealizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}
               bgColor={unrealizedPL >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
             />
+            {winRateMetrics && winRateMetrics.totalTrades > 0 && (
+              <StatCard
+                title="Profit Factor"
+                value={winRateMetrics.profitFactor.toFixed(2)}
+                icon={BarChart3}
+                iconColor={winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'}
+                bgColor={winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
+                subtitle={`${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}`}
+              />
+            )}
           </>
         )}
       </div>
 
-      {/* Profit Factor - Separate row if available */}
-      {!portfolioLoading && !statsLoading && winRateMetrics && winRateMetrics.totalTrades > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Profit Factor"
-            value={winRateMetrics.profitFactor.toFixed(2)}
-            icon={BarChart3}
-            iconColor={winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'}
-            bgColor={winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
-            subtitle={`${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}`}
-          />
-        </div>
-      )}
-
       {/* Zone 4: Asset Allocation - Enhanced with Values */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 shadow-sm dark:shadow-none">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Asset Allocation</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <AssetTypeCard
             title="Stocks"
             count={assetBreakdown.stocks.count}

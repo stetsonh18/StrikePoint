@@ -12,6 +12,7 @@ interface PositionDetailsModalProps {
   strategy?: Strategy | null;
   allPositions?: Position[];
   onClose: () => void;
+  onClosePosition?: (position: OptionContract) => void;
 }
 
 export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
@@ -20,6 +21,7 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
   strategy,
   allPositions,
   onClose,
+  onClosePosition,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -76,18 +78,18 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
     }
   );
 
-  // Debug logging
+  // Debug logging - show what quotes we're receiving
   useEffect(() => {
     if (optionSymbols.length > 0) {
-      logger.debug('[PositionDetailsModal] Fetching quotes', { 
-        symbols: optionSymbols, 
-        loading: quotesLoading, 
+      logger.debug('[PositionDetailsModal] Quote fetch status', {
+        symbols: optionSymbols,
+        quotes: optionQuotes,
+        loading: quotesLoading,
         error: quotesError,
         errorObj: quotesErrorObj,
-        quotes: optionQuotes 
       });
     }
-  }, [optionSymbols, quotesLoading, quotesError, quotesErrorObj, optionQuotes]);
+  }, [optionSymbols, optionQuotes, quotesLoading, quotesError, quotesErrorObj]);
 
   return (
     <div
@@ -102,19 +104,19 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between z-10">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 md:p-6 flex items-center justify-between z-10">
+          <div className="flex-1 min-w-0 pr-2">
+            <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
               {isMultiLeg ? 'Strategy Details' : 'Position Details'}
             </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mt-1 truncate">
               {position?.underlyingSymbol || strategyGroup?.[0]?.underlyingSymbol}
               {strategy && ` • ${strategy.strategy_type.replace('_', ' ').toUpperCase()}`}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
             aria-label="Close modal"
           >
             <X className="text-slate-600 dark:text-slate-400" size={20} />
@@ -122,12 +124,12 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-4 md:space-y-6">
           {/* Strategy Summary (for multi-leg) */}
           {isMultiLeg && strategy && (
             <div className="bg-slate-100 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Strategy Summary</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 <div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Net Credit/Debit</p>
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -253,21 +255,37 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p
-                          className={`text-sm font-semibold ${
-                            posPL >= 0 ? 'text-emerald-400' : 'text-red-400'
-                          }`}
-                        >
-                          {formatCurrency(posPL)}
-                        </p>
-                        <p
-                          className={`text-xs ${
-                            posPLPercent >= 0 ? 'text-emerald-400' : 'text-red-400'
-                          }`}
-                        >
-                          {formatPercent(posPLPercent)}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p
+                            className={`text-sm font-semibold ${
+                              posPL >= 0 ? 'text-emerald-400' : 'text-red-400'
+                            }`}
+                          >
+                            {formatCurrency(posPL)}
+                          </p>
+                          <p
+                            className={`text-xs ${
+                              posPLPercent >= 0 ? 'text-emerald-400' : 'text-red-400'
+                            }`}
+                          >
+                            {formatPercent(posPLPercent)}
+                          </p>
+                        </div>
+                        {onClosePosition && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Call onClosePosition first (it will handle opening the close form)
+                              // The close form will handle closing this modal if needed
+                              onClosePosition(pos);
+                            }}
+                            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all"
+                            title={`Close ${isLong ? 'long' : 'short'} ${pos.optionType} $${pos.strikePrice}`}
+                          >
+                            Close
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -282,28 +300,6 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
                         <p className="text-xs text-red-600 dark:text-red-400 mb-2">Error loading quote: {quotesErrorObj?.message || 'Unknown error'}</p>
                       </div>
                     )}
-                    {!quotesLoading && !quotesError && !quote && tradierSymbol && (
-                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                          <p className="text-xs text-amber-400 mb-1 font-medium">Quote Not Available</p>
-                          <p className="text-xs text-slate-400 mb-2">
-                            Real-time quote data is not available for <code className="text-amber-300">{tradierSymbol}</code>. This may be because:
-                          </p>
-                          <ul className="text-xs text-slate-500 list-disc list-inside space-y-1 mb-2">
-                            <li>The option contract may not exist in Tradier's system</li>
-                            <li>The option may be expired or too far in the future</li>
-                            <li>The market may be closed</li>
-                            <li>Tradier may not have data for this specific contract</li>
-                            {tradierSymbol.startsWith('SPX') && !tradierSymbol.startsWith('SPXW') && (
-                              <li className="text-amber-300">SPX options may need SPXW (weekly) format - try using SPXW as the underlying symbol</li>
-                            )}
-                          </ul>
-                          <p className="text-xs text-slate-500 italic">
-                            Note: According to Tradier API docs, option symbols use OCC format: {'{underlying}{YYMMDD}{C|P}{strike_in_cents}'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
                     {quote && (
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                         <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 font-medium">Real-time Quote (Tradier)</p>
@@ -311,19 +307,19 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
                           <div>
                             <p className="text-xs text-slate-500 dark:text-slate-500 mb-1">Bid</p>
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {quote.bid ? formatCurrency(quote.bid) : '-'}
+                              {quote.bid !== undefined && quote.bid !== null ? formatCurrency(quote.bid) : '-'}
                             </p>
                           </div>
                           <div>
                             <p className="text-xs text-slate-500 dark:text-slate-500 mb-1">Ask</p>
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {quote.ask ? formatCurrency(quote.ask) : '-'}
+                              {quote.ask !== undefined && quote.ask !== null ? formatCurrency(quote.ask) : '-'}
                             </p>
                           </div>
                           <div>
                             <p className="text-xs text-slate-500 dark:text-slate-500 mb-1">Last</p>
                             <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                              {quote.last ? formatCurrency(quote.last) : '-'}
+                              {quote.last !== undefined && quote.last !== null ? formatCurrency(quote.last) : '-'}
                             </p>
                           </div>
                           <div>
@@ -470,9 +466,21 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
                         }
                       });
                       
-                      const currentSpreadValue = longLegsValue - shortLegsValue;
+                      // For credit spreads: cost to close = buy back short - sell long = shortLegsValue - longLegsValue
+                      // For debit spreads: value to close = sell long - buy back short = longLegsValue - shortLegsValue
+                      // The netCreditDebit sign tells us: positive = credit received, negative = debit paid
                       const netCreditDebit = strategy.total_opening_cost;
-                      finalPL = currentSpreadValue - netCreditDebit;
+                      
+                      // Cost to close the spread (always positive, represents money you'd pay to close)
+                      const costToClose = shortLegsValue - longLegsValue;
+                      
+                      // P&L = Credit/Debit received when opening - Cost/Value to close
+                      // For credit spread: P&L = credit - costToClose
+                      // For debit spread: P&L = -debit - (-valueToClose) = valueToClose - debit
+                      // Since costToClose = shortLegsValue - longLegsValue, and valueToClose = longLegsValue - shortLegsValue = -costToClose
+                      // We can use: finalPL = netCreditDebit - costToClose
+                      // This works for both: credit (positive netCreditDebit) and debit (negative netCreditDebit)
+                      finalPL = netCreditDebit - costToClose;
                       
                       // For spreads, calculate percentage based on net credit/debit
                       const netCreditDebitAbs = Math.abs(netCreditDebit);

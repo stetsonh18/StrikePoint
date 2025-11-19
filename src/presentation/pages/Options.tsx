@@ -42,6 +42,8 @@ const Options: React.FC = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<OptionContract | null>(null);
   const [selectedPositionForClose, setSelectedPositionForClose] = useState<OptionContract | null>(null);
+  const [selectedStrategyGroupForClose, setSelectedStrategyGroupForClose] = useState<OptionContract[] | null>(null);
+  const [showCloseMultiLegForm, setShowCloseMultiLegForm] = useState(false);
   const [selectedStrategyGroup, setSelectedStrategyGroup] = useState<OptionContract[] | null>(null);
   const [positionSort, setPositionSort] = useState<SortConfig<OptionContract> | null>(null);
   const [transactionSort, setTransactionSort] = useState<SortConfig<OptionTransaction> | null>(null);
@@ -53,10 +55,15 @@ const Options: React.FC = () => {
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
-  // Fetch option positions
+  // Fetch option positions (open only for display)
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {
     asset_type: 'option',
     status: 'open',
+  });
+
+  // Fetch all option positions (including closed) for realized P&L calculation
+  const { data: allOptionPositions } = usePositions(userId, {
+    asset_type: 'option',
   });
 
   // Fetch option transactions
@@ -68,6 +75,9 @@ const Options: React.FC = () => {
   const { data: strategies } = useStrategies(userId, {
     status: 'open',
   });
+
+  // Fetch all strategies (including closed) for realized P&L calculation
+  const { data: allStrategies } = useStrategies(userId);
 
 
   // Build Tradier option symbols for all open positions
@@ -277,6 +287,50 @@ const Options: React.FC = () => {
       .filter((t): t is OptionTransaction => t !== null);
   }, [allTransactions]);
 
+  // Calculate realized P&L from all option positions and strategies
+  const realizedPL = useMemo(() => {
+    if (!allOptionPositions || !allStrategies) return 0;
+
+    // Get closed strategies with realized P/L (multi-leg trades count as one)
+    const strategiesWithRealizedPL = allStrategies.filter(
+      (s) => s.status !== 'open' && (s.realized_pl || 0) !== 0
+    );
+
+    // Get individual positions with realized P/L
+    // Include positions that are:
+    // 1. Not part of a strategy, OR
+    // 2. Part of a strategy but the strategy is open or doesn't have realized_pl (count position individually)
+    // Exclude positions that are part of a closed strategy with realized_pl (those are counted via the strategy)
+    const individualPositionsWithRealizedPL = allOptionPositions.filter(
+      (p) => {
+        const hasRealizedPL = p.status === 'closed' || 
+          (p.status === 'open' && (p.realized_pl || 0) !== 0 && (p.current_quantity || 0) < (p.opening_quantity || 0));
+        
+        if (!hasRealizedPL) return false;
+        
+        // If position is not part of a strategy, include it
+        if (!p.strategy_id) return true;
+        
+        // If position is part of a strategy, check if we should exclude it
+        const strategy = allStrategies.find(s => s.id === p.strategy_id);
+        if (!strategy) return true; // Strategy not found, count position individually
+        
+        // Only exclude if strategy is closed AND has realized_pl
+        const strategyIsClosedWithPL = strategy.status !== 'open' && (strategy.realized_pl || 0) !== 0;
+        return !strategyIsClosedWithPL; // Include if strategy is NOT closed with PL
+      }
+    );
+
+    // Calculate realized P&L from strategies (multi-leg trades count as one)
+    const strategyRealizedPL = strategiesWithRealizedPL.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
+    
+    // Calculate realized P&L from individual positions (single-leg trades)
+    const individualRealizedPL = individualPositionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+    
+    // Total realized P&L
+    return strategyRealizedPL + individualRealizedPL;
+  }, [allOptionPositions, allStrategies]);
+
   // Calculate portfolio summary
   const portfolioSummary = useMemo(() => {
     const totalValue = positions.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
@@ -295,8 +349,9 @@ const Options: React.FC = () => {
       positionsCount: positions.length,
       callsCount,
       putsCount,
+      realizedPL,
     };
-  }, [positions]);
+  }, [positions, realizedPL]);
 
   // Group positions by strategy_id - positions with same strategy_id are grouped together
   // Only group if the strategy has more than one position (multi-leg)
@@ -411,9 +466,30 @@ const Options: React.FC = () => {
   }, [allPositions]);
 
   const handleClosePosition = useCallback((position: OptionContract) => {
+    // Check if this position is part of a multi-leg strategy
+    const positionInDb = allPositions?.find(p => p.id === position.id);
+    const strategyId = positionInDb?.strategy_id;
+    
+    // Close the position details modal if it's open
+    setSelectedPosition(null);
+    setSelectedStrategyGroup(null);
+    
+    if (strategyId) {
+      // This is a multi-leg position - find all positions in the strategy
+      const strategyPositions = allPositions?.filter(p => p.strategy_id === strategyId) || [];
+      if (strategyPositions.length > 1) {
+        // Multi-leg spread - open the multi-leg close form
+        const strategyGroup = strategyPositions.map(p => toOptionContract(p));
+        setSelectedStrategyGroupForClose(strategyGroup);
+        setShowCloseMultiLegForm(true);
+        return;
+      }
+    }
+    
+    // Single leg position - use regular close form
     setSelectedPositionForClose(position);
     setShowCloseForm(true);
-  }, []);
+  }, [allPositions]);
 
   const handleDeletePosition = useCallback(async (position: OptionContract) => {
     const confirmed = await confirmation.confirm({
@@ -438,9 +514,15 @@ const Options: React.FC = () => {
   }, [allTransactions]);
 
   const handleDeleteTransaction = useCallback(async (transaction: OptionTransaction) => {
+    // Check if this transaction is part of a multi-leg strategy
+    const originalTransaction = allTransactions?.find(t => t.id === transaction.id);
+    const isPartOfStrategy = originalTransaction?.strategy_id !== null && originalTransaction?.strategy_id !== undefined;
+
     const confirmed = await confirmation.confirm({
       title: 'Delete Transaction',
-      message: `Are you sure you want to delete this transaction? This action cannot be undone and may affect your positions.`,
+      message: isPartOfStrategy
+        ? `This transaction is part of a multi-leg option strategy. Deleting it will delete ALL transactions in this strategy (all option transactions and their associated cash transactions). This action cannot be undone.`
+        : `Are you sure you want to delete this transaction? This action cannot be undone and may affect your positions.`,
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       variant: 'danger',
@@ -448,7 +530,7 @@ const Options: React.FC = () => {
 
     if (!confirmed) return;
     await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
-  }, [confirmation, deleteTransactionMutation]);
+  }, [confirmation, deleteTransactionMutation, allTransactions]);
 
   return (
     <div className="p-8 space-y-8">
@@ -488,7 +570,7 @@ const Options: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
         <StatCard
           title="Total Value"
           value={formatCurrency(portfolioSummary.totalValue)}
@@ -500,6 +582,12 @@ const Options: React.FC = () => {
           value={formatCurrency(portfolioSummary.totalCost)}
           icon={DollarSign}
           positive
+        />
+        <StatCard
+          title="Realized P&L"
+          value={formatCurrency(portfolioSummary.realizedPL)}
+          icon={TrendingUp}
+          positive={portfolioSummary.realizedPL >= 0}
         />
         <StatCard
           title="Unrealized P&L"
@@ -871,8 +959,7 @@ const Options: React.FC = () => {
                         let finalPLPercent = totalCostBasis > 0 ? (totalPL / totalCostBasis) * 100 : 0;
                         
                         if (strategy && strategy.total_opening_cost !== undefined) {
-                          // For spreads, calculate current spread value and compare to net credit/debit
-                          // Current spread value = sum of (long leg values) - sum of (short leg values)
+                          // For spreads, calculate cost to close and compare to net credit/debit
                           let longLegsValue = 0;
                           let shortLegsValue = 0;
                           
@@ -885,16 +972,19 @@ const Options: React.FC = () => {
                             }
                           });
                           
-                          // Current spread value (what you'd get if you closed it now)
-                          const currentSpreadValue = longLegsValue - shortLegsValue;
+                          // Cost to close the spread (always positive, represents money you'd pay to close)
+                          const costToClose = shortLegsValue - longLegsValue;
                           
                           // Net credit/debit when opened (positive = credit received, negative = debit paid)
                           const netCreditDebit = strategy.total_opening_cost;
                           
-                          // P&L = Current spread value - Net credit/debit
-                          // For credit spread: positive netCreditDebit, so P&L = currentSpreadValue - netCreditDebit
-                          // For debit spread: negative netCreditDebit, so P&L = currentSpreadValue - netCreditDebit (which adds)
-                          finalPL = currentSpreadValue - netCreditDebit;
+                          // P&L = Credit/Debit received when opening - Cost/Value to close
+                          // For credit spread: P&L = credit - costToClose
+                          // For debit spread: P&L = -debit - (-valueToClose) = valueToClose - debit
+                          // Since costToClose = shortLegsValue - longLegsValue, and valueToClose = longLegsValue - shortLegsValue = -costToClose
+                          // We can use: finalPL = netCreditDebit - costToClose
+                          // This works for both: credit (positive netCreditDebit) and debit (negative netCreditDebit)
+                          finalPL = netCreditDebit - costToClose;
                           
                           // Calculate percentage based on net credit/debit
                           const netCreditDebitAbs = Math.abs(netCreditDebit);
@@ -970,6 +1060,17 @@ const Options: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Close first position as representative (will close the entire spread)
+                                    handleClosePosition(firstPosition);
+                                  }}
+                                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm font-medium transition-all"
+                                  title="Close strategy"
+                                >
+                                  Close
+                                </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1180,7 +1281,7 @@ const Options: React.FC = () => {
         </>
       )}
 
-      {/* Close Position Form Modal */}
+      {/* Close Position Form Modal - Single Leg */}
       {showCloseForm && selectedPositionForClose && (
         <TransactionForm
           assetType="option"
@@ -1207,7 +1308,8 @@ const Options: React.FC = () => {
         />
       )}
 
-      {/* Multi-Leg Strategy Form Modal */}
+
+      {/* Multi-Leg Strategy Form Modal - Opening */}
       {showMultiLegForm && (
         <OptionsMultiLegForm
           userId={userId}
@@ -1218,6 +1320,27 @@ const Options: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
             queryClient.invalidateQueries({ queryKey: ['strategies'] });
             setShowMultiLegForm(false);
+          }}
+        />
+      )}
+
+      {/* Multi-Leg Strategy Form Modal - Closing */}
+      {showCloseMultiLegForm && selectedStrategyGroupForClose && (
+        <OptionsMultiLegForm
+          userId={userId}
+          initialPositions={selectedStrategyGroupForClose}
+          isClosing={true}
+          onClose={() => {
+            setShowCloseMultiLegForm(false);
+            setSelectedStrategyGroupForClose(null);
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['positions'] });
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+            queryClient.invalidateQueries({ queryKey: ['strategies'] });
+            setShowCloseMultiLegForm(false);
+            setSelectedStrategyGroupForClose(null);
           }}
         />
       )}
@@ -1241,6 +1364,7 @@ const Options: React.FC = () => {
             setSelectedPosition(null);
             setSelectedStrategyGroup(null);
           }}
+          onClosePosition={handleClosePosition}
         />
       )}
     </div>

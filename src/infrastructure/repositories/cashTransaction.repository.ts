@@ -122,6 +122,11 @@ export class CashTransactionRepository {
 
   /**
    * Delete a cash transaction
+   * Note: Journal entries don't directly reference cash transactions in the schema.
+   * They reference transactions, which in turn may have cash transactions.
+   * If you need to delete journal entries when deleting a cash transaction,
+   * you should delete the associated transaction instead, which will cascade delete
+   * the cash transaction and handle journal entry cleanup.
    */
   static async delete(id: string): Promise<void> {
     const { error } = await supabase

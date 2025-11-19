@@ -67,13 +67,13 @@ export const Modal = ({
         className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto ${className}`}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between z-10">
-          <div>
-            <h2 id="modal-title" className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <div className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-4 md:p-6 flex items-center justify-between z-10">
+          <div className="flex-1 min-w-0 pr-2">
+            <h2 id="modal-title" className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
               {title}
             </h2>
             {description && (
-              <p id="modal-description" className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              <p id="modal-description" className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mt-1">
                 {description}
               </p>
             )}
@@ -81,7 +81,7 @@ export const Modal = ({
           {showCloseButton && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
               aria-label="Close modal"
             >
               <X className="text-slate-600 dark:text-slate-400" size={20} />
@@ -90,7 +90,7 @@ export const Modal = ({
         </div>
 
         {/* Content */}
-        <div className="p-6">{children}</div>
+        <div className="p-4 md:p-6">{children}</div>
       </div>
     </div>
   );

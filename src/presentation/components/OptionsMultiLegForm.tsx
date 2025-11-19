@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Plus, Trash2, Calculator, TrendingUp, TrendingDown, Search } from 'lucide-react';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { StrategyRepository, PositionRepository } from '@/infrastructure/repositories';
-import type { OptionLegFormData, MultiLegStrategyFormData, StrategyDetectionResult, OptionChainEntry, StrategyType, StrategyInsert } from '@/domain/types';
+import type { OptionLegFormData, MultiLegStrategyFormData, StrategyDetectionResult, OptionChainEntry, StrategyType, StrategyInsert, OptionContract } from '@/domain/types';
 import { SymbolAutocomplete } from './SymbolAutocomplete';
 import { OptionsChain } from './OptionsChain';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
@@ -12,12 +12,16 @@ interface OptionsMultiLegFormProps {
   userId: string;
   onClose: () => void;
   onSuccess: () => void;
+  initialPositions?: OptionContract[]; // For closing existing positions
+  isClosing?: boolean; // If true, this is for closing, not opening
 }
 
 export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   userId,
   onClose,
   onSuccess,
+  initialPositions,
+  isClosing = false,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,8 +29,46 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   const [showChainSelector, setShowChainSelector] = useState(false);
   const [selectedLegIndex, setSelectedLegIndex] = useState<number | null>(null); // Track which leg is being edited from chain
 
+  // Initialize form from existing positions if provided (for closing)
+  // Store original positions to reference later
+  const originalPositions = useMemo(() => initialPositions || [], [initialPositions]);
+  
+  const initialLegs = useMemo(() => {
+    if (initialPositions && initialPositions.length > 0) {
+      return initialPositions.map((pos) => ({
+        expiration: pos.expirationDate,
+        strike: pos.strikePrice,
+        optionType: pos.optionType,
+        side: pos.side, // Keep original side - we'll flip it in transaction code
+        quantity: pos.quantity,
+        price: 0, // User will enter close price
+      }));
+    }
+    // Default legs for opening new positions
+    return [
+      {
+        expiration: '',
+        strike: 0,
+        optionType: 'call',
+        side: 'long',
+        quantity: 1,
+        price: 0,
+      },
+      {
+        expiration: '',
+        strike: 0,
+        optionType: 'call',
+        side: 'short',
+        quantity: 1,
+        price: 0,
+      },
+    ];
+  }, [initialPositions]);
+
   // Form state
-  const [underlyingSymbol, setUnderlyingSymbol] = useState('');
+  const [underlyingSymbol, setUnderlyingSymbol] = useState(
+    initialPositions && initialPositions.length > 0 ? initialPositions[0].underlyingSymbol : ''
+  );
   const [transactionDate, setTransactionDate] = useState(() => {
     const today = new Date();
     const year = today.getFullYear();
@@ -37,25 +79,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Legs state - start with 2 legs minimum
-  const [legs, setLegs] = useState<OptionLegFormData[]>([
-    {
-      expiration: '',
-      strike: 0,
-      optionType: 'call',
-      side: 'long',
-      quantity: 1,
-      price: 0,
-    },
-    {
-      expiration: '',
-      strike: 0,
-      optionType: 'call',
-      side: 'short',
-      quantity: 1,
-      price: 0,
-    },
-  ]);
+  // Legs state - initialize from initialPositions if provided
+  const [legs, setLegs] = useState<OptionLegFormData[]>(initialLegs);
 
   // Add a new leg
   const addLeg = () => {
@@ -228,124 +253,227 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         }
       }
 
-      // Step 1: Create the strategy first
-      const strategyLegs = legs.map((leg) => ({
-        strike: leg.strike,
-        expiration: leg.expiration,
-        optionType: leg.optionType,
-        side: leg.side,
-        quantity: leg.quantity,
-        openingPrice: leg.price,
-      }));
+      if (isClosing && initialPositions && initialPositions.length > 0) {
+        // CLOSING MODE: Close existing positions
+        // Get all positions to find the strategy
+        const allPositions = await PositionRepository.getAll(userId, {
+          status: 'open',
+        });
+        
+        logger.debug('[OptionsMultiLegForm] Closing positions', {
+          initialPositionsCount: initialPositions.length,
+          initialPositionIds: initialPositions.map(p => p.id),
+          allPositionsCount: allPositions.length,
+        });
+        
+        // Find the existing strategy from the first position
+        const firstPositionId = initialPositions[0].id;
+        const firstPosition = allPositions.find(p => p.id === firstPositionId);
+        
+        logger.debug('[OptionsMultiLegForm] Position lookup', {
+          lookingForId: firstPositionId,
+          foundPosition: firstPosition ? {
+            id: firstPosition.id,
+            strategy_id: firstPosition.strategy_id,
+            symbol: firstPosition.symbol,
+          } : null,
+        });
+        
+        const existingStrategyId = firstPosition?.strategy_id;
 
-      // Calculate total opening cost (net debit/credit)
-      const totalOpeningCost = strategyMetrics.netDebit;
+        if (!existingStrategyId) {
+          logger.error('[OptionsMultiLegForm] Cannot find strategy for position', {
+            positionId: firstPositionId,
+            foundPosition: firstPosition,
+            allPositionIds: allPositions.map(p => p.id).slice(0, 10),
+          });
+          throw new Error(`Cannot find strategy for this position (ID: ${firstPositionId}). The position may have been deleted or the strategy may not exist. Please close positions individually.`);
+        }
 
-      // Determine strategy type
-      let strategyType: StrategyType = strategyMetrics.suggestedType as StrategyType;
-      if (strategyType === 'custom' && legs.length === 2) {
-        // Default to vertical_spread if we have 2 legs but detection didn't work
-        strategyType = 'vertical_spread';
-      }
+        // Step 1: Create closing transactions for each leg
+        const transactions = legs.map((leg, index) => {
+          // Get the original position to know the original side
+          const originalPosition = originalPositions[index];
+          const originalSide = originalPosition?.side || leg.side;
+          
+          // For closing: 
+          // - LONG position -> STC (Sell to Close) - sell transaction
+          // - SHORT position -> BTC (Buy to Close) - buy transaction
+          const transactionCode = originalSide === 'long' ? 'STC' : 'BTC';
 
-      // Find primary expiration (use first leg's expiration, or most common)
-      const primaryExpiration = legs[0]?.expiration || null;
+          const legAmount = leg.quantity * leg.price * 100; // Options are per share
+          // For closing: STC (selling) = credit (+), BTC (buying) = debit (-)
+          const amount = transactionCode === 'STC' ? Math.abs(legAmount) : -Math.abs(legAmount);
 
-      const strategyInsert: StrategyInsert = {
-        user_id: userId,
-        strategy_type: strategyType,
-        underlying_symbol: underlyingSymbol,
-        direction: null, // Can be calculated later
-        leg_count: legs.length,
-        legs: strategyLegs as any,
-        opened_at: new Date(transactionDate).toISOString(),
-        expiration_date: primaryExpiration,
-        total_opening_cost: totalOpeningCost,
-        total_closing_proceeds: 0,
-        realized_pl: 0,
-        unrealized_pl: 0,
-        max_risk: null,
-        max_profit: null,
-        breakeven_points: [],
-        status: 'open',
-        notes: notes || null,
-        tags: [],
-        is_adjustment: false,
-        original_strategy_id: null,
-        adjusted_from_strategy_id: null,
-      };
+          return {
+            user_id: userId,
+            activity_date: transactionDate,
+            process_date: transactionDate,
+            settle_date: transactionDate,
+            description:
+              description ||
+              `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
+            notes: notes || null,
+            tags: [],
+            fees: 0, // Fees can be added per leg if needed
+            asset_type: 'option' as const,
+            transaction_code: transactionCode,
+            underlying_symbol: underlyingSymbol,
+            option_type: leg.optionType,
+            strike_price: leg.strike,
+            expiration_date: leg.expiration,
+            quantity: leg.quantity,
+            price: leg.price,
+            amount,
+            is_opening: false, // Closing transaction
+            is_long: transactionCode === 'STC', // STC closes long (is_long=true), BTC closes short (is_long=false)
+            strategy_id: existingStrategyId, // Link to existing strategy
+          };
+        });
 
-      // Create the strategy
-      const strategy = await StrategyRepository.create(strategyInsert);
+        // Step 2: Create all closing transactions in batch
+        // This will trigger position matching to close the positions
+        logger.debug('[OptionsMultiLegForm] Creating closing transactions', {
+          transactionCount: transactions.length,
+          strategyId: existingStrategyId,
+          transactions: transactions.map(t => ({
+            code: t.transaction_code,
+            symbol: t.underlying_symbol,
+            strike: t.strike_price,
+            quantity: t.quantity,
+            price: t.price,
+          })),
+        });
+        
+        await TransactionService.createManualTransactions(transactions, existingStrategyId);
+        
+        logger.info('[OptionsMultiLegForm] Successfully closed multi-leg strategy', {
+          strategyId: existingStrategyId,
+          legCount: transactions.length,
+        });
+        
+        onSuccess();
+      } else {
+        // OPENING MODE: Create new strategy and positions
+        // Step 1: Create the strategy first
+        const strategyLegs = legs.map((leg) => ({
+          strike: leg.strike,
+          expiration: leg.expiration,
+          optionType: leg.optionType,
+          side: leg.side,
+          quantity: leg.quantity,
+          openingPrice: leg.price,
+        }));
 
-      // Step 2: Create transactions for each leg, linked to the strategy
-      const transactions = legs.map((leg) => {
-        const transactionCode =
-          leg.side === 'long' ? 'BTO' : 'STO'; // Buy to Open or Sell to Open
+        // Calculate total opening cost (net debit/credit)
+        const totalOpeningCost = strategyMetrics.netDebit;
 
-        const legAmount = leg.quantity * leg.price * 100; // Options are per share
-        const amount = leg.side === 'long' ? -Math.abs(legAmount) : Math.abs(legAmount);
+        // Determine strategy type
+        let strategyType: StrategyType = strategyMetrics.suggestedType as StrategyType;
+        if (strategyType === 'custom' && legs.length === 2) {
+          // Default to vertical_spread if we have 2 legs but detection didn't work
+          strategyType = 'vertical_spread';
+        }
 
-        return {
+        // Find primary expiration (use first leg's expiration, or most common)
+        const primaryExpiration = legs[0]?.expiration || null;
+
+        const strategyInsert: StrategyInsert = {
           user_id: userId,
-          activity_date: transactionDate,
-          process_date: transactionDate,
-          settle_date: transactionDate,
-          description:
-            description ||
-            `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
+          strategy_type: strategyType,
+          underlying_symbol: underlyingSymbol,
+          direction: null, // Can be calculated later
+          leg_count: legs.length,
+          legs: strategyLegs as any,
+          opened_at: new Date(transactionDate).toISOString(),
+          expiration_date: primaryExpiration,
+          total_opening_cost: totalOpeningCost,
+          total_closing_proceeds: 0,
+          realized_pl: 0,
+          unrealized_pl: 0,
+          max_risk: null,
+          max_profit: null,
+          breakeven_points: [],
+          status: 'open',
           notes: notes || null,
           tags: [],
-          fees: 0, // Fees can be added per leg if needed
-          asset_type: 'option' as const,
-          transaction_code: transactionCode,
-          underlying_symbol: underlyingSymbol,
-          option_type: leg.optionType,
-          strike_price: leg.strike,
-          expiration_date: leg.expiration,
-          quantity: leg.quantity,
-          price: leg.price,
-          amount,
-          is_opening: true,
-          is_long: leg.side === 'long',
-          strategy_id: strategy.id, // Link transaction to strategy
+          is_adjustment: false,
+          original_strategy_id: null,
+          adjusted_from_strategy_id: null,
         };
-      });
 
-      // Step 3: Create all transactions in batch, linked to the strategy
-      // This will also trigger position matching and strategy detection
-      await TransactionService.createManualTransactions(transactions, strategy.id);
+        // Create the strategy
+        const strategy = await StrategyRepository.create(strategyInsert);
 
-      // Step 4: Link positions to the strategy after they're created
-      // Get positions for this symbol that match our legs
-      const allPositions = await PositionRepository.getAll(userId, {
-        status: 'open',
-      });
+        // Step 2: Create transactions for each leg, linked to the strategy
+        const transactions = legs.map((leg) => {
+          const transactionCode =
+            leg.side === 'long' ? 'BTO' : 'STO'; // Buy to Open or Sell to Open
 
-      // Find positions that match our legs and don't have a strategy yet
-      // (They might not be linked if strategy detection didn't run or failed)
-      const positionsToLink = allPositions.filter((pos) => {
-        if (pos.strategy_id) return false; // Already linked
-        if (pos.symbol !== underlyingSymbol) return false; // Wrong symbol
-        
-        // Check if this position matches one of our legs
-        return legs.some((leg) => {
-          return (
-            pos.strike_price === leg.strike &&
-            pos.expiration_date === leg.expiration &&
-            pos.option_type === leg.optionType &&
-            pos.side === leg.side &&
-            pos.opening_quantity === leg.quantity
-          );
+          const legAmount = leg.quantity * leg.price * 100; // Options are per share
+          const amount = leg.side === 'long' ? -Math.abs(legAmount) : Math.abs(legAmount);
+
+          return {
+            user_id: userId,
+            activity_date: transactionDate,
+            process_date: transactionDate,
+            settle_date: transactionDate,
+            description:
+              description ||
+              `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
+            notes: notes || null,
+            tags: [],
+            fees: 0, // Fees can be added per leg if needed
+            asset_type: 'option' as const,
+            transaction_code: transactionCode,
+            underlying_symbol: underlyingSymbol,
+            option_type: leg.optionType,
+            strike_price: leg.strike,
+            expiration_date: leg.expiration,
+            quantity: leg.quantity,
+            price: leg.price,
+            amount,
+            is_opening: true,
+            is_long: leg.side === 'long',
+            strategy_id: strategy.id, // Link transaction to strategy
+          };
         });
-      });
 
-      // Link all matching positions to the strategy
-      for (const position of positionsToLink) {
-        await PositionRepository.update(position.id, { strategy_id: strategy.id });
+        // Step 3: Create all transactions in batch, linked to the strategy
+        // This will also trigger position matching and strategy detection
+        await TransactionService.createManualTransactions(transactions, strategy.id);
+
+        // Step 4: Link positions to the strategy after they're created
+        // Get positions for this symbol that match our legs
+        const allPositions = await PositionRepository.getAll(userId, {
+          status: 'open',
+        });
+
+        // Find positions that match our legs and don't have a strategy yet
+        // (They might not be linked if strategy detection didn't run or failed)
+        const positionsToLink = allPositions.filter((pos) => {
+          if (pos.strategy_id) return false; // Already linked
+          if (pos.symbol !== underlyingSymbol) return false; // Wrong symbol
+          
+          // Check if this position matches one of our legs
+          return legs.some((leg) => {
+            return (
+              pos.strike_price === leg.strike &&
+              pos.expiration_date === leg.expiration &&
+              pos.option_type === leg.optionType &&
+              pos.side === leg.side &&
+              pos.opening_quantity === leg.quantity
+            );
+          });
+        });
+
+        // Link all matching positions to the strategy
+        for (const position of positionsToLink) {
+          await PositionRepository.update(position.id, { strategy_id: strategy.id });
+        }
+
+        onSuccess();
       }
-
-      onSuccess();
     } catch (error) {
       logger.error('Error creating multi-leg strategy', error);
       setError(error instanceof Error ? error.message : 'Failed to create strategy');
@@ -363,8 +491,14 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Multi-Leg Options Strategy</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Enter all legs of your options strategy</p>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {isClosing ? 'Close Multi-Leg Options Strategy' : 'Multi-Leg Options Strategy'}
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              {isClosing 
+                ? 'Enter close prices for each leg of the spread' 
+                : 'Enter all legs of your options strategy'}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -392,23 +526,34 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                 </label>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <SymbolAutocomplete
-                      value={underlyingSymbol}
-                      onChange={setUnderlyingSymbol}
-                      placeholder="SPX, SPXW, XSP, AAPL"
-                      className="w-full"
-                      mode="option"
-                    />
+                    {isClosing ? (
+                      <input
+                        type="text"
+                        value={underlyingSymbol}
+                        readOnly
+                        className="w-full px-4 py-2 bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                      />
+                    ) : (
+                      <SymbolAutocomplete
+                        value={underlyingSymbol}
+                        onChange={setUnderlyingSymbol}
+                        placeholder="SPX, SPXW, XSP, AAPL"
+                        className="w-full"
+                        mode="option"
+                      />
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowChainSelector(true)}
-                    disabled={!underlyingSymbol}
-                    className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    <Search size={16} />
-                    Chain
-                  </button>
+                  {!isClosing && (
+                    <button
+                      type="button"
+                      onClick={() => setShowChainSelector(true)}
+                      disabled={!underlyingSymbol}
+                      className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <Search size={16} />
+                      Chain
+                    </button>
+                  )}
                 </div>
               </div>
               <div>
@@ -516,7 +661,13 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         value={leg.expiration}
                         onChange={(e) => updateLeg(index, { expiration: e.target.value })}
                         required
-                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                        disabled={isClosing}
+                        readOnly={isClosing}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                          isClosing
+                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                        }`}
                       />
                     </div>
                     <div>
@@ -530,7 +681,13 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         onChange={(e) => updateLeg(index, { strike: parseFloat(e.target.value) || 0 })}
                         required
                         placeholder="150.00"
-                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                        disabled={isClosing}
+                        readOnly={isClosing}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                          isClosing
+                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                        }`}
                       />
                     </div>
                     <div>
@@ -543,7 +700,12 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                           updateLeg(index, { optionType: e.target.value as 'call' | 'put' })
                         }
                         required
-                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                        disabled={isClosing}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                          isClosing
+                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                        }`}
                       >
                         <option value="call">Call</option>
                         <option value="put">Put</option>
@@ -555,9 +717,14 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                       </label>
                       <select
                         value={leg.side}
+                        disabled={isClosing}
                         onChange={(e) => updateLeg(index, { side: e.target.value as 'long' | 'short' })}
                         required
-                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                          isClosing
+                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                        }`}
                       >
                         <option value="long">Long</option>
                         <option value="short">Short</option>
@@ -574,12 +741,18 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         onChange={(e) => updateLeg(index, { quantity: parseInt(e.target.value) || 1 })}
                         required
                         placeholder="1"
-                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                        disabled={isClosing}
+                        readOnly={isClosing}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                          isClosing
+                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                        }`}
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                        Price *
+                        {isClosing ? 'Close Price *' : 'Price *'}
                       </label>
                       <input
                         type="number"
@@ -639,12 +812,12 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                 {isSubmitting ? (
                   <>
                     <div className="w-4 h-4 border-2 border-emerald-600 dark:border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                    Creating...
+                    {isClosing ? 'Closing...' : 'Creating...'}
                   </>
                 ) : (
                   <>
                     <Calculator size={16} />
-                    Create Strategy
+                    {isClosing ? 'Close Strategy' : 'Create Strategy'}
                   </>
                 )}
               </button>

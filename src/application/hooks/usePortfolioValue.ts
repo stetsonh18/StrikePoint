@@ -232,7 +232,7 @@ export function usePortfolioValue(userId: string): PortfolioValue {
     portfolioValue,
     netCashFlow,
     unrealizedPL,
-    totalMarketValue: unrealizedPL, // For backwards compatibility, but this is now just unrealized P&L
+    totalMarketValue, // Total market value of all open positions
     isLoading: cashLoading || positionsLoading,
   };
 }

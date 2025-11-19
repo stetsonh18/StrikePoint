@@ -244,6 +244,9 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
 
     const data = await response.json();
 
+    // Log the raw response for debugging
+    console.log(`[getOptionQuote] Raw response for ${optionSymbol}:`, JSON.stringify(data, null, 2));
+
     // Check for error in response
     if (data.error) {
       console.error(`[getOptionQuote] Error in response for ${optionSymbol}:`, data.error, data.message);
@@ -255,6 +258,18 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
       }
       throw new Error(data.message || data.error);
     }
+
+    // Log successful quote data
+    console.log(`[getOptionQuote] Successfully received quote for ${optionSymbol}:`, {
+      symbol: data.symbol,
+      bid: data.bid,
+      ask: data.ask,
+      last: data.last,
+      delta: data.delta,
+      gamma: data.gamma,
+      theta: data.theta,
+      vega: data.vega,
+    });
 
     // Transform response to OptionQuote format
     return {

@@ -3,7 +3,7 @@ import { X, TrendingUp, Calculator } from 'lucide-react';
 import { useActiveFuturesContractSpecs } from '@/application/hooks/useFuturesContractSpecs';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import type { FuturesContractSpec } from '@/domain/types';
-import { formatContractSymbol, calculateFuturesValue, calculateMarginRequirement } from '@/domain/types/futures.types';
+import { formatContractSymbol, calculateFuturesValue, calculateMarginRequirement, calculateExpirationDate } from '@/domain/types/futures.types';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
 interface FuturesTransactionFormProps {
@@ -148,10 +148,19 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
       // Build the full contract symbol (e.g., ESH25)
       const fullContractSymbol = formatContractSymbol(selectedContract.symbol, contractMonth, contractYear);
 
+      // Calculate expiration date from contract month and year
+      const contractMonthStr = `${contractMonth}${contractYear}`;
+      const expirationDate = calculateExpirationDate(contractMonthStr, selectedContract.symbol);
+
       // Calculate amount for the transaction
       // For futures, amount represents the notional value
       const notionalValue = prc * qty * selectedContract.multiplier;
       const amount = transactionType === 'Buy' ? -Math.abs(notionalValue) : Math.abs(notionalValue);
+
+      // Combine notes with contract spec ID
+      const combinedNotes = notes
+        ? `${notes}\nContract Spec ID: ${selectedContract.id}`
+        : `Contract Spec ID: ${selectedContract.id}`;
 
       const transactionData = {
         user_id: userId,
@@ -160,7 +169,7 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
         process_date: transactionDate,
         settle_date: transactionDate,
         description: description || `${transactionType} ${Math.abs(qty)} ${fullContractSymbol}`,
-        notes: notes || null,
+        notes: combinedNotes,
         tags: [],
         fees: feeAmt * Math.abs(qty),
         asset_type: 'futures' as const,
@@ -172,10 +181,10 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
         amount,
         is_opening: null,
         is_long: transactionType === 'Buy',
-        // Store contract spec ID for reference
-        notes: notes
-          ? `${notes}\nContract Spec ID: ${selectedContract.id}`
-          : `Contract Spec ID: ${selectedContract.id}`,
+        expiration_date: expirationDate || null, // Futures can have expiration_date
+        // Explicitly set option-specific fields to null (futures are not options)
+        option_type: null,
+        strike_price: null,
       };
 
       await TransactionService.createManualTransaction(transactionData);

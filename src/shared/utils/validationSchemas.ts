@@ -102,15 +102,20 @@ export const TransactionInsertSchema = z.object({
 ).refine(
   (data) => {
     // If asset_type is not 'option', option-specific fields should be null
+    // Exception: futures can have expiration_date
     if (data.asset_type !== 'option') {
-      return data.option_type === null && 
-             data.strike_price === null && 
-             data.expiration_date === null;
+      const optionTypeValid = data.option_type === null;
+      const strikePriceValid = data.strike_price === null;
+      // expiration_date can be set for futures, but option_type and strike_price cannot
+      const expirationDateValid = data.asset_type === 'futures' 
+        ? true // Futures can have expiration_date
+        : data.expiration_date === null; // Other non-options cannot
+      return optionTypeValid && strikePriceValid && expirationDateValid;
     }
     return true;
   },
   {
-    message: 'Non-option transactions should not include option-specific fields',
+    message: 'Non-option transactions should not include option-specific fields (option_type, strike_price). Futures can have expiration_date.',
     path: ['asset_type'],
   }
 );

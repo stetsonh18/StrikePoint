@@ -2,34 +2,46 @@ import { NavLink } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import { useSidebarStore } from '../../application/stores/sidebar.store';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositionStatistics } from '@/application/hooks/usePositions';
+import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
 import { NAVIGATION_ITEMS } from '../../shared/constants/navigation';
 
 export const Sidebar = () => {
-  const { isCollapsed, toggleSidebar } = useSidebarStore();
+  const { isCollapsed, toggleSidebar, isMobileOpen, closeMobileMenu } = useSidebarStore();
   const user = useAuthStore((state) => state.user);
   const userId = user?.id || '';
   
-  // Fetch position statistics for win rate
-  const { data: positionStats } = usePositionStatistics(userId);
+  // Fetch win rate metrics (includes both individual positions and multi-leg strategies)
+  const { data: winRateMetrics } = useWinRateMetrics(userId);
   
-  // Calculate win rate
-  const wins = positionStats?.wins || 0;
-  const losses = positionStats?.losses || 0;
-  const totalTrades = wins + losses;
+  // Calculate win rate from metrics (includes strategies counted as single trades)
+  const wins = winRateMetrics?.winningTrades || 0;
+  const losses = winRateMetrics?.losingTrades || 0;
+  const totalTrades = winRateMetrics?.totalTrades || 0;
   const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : '0';
   const winRatePercent = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
 
   return (
-    <aside
-      className={`
-        ${isCollapsed ? 'w-20' : 'w-72'}
-        bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950
-        border-r border-slate-200 dark:border-slate-800/50
-        backdrop-blur-xl
-        flex flex-col transition-all duration-300 relative
-      `}
-    >
+    <>
+      {/* Mobile overlay */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+          onClick={closeMobileMenu}
+          aria-hidden="true"
+        />
+      )}
+      
+      <aside
+        className={`
+          ${isCollapsed ? 'w-20' : 'w-72'}
+          bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950
+          border-r border-slate-200 dark:border-slate-800/50
+          backdrop-blur-xl
+          flex flex-col transition-all duration-300 relative
+          fixed md:static inset-y-0 left-0 z-50
+          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 dark:from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
 
       <div className="relative p-6 flex items-center justify-between">
@@ -53,9 +65,19 @@ export const Sidebar = () => {
         )}
       </div>
 
+      {/* Close button for mobile */}
+      <button
+        onClick={closeMobileMenu}
+        className="absolute top-4 right-4 md:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
+        aria-label="Close sidebar"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+
+      {/* Collapse/Expand button for desktop */}
       <button
         onClick={toggleSidebar}
-        className="absolute -right-3 top-8 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
+        className="hidden md:flex absolute -right-3 top-8 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isCollapsed ? (
@@ -72,6 +94,12 @@ export const Sidebar = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => {
+                // Close mobile menu when navigating
+                if (window.innerWidth < 768) {
+                  closeMobileMenu();
+                }
+              }}
               className={({ isActive }) =>
                 `
                 group relative flex items-center px-4 py-3.5 rounded-xl transition-all duration-200
@@ -129,5 +157,6 @@ export const Sidebar = () => {
         </div>
       </div>
     </aside>
+    </>
   );
 };

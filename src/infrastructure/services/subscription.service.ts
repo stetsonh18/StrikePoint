@@ -33,20 +33,7 @@ export class SubscriptionService {
    * Handles early adopter pricing, regular pricing, and discount codes
    */
   static async getPricing(userId: string, discountCode?: string): Promise<SubscriptionPricing> {
-    // Check if user has free forever status
-    const preferences = await UserPreferencesRepository.getUserPreferences(userId);
-    
-    if (preferences.isFreeForever) {
-      return {
-        priceId: '', // No price needed for free
-        amount: 0,
-        isEarlyAdopter: false,
-        isFreeForever: true,
-        discountCode: preferences.discountCode || FREE_FOREVER_DISCOUNT_CODE,
-      };
-    }
-
-    // Check discount code
+    // Check discount code first (before checking preferences)
     if (discountCode === FREE_FOREVER_DISCOUNT_CODE) {
       // Apply free forever discount
       await this.applyDiscountCode(userId, FREE_FOREVER_DISCOUNT_CODE);
@@ -59,21 +46,83 @@ export class SubscriptionService {
       };
     }
 
-    // Check early adopter status
-    const earlyAdopterResult = await EarlyAdopterService.checkAndSetEarlyAdopter(userId);
+    // IMPORTANT: Check early adopter status FIRST, before getting preferences
+    // This ensures that if the user is eligible, they get early adopter pricing
+    // even if their preferences row doesn't exist yet or was just created
+    let earlyAdopterResult: { isEarlyAdopter: boolean; subscriptionPrice: number; spotsRemaining: number } | null = null;
+    try {
+      earlyAdopterResult = await EarlyAdopterService.checkAndSetEarlyAdopter(userId);
+      
+      if (earlyAdopterResult.isEarlyAdopter) {
+        const priceId = EARLY_ADOPTER_PRICE_ID || REGULAR_PRICE_ID || '';
+        
+        if (!priceId) {
+          logger.error('Early adopter price ID not configured', { userId });
+          throw new Error('Subscription pricing is not configured. Please contact support.');
+        }
+        
+        return {
+          priceId,
+          amount: earlyAdopterResult.subscriptionPrice,
+          isEarlyAdopter: true,
+          isFreeForever: false,
+        };
+      }
+    } catch (error) {
+      // Log error but don't fail - we'll check preferences and fall back to regular pricing
+      logger.error('Error checking early adopter status', error, { userId });
+      // Continue to check preferences below
+    }
+
+    // Now check preferences (this will create default preferences if they don't exist)
+    const preferences = await UserPreferencesRepository.getUserPreferences(userId);
     
-    if (earlyAdopterResult.isEarlyAdopter) {
+    // Check if user has free forever status
+    if (preferences.isFreeForever) {
       return {
-        priceId: EARLY_ADOPTER_PRICE_ID || '',
-        amount: earlyAdopterResult.subscriptionPrice,
+        priceId: '', // No price needed for free
+        amount: 0,
+        isEarlyAdopter: false,
+        isFreeForever: true,
+        discountCode: preferences.discountCode || FREE_FOREVER_DISCOUNT_CODE,
+      };
+    }
+
+    // Check if user is already an early adopter (from their preferences)
+    // This handles the case where early adopter status was set previously
+    if (preferences.isEarlyAdopter) {
+      // Use their locked-in price, or default to early adopter price if not set
+      const price = preferences.subscriptionPrice || 9.99;
+      const priceId = EARLY_ADOPTER_PRICE_ID || REGULAR_PRICE_ID || '';
+      
+      if (!priceId) {
+        logger.error('Early adopter price ID not configured', { userId });
+        throw new Error('Subscription pricing is not configured. Please contact support.');
+      }
+      
+      return {
+        priceId,
+        amount: price,
         isEarlyAdopter: true,
         isFreeForever: false,
       };
     }
 
-    // Regular pricing
+    // Regular pricing (fallback if early adopter check fails or no spots available)
+    // Try to use regular price ID, but if not available, try early adopter price ID as fallback
+    const priceId = REGULAR_PRICE_ID || EARLY_ADOPTER_PRICE_ID || '';
+    
+    if (!priceId) {
+      logger.error('No Stripe price IDs configured', { 
+        userId,
+        hasEarlyAdopterPriceId: !!EARLY_ADOPTER_PRICE_ID,
+        hasRegularPriceId: !!REGULAR_PRICE_ID,
+      });
+      throw new Error('Subscription pricing is not configured. Please ensure VITE_STRIPE_REGULAR_PRICE_ID or VITE_STRIPE_EARLY_ADOPTER_PRICE_ID is set in your environment variables.');
+    }
+    
     return {
-      priceId: REGULAR_PRICE_ID || '',
+      priceId,
       amount: 19.99,
       isEarlyAdopter: false,
       isFreeForever: false,
@@ -85,14 +134,21 @@ export class SubscriptionService {
    */
   static async applyDiscountCode(userId: string, code: string): Promise<void> {
     if (code === FREE_FOREVER_DISCOUNT_CODE) {
+      // Use upsert to ensure the row exists (create if it doesn't, update if it does)
       const { error } = await supabase
         .from('user_preferences')
-        .update({
+        .upsert({
+          user_id: userId,
           discount_code: code,
           is_free_forever: true,
           subscription_price: 0,
-        })
-        .eq('user_id', userId);
+          currency: 'USD',
+          timezone: 'America/New_York',
+          email_notifications: true,
+          desktop_notifications: false,
+        }, {
+          onConflict: 'user_id',
+        });
 
       if (error) {
         logger.error('Error applying discount code', error);
@@ -109,20 +165,32 @@ export class SubscriptionService {
   static async getSubscriptionInfo(userId: string): Promise<SubscriptionInfo> {
     const preferences = await UserPreferencesRepository.getUserPreferences(userId);
     
-    // Consider trialing, active, and free forever as active
+    // Active subscription statuses (only these grant access)
+    const ACTIVE_STATUSES = ['active', 'trialing'] as const;
+    
+    // Inactive subscription statuses (these require resubscription)
+    // Note: Stripe statuses include: canceled, past_due, unpaid, incomplete, incomplete_expired
+    // When a subscription is canceled, the status becomes 'canceled' (or remains 'active' 
+    // until period end if cancel_at_period_end is true, then becomes 'canceled')
+    
+    const subscriptionStatus = preferences.subscriptionStatus;
+    const isFreeForever = preferences.isFreeForever === true;
+    
+    // User is active if:
+    // 1. They have free forever status, OR
+    // 2. Their subscription status is one of the active statuses
     const isActive = 
-      preferences.subscriptionStatus === 'active' || 
-      preferences.subscriptionStatus === 'trialing' ||
-      preferences.isFreeForever === true || 
-      false;
+      isFreeForever || 
+      (subscriptionStatus !== null && subscriptionStatus !== undefined && 
+       ACTIVE_STATUSES.includes(subscriptionStatus as typeof ACTIVE_STATUSES[number]));
     
     return {
       userId,
       isActive,
-      status: preferences.subscriptionStatus || null,
+      status: subscriptionStatus || null,
       price: preferences.subscriptionPrice || null,
       isEarlyAdopter: preferences.isEarlyAdopter === true || false,
-      isFreeForever: preferences.isFreeForever === true || false,
+      isFreeForever,
       discountCode: preferences.discountCode || null,
       customerId: preferences.stripeCustomerId || null,
       subscriptionId: preferences.stripeSubscriptionId || null,

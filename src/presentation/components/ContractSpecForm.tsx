@@ -103,10 +103,17 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
 
     try {
       if (isEditing && contract) {
-        await updateMutation.mutateAsync({
-          id: contract.id,
-          updates: dataToSubmit as FuturesContractSpecUpdate,
-        });
+        // If editing a system default (user_id is null), create a user-specific override instead
+        if (!contract.user_id && userId) {
+          // Create a new user-specific contract based on the system default
+          await createMutation.mutateAsync(dataToSubmit);
+        } else {
+          // Update existing user-specific contract
+          await updateMutation.mutateAsync({
+            id: contract.id,
+            updates: dataToSubmit as FuturesContractSpecUpdate,
+          });
+        }
       } else {
         await createMutation.mutateAsync(dataToSubmit);
       }
@@ -213,7 +220,9 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
                 {isEditing ? 'Edit Contract Specification' : 'Add Contract Specification'}
               </h2>
               <p id="contract-spec-description" className="text-sm text-slate-600 dark:text-slate-400">
-                Define futures contract parameters and margin requirements
+                {isEditing && contract && !contract.user_id && userId
+                  ? 'Editing a system default will create a custom override with your margin requirements'
+                  : 'Define futures contract parameters and margin requirements'}
               </p>
             </div>
           </div>
@@ -228,6 +237,15 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Info banner for system default editing */}
+          {isEditing && contract && !contract.user_id && userId && (
+            <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+              <p className="text-sm text-blue-700 dark:text-blue-400">
+                <strong>Note:</strong> You're editing a system default contract. Saving will create a custom override with your margin requirements. The system default will remain unchanged for other users.
+              </p>
+            </div>
+          )}
+
           {/* Basic Information */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">

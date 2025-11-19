@@ -43,10 +43,15 @@ const Stocks: React.FC = () => {
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
-  // Fetch stock positions
+  // Fetch stock positions (open only for display)
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {
     asset_type: 'stock',
     status: 'open',
+  });
+
+  // Fetch all stock positions (including closed) for realized P&L calculation
+  const { data: allStockPositions } = usePositions(userId, {
+    asset_type: 'stock',
   });
 
   // Fetch stock transactions
@@ -113,6 +118,12 @@ const Stocks: React.FC = () => {
       .map(toStockTransaction);
   }, [allTransactions]);
 
+  // Calculate realized P&L from all stock positions (including closed)
+  const realizedPL = useMemo(() => {
+    if (!allStockPositions) return 0;
+    return allStockPositions.reduce((sum, pos) => sum + (pos.realized_pl || 0), 0);
+  }, [allStockPositions]);
+
   // Calculate portfolio summary
   const portfolioSummary = useMemo(() => {
     const totalValue = positions.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
@@ -126,8 +137,9 @@ const Stocks: React.FC = () => {
       totalPL,
       totalPLPercent,
       positionsCount: positions.length,
+      realizedPL,
     };
-  }, [positions]);
+  }, [positions, realizedPL]);
 
   // Filter and sort positions
   const filteredPositions = useMemo(() => {
@@ -245,7 +257,7 @@ const Stocks: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard
           title="Total Value"
           value={formatCurrency(portfolioSummary.totalValue)}
@@ -257,6 +269,12 @@ const Stocks: React.FC = () => {
           value={formatCurrency(portfolioSummary.totalCost)}
           icon={DollarSign}
           positive
+        />
+        <StatCard
+          title="Realized P&L"
+          value={formatCurrency(portfolioSummary.realizedPL)}
+          icon={TrendingUp}
+          positive={portfolioSummary.realizedPL >= 0}
         />
         <StatCard
           title="Unrealized P&L"

@@ -305,8 +305,50 @@ export class PositionRepository {
 
   /**
    * Delete position
+   * Also deletes:
+   * - Associated transactions (via CASCADE on position_id FK)
+   * - Associated cash transactions (via CASCADE on transaction_id FK from transactions)
+   * - Journal entries that reference this position
    */
   static async delete(id: string): Promise<void> {
+    // First, get the position to find the user_id
+    const position = await this.getById(id);
+    if (!position) {
+      throw new Error(`Position not found: ${id}`);
+    }
+
+    // Delete journal entries that reference this position
+    // Journal entries have linked_position_ids array that may contain this position ID
+    // Fetch all journal entries for this user and filter in code
+    const { data: allJournalEntries, error: journalError } = await supabase
+      .from('journal_entries')
+      .select('id, linked_position_ids')
+      .eq('user_id', position.user_id);
+
+    if (journalError) {
+      logError(journalError, { context: 'PositionRepository.delete - fetching journal entries', id });
+      // Continue with deletion even if journal fetch fails
+    } else if (allJournalEntries && allJournalEntries.length > 0) {
+      // Filter journal entries that contain this position ID in their linked_position_ids array
+      const journalEntriesToDelete = allJournalEntries.filter(
+        (entry) => entry.linked_position_ids && entry.linked_position_ids.includes(id)
+      );
+
+      if (journalEntriesToDelete.length > 0) {
+        const journalIds = journalEntriesToDelete.map(entry => entry.id);
+        const { error: deleteJournalError } = await supabase
+          .from('journal_entries')
+          .delete()
+          .in('id', journalIds);
+
+        if (deleteJournalError) {
+          logError(deleteJournalError, { context: 'PositionRepository.delete - deleting journal entries', id });
+          // Continue with position deletion even if journal deletion fails
+        }
+      }
+    }
+
+    // Delete the position (transactions and cash transactions will cascade delete via FKs)
     const { error } = await supabase.from('positions').delete().eq('id', id);
 
     if (error) {
@@ -318,11 +360,13 @@ export class PositionRepository {
 
   /**
    * Get position statistics
+   * Note: For multi-leg strategies, wins/losses should be counted at the strategy level, not individual positions
+   * This method only counts individual positions (not part of a strategy) for win/loss statistics
    */
   static async getStatistics(userId: string, startDate?: string, endDate?: string) {
     let query = supabase
       .from('positions')
-      .select('status, realized_pl, unrealized_pl, opened_at, closed_at')
+      .select('status, realized_pl, unrealized_pl, opened_at, closed_at, strategy_id')
       .eq('user_id', userId);
 
     if (startDate) {
@@ -343,11 +387,14 @@ export class PositionRepository {
 
     const positions = data || [];
 
-    // Count positions with realized P/L (including partial closes)
+    // Count individual positions with realized P/L (excluding positions that are part of a strategy)
+    // Positions that are part of a strategy should be counted via the strategy, not individually
     // A position can have realized P/L even if it's still open (partial close)
-    const positionsWithRealizedPL = positions.filter((p) => p.realized_pl && p.realized_pl !== 0);
-    const winningPositions = positionsWithRealizedPL.filter((p) => p.realized_pl > 0);
-    const losingPositions = positionsWithRealizedPL.filter((p) => p.realized_pl < 0);
+    const individualPositionsWithRealizedPL = positions.filter(
+      (p) => !p.strategy_id && p.realized_pl && p.realized_pl !== 0
+    );
+    const winningPositions = individualPositionsWithRealizedPL.filter((p) => p.realized_pl > 0);
+    const losingPositions = individualPositionsWithRealizedPL.filter((p) => p.realized_pl < 0);
 
     const stats = {
       total: positions.length,
@@ -357,7 +404,8 @@ export class PositionRepository {
       totalUnrealizedPL: positions
         .filter((p) => p.status === 'open')
         .reduce((sum, p) => sum + Number(p.unrealized_pl || 0), 0),
-      // Count wins/losses based on realized P/L, not just closed positions
+      // Count wins/losses based on realized P/L for individual positions only
+      // Strategy positions are counted separately at the strategy level
       wins: winningPositions.length,
       losses: losingPositions.length,
       avgWin: winningPositions.length > 0

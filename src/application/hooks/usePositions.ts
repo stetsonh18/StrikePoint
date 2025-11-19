@@ -79,6 +79,8 @@ export function useUpdatePosition() {
       // Invalidate all position-related queries
       queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
+      // Invalidate win rate metrics when positions are updated
+      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
     },
   });
 }
@@ -98,6 +100,8 @@ export function useDeletePosition() {
       queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
       queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value('') });
       queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
+      // Invalidate win rate metrics when positions are deleted
+      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
       toast.success('Position deleted successfully');
     },
     onError: (error) => {

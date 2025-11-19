@@ -42,6 +42,8 @@ serve(async (req) => {
     }
 
     // Create checkout session with 14-day free trial
+    // Note: free4ever discount code is handled separately in the application (bypasses Stripe checkout)
+    // For other discount codes, we enable promotion codes in Stripe Checkout
     const session = await stripe.checkout.sessions.create({
       customer_email: userData.user.email,
       payment_method_types: ['card'],
@@ -65,7 +67,10 @@ serve(async (req) => {
         userId,
         discountCode: discountCode || '',
       },
-      // Note: free4ever is handled separately in the application, not via Stripe coupon
+      // Enable promotion codes in Stripe Checkout for other discount codes
+      // The free4ever coupon (ID: free4ever) exists in Stripe but is handled app-side
+      // since it's 100% off forever and doesn't require payment
+      allow_promotion_codes: discountCode !== 'free4ever',
     });
 
     return new Response(

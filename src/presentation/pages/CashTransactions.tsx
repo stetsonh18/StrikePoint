@@ -89,11 +89,9 @@ const CashTransactions: React.FC = () => {
       .filter(t => ['FEE', 'GOLD'].includes(t.transaction_code))
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    // Exclude FUTURES_MARGIN and FUTURES_MARGIN_RELEASE from net cash flow calculation
-    // FUTURES_MARGIN represents margin reserved, not actual cash spent
-    // FUTURES_MARGIN_RELEASE offsets the reservation (both excluded nets to 0)
+    // Include FUTURES_MARGIN and FUTURES_MARGIN_RELEASE in net cash flow calculation
+    // FUTURES_MARGIN represents margin reserved (debit), FUTURES_MARGIN_RELEASE represents margin released (credit)
     const netCashFlow = transactions
-      .filter((t) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(t.transaction_code))
       .reduce((sum, t) => sum + t.amount, 0);
 
     return {

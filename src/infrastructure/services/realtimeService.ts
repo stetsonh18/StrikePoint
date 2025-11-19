@@ -59,27 +59,75 @@ export class RealtimeService {
 
     // Subscribe to transactions
     this.subscribeToTable('transactions', userId, [
-      ['transactions', userId],
+      ['transactions'],
       ['transaction-statistics', userId],
+      // Also invalidate portfolio and analytics queries that depend on transactions
+      ['portfolio-value', userId],
+      ['portfolio-history', userId],
+      ['net-cash-flow', userId],
+      ['initial-investment', userId],
+      ['analytics'],
+      ['win-rate-metrics'], // Invalidate win rate metrics when transactions change
     ]);
 
     // Subscribe to positions
     this.subscribeToTable('positions', userId, [
-      ['positions', userId],
+      ['positions'],
       ['position-statistics', userId],
       ['positions', 'open', userId],
       ['positions', 'expiring', userId],
+      // Also invalidate portfolio and analytics queries that depend on positions
+      ['portfolio-value', userId],
+      ['portfolio-history', userId],
+      ['analytics'],
+      ['win-rate-metrics'], // Invalidate win rate metrics when positions change
     ]);
 
     // Subscribe to cash transactions
     this.subscribeToTable('cash_transactions', userId, [
+      ['cash-transactions'],
       ['cash_transactions', userId],
       ['cash-balance', userId],
+      // Also invalidate portfolio queries that depend on cash transactions
+      ['portfolio-value', userId],
+      ['net-cash-flow', userId],
+      ['initial-investment', userId],
     ]);
 
     // Subscribe to cash balances
     this.subscribeToTable('cash_balances', userId, [
       ['cash-balance', userId],
+      // Also invalidate portfolio queries
+      ['portfolio-value', userId],
+    ]);
+
+    // Subscribe to strategies
+    this.subscribeToTable('strategies', userId, [
+      ['strategies'],
+      ['strategy-summaries', userId],
+      ['strategy-statistics', userId],
+      ['strategies', 'open', userId],
+      // Also invalidate analytics queries that depend on strategies
+      ['analytics'],
+      ['strategy-performance', userId],
+      ['win-rate-metrics'], // Invalidate win rate metrics when strategies change
+    ]);
+
+    // Subscribe to journal entries
+    this.subscribeToTable('journal_entries', userId, [
+      ['journal-entries'],
+      ['journal-stats', userId],
+    ]);
+
+    // Subscribe to AI insights
+    this.subscribeToTable('ai_insights', userId, [
+      ['ai-insights'],
+      ['ai-insights', 'statistics', userId],
+    ]);
+
+    // Subscribe to user preferences
+    this.subscribeToTable('user_preferences', userId, [
+      ['user-preferences', userId],
     ]);
 
     console.log('[Realtime] Subscriptions set up for user:', userId);
@@ -91,12 +139,18 @@ export class RealtimeService {
   static cleanupSubscriptions(userId: string): void {
     if (!userId) return;
 
-    const channelName = `transactions-${userId}`;
-    const positionsChannelName = `positions-${userId}`;
-    const cashTxChannelName = `cash_transactions-${userId}`;
-    const cashBalanceChannelName = `cash_balances-${userId}`;
+    const channelNames = [
+      `transactions-${userId}`,
+      `positions-${userId}`,
+      `cash_transactions-${userId}`,
+      `cash_balances-${userId}`,
+      `strategies-${userId}`,
+      `journal_entries-${userId}`,
+      `ai_insights-${userId}`,
+      `user_preferences-${userId}`,
+    ];
 
-    [channelName, positionsChannelName, cashTxChannelName, cashBalanceChannelName].forEach((name) => {
+    channelNames.forEach((name) => {
       const channel = this.channels.get(name);
       if (channel) {
         channel.unsubscribe();

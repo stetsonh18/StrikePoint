@@ -96,8 +96,23 @@ export const Analytics = () => {
   }, [showTimePeriodMenu]);
   
   const assetType = TAB_TO_ASSET_TYPE[activeTab];
-  const { data: metrics, isLoading } = useAnalytics(userId, assetType);
+  const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType);
   const { data: allPositions } = usePositions(userId);
+  
+  // Log for debugging
+  useEffect(() => {
+    if (metricsError) {
+      console.error('[Analytics] Error loading metrics:', metricsError);
+    }
+    if (metrics) {
+      console.log('[Analytics] Metrics loaded:', {
+        totalTrades: metrics.totalTrades,
+        realizedPL: metrics.realizedPL,
+        unrealizedPL: metrics.unrealizedPL,
+        assetType,
+      });
+    }
+  }, [metrics, metricsError, assetType]);
   
   // Get open positions filtered by asset type
   const openPositions = useMemo(() => {
@@ -294,7 +309,12 @@ export const Analytics = () => {
 
   // Use metrics with calculated unrealized P&L
   const displayMetrics = metricsWithUnrealizedPL || metrics;
-  const hasData = displayMetrics && displayMetrics.totalTrades > 0;
+  // Show analytics if there are closed trades OR open positions
+  // This ensures users see analytics even if they only have open positions
+  const hasData = displayMetrics && (
+    (displayMetrics.totalTrades > 0) || 
+    (openPositions && openPositions.length > 0)
+  );
 
   return (
     <div className="p-8 space-y-8">
@@ -412,23 +432,23 @@ export const Analytics = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
                   title="Average Win"
-                  value={formatValue(metrics.averageGain, true)}
+                  value={formatValue(displayMetrics?.averageGain, true)}
                   description="Average profit per winning trade"
-                  positive={metrics.averageGain !== undefined && metrics.averageGain > 0}
+                  positive={displayMetrics?.averageGain !== undefined && displayMetrics.averageGain > 0}
                   theme={theme}
                 />
                 <MetricCard
                   title="Average Loss"
-                  value={formatValue(metrics.averageLoss, true)}
+                  value={formatValue(displayMetrics?.averageLoss, true)}
                   description="Average loss per losing trade"
                   positive={false}
                   theme={theme}
                 />
                 <MetricCard
                   title="Profit Factor"
-                  value={formatValue(metrics.profitFactor)}
+                  value={formatValue(displayMetrics?.profitFactor)}
                   description="Ratio of gross profit to gross loss"
-                  positive={metrics.profitFactor !== undefined && metrics.profitFactor >= 1}
+                  positive={displayMetrics?.profitFactor !== undefined && displayMetrics.profitFactor >= 1}
                   theme={theme}
                 />
               </div>
@@ -436,22 +456,22 @@ export const Analytics = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
                   title="Win Rate"
-                  value={formatValue(displayMetrics.winRate, false, true)}
-                  description={`${displayMetrics.winningTrades}/${displayMetrics.losingTrades} (W/L)`}
-                  positive={displayMetrics.winRate >= 50}
+                  value={formatValue(displayMetrics?.winRate, false, true)}
+                  description={`${displayMetrics?.winningTrades || 0}/${displayMetrics?.losingTrades || 0} (W/L)`}
+                  positive={(displayMetrics?.winRate || 0) >= 50}
                   theme={theme}
                 />
                 <MetricCard
                   title="Total Trades"
-                  value={displayMetrics.totalTrades.toString()}
-                  description={`${displayMetrics.winningTrades} winning, ${displayMetrics.losingTrades} losing`}
+                  value={(displayMetrics?.totalTrades || 0).toString()}
+                  description={`${displayMetrics?.winningTrades || 0} winning, ${displayMetrics?.losingTrades || 0} losing`}
                   theme={theme}
                 />
                 <MetricCard
                   title="Total P/L"
-                  value={formatValue(displayMetrics.totalGains - displayMetrics.totalLosses, true)}
-                  description={`${formatCurrency(displayMetrics.totalGains)} gains, ${formatCurrency(displayMetrics.totalLosses)} losses`}
-                  positive={(displayMetrics.totalGains - displayMetrics.totalLosses) >= 0}
+                  value={formatValue((displayMetrics?.totalGains || 0) - (displayMetrics?.totalLosses || 0), true)}
+                  description={`${formatCurrency(displayMetrics?.totalGains || 0)} gains, ${formatCurrency(displayMetrics?.totalLosses || 0)} losses`}
+                  positive={((displayMetrics?.totalGains || 0) - (displayMetrics?.totalLosses || 0)) >= 0}
                   theme={theme}
                 />
               </div>

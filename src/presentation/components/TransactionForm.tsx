@@ -181,6 +181,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               : (parseFloat(price) || 0) * (parseFloat(quantity) || 0), // Positive for sell (credit)
             is_opening: null,
             is_long: transactionCode === 'Buy',
+            // Explicitly set option-specific fields to null for non-option transactions
+            option_type: null,
+            strike_price: null,
+            expiration_date: null,
           };
           break;
 
@@ -218,6 +222,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               : (parseFloat(price) || 0) * (parseFloat(quantity) || 0),
             is_opening: null,
             is_long: transactionCode === 'Buy',
+            // Explicitly set option-specific fields to null for non-option transactions
+            option_type: null,
+            strike_price: null,
+            expiration_date: null,
           };
           break;
 
@@ -235,7 +243,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               : (parseFloat(price) || 0) * (parseFloat(quantity) || 0),
             is_opening: null,
             is_long: transactionCode === 'Buy',
-            expiration_date: expirationDate || null,
+            expiration_date: expirationDate || null, // Futures can have expiration_date
+            // Explicitly set option-specific fields to null (futures are not options)
+            option_type: null,
+            strike_price: null,
           };
           break;
 
@@ -355,8 +366,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         ref={modalRef as React.RefObject<HTMLDivElement>}
         className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
       >
-        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between">
-          <h2 id="transaction-form-title" className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 md:p-6 flex items-center justify-between">
+          <h2 id="transaction-form-title" className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
             Add {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
           </h2>
           <button
@@ -368,7 +379,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4 md:space-y-6">
           {error && (
             <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-sm">
               {error}
@@ -376,7 +387,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           )}
 
           {/* Common Fields - Date and Time Fields */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Date *
@@ -418,7 +429,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
@@ -448,7 +459,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Share *
@@ -506,7 +517,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Transaction Type *
@@ -595,7 +606,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Contract *
@@ -642,7 +653,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
@@ -672,7 +683,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Unit *
@@ -719,7 +730,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Type *
@@ -747,7 +758,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Quantity *
@@ -773,7 +784,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price *
@@ -807,7 +818,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {assetType === 'cash' && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Category *

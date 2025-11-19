@@ -18,24 +18,17 @@ export function useNetCashFlow(
       // Get all cash transactions
       const transactions = await CashTransactionRepository.getByUserId(userId);
 
-      // Sum all transaction amounts, excluding only:
-      // - FUTURES_MARGIN: Margin reserved, not actual cash spent
-      // - FUTURES_MARGIN_RELEASE: Margin released, offsetting the reservation (both excluded nets to 0)
-      //
-      // We INCLUDE everything else:
+      // Sum all transaction amounts
+      // We INCLUDE everything:
       // - STOCK_BUY/STOCK_SELL: Actual cash paid/received for stocks
       // - CRYPTO_BUY/CRYPTO_SELL: Actual cash paid/received for crypto
       // - OPTION_BUY/OPTION_SELL: Actual cash paid/received for options
       // - FEE: Trading fees
       // - DEPOSIT/WITHDRAWAL: Cash deposits and withdrawals
       // - FUTURES_PROFIT/FUTURES_LOSS: Realized P&L from futures
-      const excludedCodes = [
-        'FUTURES_MARGIN',
-        'FUTURES_MARGIN_RELEASE',
-      ];
-
+      // - FUTURES_MARGIN: Margin reserved (debit) - now included to deduct from cash
+      // - FUTURES_MARGIN_RELEASE: Margin released (credit) - now included to add back to cash
       const netCashFlow = transactions
-        .filter((tx) => !excludedCodes.includes(tx.transaction_code || ''))
         .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
       return netCashFlow;

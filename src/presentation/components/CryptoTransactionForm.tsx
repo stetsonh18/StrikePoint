@@ -78,6 +78,10 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
           : (parseFloat(price) || 0) * (parseFloat(quantity) || 0), // Positive for sell (credit)
         is_opening: null,
         is_long: transactionCode === 'Buy',
+        // Explicitly set option-specific fields to null for non-option transactions
+        option_type: null,
+        strike_price: null,
+        expiration_date: null,
       };
 
       await TransactionService.createManualTransaction(transactionData);

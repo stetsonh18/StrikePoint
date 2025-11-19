@@ -43,10 +43,15 @@ const Crypto: React.FC = () => {
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
-  // Fetch crypto positions
+  // Fetch crypto positions (open only for display)
   const { data: allPositions, isLoading: positionsLoading } = usePositions(userId, {
     asset_type: 'crypto',
     status: 'open',
+  });
+
+  // Fetch all crypto positions (including closed) for realized P&L calculation
+  const { data: allCryptoPositions } = usePositions(userId, {
+    asset_type: 'crypto',
   });
 
   // Fetch crypto transactions
@@ -166,6 +171,12 @@ const Crypto: React.FC = () => {
     return sortData(filtered, transactionSort);
   }, [searchQuery, transactions, transactionSort]);
 
+  // Calculate realized P&L from all crypto positions (including closed)
+  const realizedPL = useMemo(() => {
+    if (!allCryptoPositions) return 0;
+    return allCryptoPositions.reduce((sum, pos) => sum + (pos.realized_pl || 0), 0);
+  }, [allCryptoPositions]);
+
   const portfolioSummary = useMemo(() => {
     const totalValue = positions.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
     const totalCost = positions.reduce((sum, pos) => sum + pos.costBasis, 0);
@@ -178,8 +189,9 @@ const Crypto: React.FC = () => {
       totalPL,
       totalPLPercent,
       positionsCount: positions.length,
+      realizedPL,
     };
-  }, [positions]);
+  }, [positions, realizedPL]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -275,7 +287,7 @@ const Crypto: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard
           title="Total Value"
           value={formatCurrency(portfolioSummary.totalValue)}
@@ -287,6 +299,12 @@ const Crypto: React.FC = () => {
           value={formatCurrency(portfolioSummary.totalCost)}
           icon={DollarSign}
           positive
+        />
+        <StatCard
+          title="Realized P&L"
+          value={formatCurrency(portfolioSummary.realizedPL)}
+          icon={TrendingUp}
+          positive={portfolioSummary.realizedPL >= 0}
         />
         <StatCard
           title="Unrealized P&L"

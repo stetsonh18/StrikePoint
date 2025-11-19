@@ -62,6 +62,8 @@ export function useUpdateTransaction() {
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+      // Invalidate win rate metrics when transactions are updated
+      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
     },
   });
 }
@@ -73,11 +75,11 @@ export function useDeleteTransaction() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  return useMutation<void, Error, { id: string; userId: string }>({
+  return useMutation<{ deletedCount: number; wasStrategy: boolean }, Error, { id: string; userId: string }>({
     mutationFn: async ({ id }: { id: string; userId: string }) => {
-      await TransactionRepository.delete(id);
+      return await TransactionRepository.delete(id);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       const { userId } = variables;
       // Invalidate all transaction-related queries for this user
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all });
@@ -92,10 +94,19 @@ export function useDeleteTransaction() {
         }
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
-      toast.success('Transaction deleted successfully');
+      // Invalidate win rate metrics when transactions are deleted
+      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
+      
+      // Show appropriate message based on what was deleted
+      if (result.wasStrategy) {
+        toast.success(`Deleted ${result.deletedCount} transaction${result.deletedCount > 1 ? 's' : ''} from multi-leg strategy`);
+      } else {
+        toast.success('Transaction deleted successfully');
+      }
     },
     onError: (error) => {
       logger.error('Failed to delete transaction', error);

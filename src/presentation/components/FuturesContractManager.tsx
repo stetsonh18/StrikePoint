@@ -77,7 +77,7 @@ export const FuturesContractManager: React.FC = () => {
               Futures Contract Specifications
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Manage futures contracts with margin requirements and tick specifications
+              Manage futures contracts with margin requirements and tick specifications. Edit system defaults to create custom margin settings for your broker.
             </p>
           </div>
         </div>
@@ -158,6 +158,9 @@ export const FuturesContractManager: React.FC = () => {
                   Fees
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -196,6 +199,18 @@ export const FuturesContractManager: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-300">
                     ${formatNumber(contract.fees_per_contract)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-center">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        contract.user_id
+                          ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                          : 'bg-slate-200 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-500/30'
+                      }`}
+                      title={contract.user_id ? 'Custom margin (user-specific)' : 'System default'}
+                    >
+                      {contract.user_id ? 'Custom' : 'Default'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-center">
                     <span

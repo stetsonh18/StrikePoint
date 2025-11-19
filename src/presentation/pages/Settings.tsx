@@ -13,11 +13,13 @@ import { logger } from '@/shared/utils/logger';
 import { SubscriptionService } from '@/infrastructure/services/subscription.service';
 import { getSubscriptionStatus, cancelSubscription, createBillingPortalSession } from '@/infrastructure/services/stripe.service';
 import { CreditCard, XCircle, Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export const Settings = () => {
   const user = useAuthStore((state) => state.user);
   const userId = user?.id || '';
   const toast = useToast();
+  const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState<'general' | 'futures' | 'portfolio-history'>('general');
 
@@ -755,7 +757,12 @@ export const Settings = () => {
                         description: 'Your subscription will remain active until the end of the billing period.',
                       });
                       setShowCancelDialog(false);
-                      // Reload subscription info
+                      
+                      // Invalidate subscription queries to refresh status across the app
+                      queryClient.invalidateQueries({ queryKey: ['subscription-status', userId] });
+                      queryClient.invalidateQueries({ queryKey: ['needs-subscription', userId] });
+                      
+                      // Reload subscription info for this component
                       const info = await SubscriptionService.getSubscriptionInfo(userId);
                       setSubscriptionInfo(info);
                     } catch (error) {

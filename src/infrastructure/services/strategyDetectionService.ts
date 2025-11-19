@@ -148,11 +148,20 @@ export class StrategyDetectionService {
       strategiesCreated += detected.strategiesCreated;
       positionsGrouped += detected.positionsGrouped;
     } else {
-      // No pattern detected - create individual strategies
-      for (const position of optionPositions) {
-        await this.createSinglePositionStrategy(userId, position, 'single_option');
-        strategiesCreated++;
-        positionsGrouped++;
+      // No specific pattern detected - try to group positions that should be together
+      // Group positions with same symbol, expiration, option type, and opposite sides
+      // This handles cases like credit/debit spreads that might not match exact patterns
+      const grouped = await this.groupSimilarPositions(userId, symbol, optionPositions);
+      if (grouped.strategiesCreated > 0) {
+        strategiesCreated += grouped.strategiesCreated;
+        positionsGrouped += grouped.positionsGrouped;
+      } else {
+        // No pattern detected - create individual strategies
+        for (const position of optionPositions) {
+          await this.createSinglePositionStrategy(userId, position, 'single_option');
+          strategiesCreated++;
+          positionsGrouped++;
+        }
       }
     }
 
@@ -233,6 +242,86 @@ export class StrategyDetectionService {
     }
 
     return null;
+  }
+
+  /**
+   * Group similar positions that should be together (fallback for positions that don't match exact patterns)
+   * Groups positions with same symbol, expiration, option type, and opposite sides
+   */
+  private static async groupSimilarPositions(
+    userId: string,
+    symbol: string,
+    positions: Position[]
+  ): Promise<{ strategiesCreated: number; positionsGrouped: number }> {
+    if (positions.length < 2) {
+      return { strategiesCreated: 0, positionsGrouped: 0 };
+    }
+
+    let strategiesCreated = 0;
+    let positionsGrouped = 0;
+    const processed = new Set<string>();
+
+    // Group by expiration and option type
+    const groups: Record<string, Position[]> = {};
+    for (const pos of positions) {
+      if (processed.has(pos.id)) continue;
+      
+      const key = `${pos.expiration_date || 'no-exp'}_${pos.option_type || 'no-type'}`;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(pos);
+    }
+
+    // For each group, try to find pairs with opposite sides
+    for (const group of Object.values(groups)) {
+      if (group.length < 2) continue;
+
+      // Find pairs with opposite sides
+      const longPositions = group.filter(p => p.side === 'long');
+      const shortPositions = group.filter(p => p.side === 'short');
+
+      // If we have both long and short positions, group them together
+      if (longPositions.length > 0 && shortPositions.length > 0) {
+        // Only group if positions have different strikes (vertical spread)
+        // or if they're the only positions in the group (might be a spread with same strike opened separately)
+        const hasDifferentStrikes = new Set(group.map(p => p.strike_price)).size > 1;
+        
+        // Group if they have different strikes (vertical spread) or if there are exactly 2 positions
+        if (hasDifferentStrikes || group.length === 2) {
+          // Create a strategy with all positions in this group
+          // Determine strategy type based on option type and net debit/credit
+          let strategyType: StrategyType = 'vertical_spread';
+          
+          // Check if it's a credit or debit spread
+          // Long positions have negative cost basis (debit), short positions have positive (credit)
+          // Net = sum of all cost bases (negative for debit, positive for credit)
+          const totalCost = group.reduce((sum, p) => {
+            // For long positions, cost_basis is negative (debit paid)
+            // For short positions, cost_basis is positive (credit received)
+            return sum + (p.total_cost_basis || 0);
+          }, 0);
+          const isCredit = totalCost > 0; // Positive total means net credit received
+          
+          // Determine direction
+          let direction: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+          if (group[0].option_type === 'call') {
+            direction = isCredit ? 'bearish' : 'bullish'; // Credit call spread is bearish, debit is bullish
+          } else if (group[0].option_type === 'put') {
+            direction = isCredit ? 'bullish' : 'bearish'; // Credit put spread is bullish, debit is bearish
+          }
+
+          await this.createStrategy(userId, strategyType, symbol, group, direction);
+          strategiesCreated++;
+          positionsGrouped += group.length;
+          
+          // Mark all positions as processed
+          group.forEach(p => processed.add(p.id));
+        }
+      }
+    }
+
+    return { strategiesCreated, positionsGrouped };
   }
 
   /**

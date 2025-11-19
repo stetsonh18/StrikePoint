@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { SubscriptionService } from '@/infrastructure/services/subscription.service';
 import { createCheckoutSession, getStripe } from '@/infrastructure/services/stripe.service';
 import { useToast } from '@/shared/hooks/useToast';
-import { Loader2, CreditCard, Gift, CheckCircle2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Loader2, CreditCard, Gift, CheckCircle2, Home, LogOut } from 'lucide-react';
 
 export function Checkout() {
   const user = useAuthStore((state) => state.user);
@@ -12,6 +13,7 @@ export function Checkout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const toast = useToast();
+  const queryClient = useQueryClient();
   
   const [discountCode, setDiscountCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -20,12 +22,64 @@ export function Checkout() {
   const [isValidatingCode, setIsValidatingCode] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Handle checkout success redirect
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    const canceled = searchParams.get('canceled');
+    
+    if (sessionId && userId) {
+      // Checkout was successful, invalidate subscription queries and wait for webhook
+      queryClient.invalidateQueries({ queryKey: ['subscription-status', userId] });
+      queryClient.invalidateQueries({ queryKey: ['needs-subscription', userId] });
+      
+      // Wait a moment for webhook to process, then check subscription status
+      const checkSubscription = async () => {
+        let attempts = 0;
+        const maxAttempts = 10; // Wait up to 5 seconds (10 * 500ms)
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const info = await SubscriptionService.getSubscriptionInfo(userId);
+          if (info.isActive) {
+            toast.success('Subscription activated!', {
+              description: 'Welcome to StrikePoint!',
+            });
+            navigate('/');
+            return;
+          }
+          
+          attempts++;
+        }
+        
+        // If still not active after waiting, redirect anyway (webhook might be delayed)
+        toast.success('Checkout completed!', {
+          description: 'Your subscription is being processed. You\'ll have access shortly.',
+        });
+        navigate('/');
+      };
+      
+      checkSubscription();
+    } else if (canceled === 'true') {
+      toast.info('Checkout canceled', {
+        description: 'You can complete your subscription anytime.',
+      });
+    }
+  }, [searchParams, userId, queryClient, navigate, toast]);
+
   // Get discount code from URL if present and load initial pricing
   useEffect(() => {
     if (!userId) return;
 
     const code = searchParams.get('code');
     const initialCode = code || discountCode;
+    const sessionId = searchParams.get('session_id');
+    
+    // Skip loading pricing if we're handling a success redirect
+    if (sessionId) {
+      setIsLoadingPricing(false);
+      return;
+    }
 
     const loadPricing = async () => {
       try {
@@ -35,9 +89,13 @@ export function Checkout() {
           setDiscountCode(code);
         }
       } catch (error) {
+        console.error('Failed to load pricing:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         toast.error('Failed to load pricing', {
-          description: error instanceof Error ? error.message : 'Please try again.',
+          description: errorMessage,
         });
+        // Set pricing to null so error message is shown
+        setPricing(null);
       } finally {
         setIsLoadingPricing(false);
       }
@@ -55,6 +113,9 @@ export function Checkout() {
       // If free forever, just apply the discount
       if (pricing.isFreeForever) {
         await SubscriptionService.applyDiscountCode(userId, discountCode || 'free4ever');
+        // Invalidate subscription queries to refresh status
+        queryClient.invalidateQueries({ queryKey: ['subscription-status', userId] });
+        queryClient.invalidateQueries({ queryKey: ['needs-subscription', userId] });
         toast.success('Free subscription activated!', {
           description: 'You now have lifetime access to StrikePoint.',
         });
@@ -64,7 +125,11 @@ export function Checkout() {
 
       // If no price ID, something went wrong
       if (!pricing.priceId) {
-        throw new Error('No price available. Please contact support.');
+        toast.error('Pricing configuration error', {
+          description: 'Unable to load subscription pricing. Please refresh the page or contact support.',
+        });
+        setIsLoading(false);
+        return;
       }
 
       // Create checkout session
@@ -128,6 +193,21 @@ export function Checkout() {
     return null;
   }
 
+  // Show loading state if handling success redirect
+  const sessionId = searchParams.get('session_id');
+  if (sessionId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+          <p className="text-slate-600 dark:text-slate-400">
+            Activating your subscription...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoadingPricing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -136,8 +216,37 @@ export function Checkout() {
     );
   }
 
+  const handleSignOut = async () => {
+    try {
+      const signOut = useAuthStore.getState().signOut;
+      await signOut();
+      navigate('/');
+      toast.success('Signed out successfully');
+    } catch (error) {
+      toast.error('Failed to sign out');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4">
+      {/* Navigation Bar */}
+      <div className="max-w-2xl mx-auto mb-6 flex items-center justify-between">
+        <Link
+          to="/"
+          className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
+        >
+          <Home className="w-5 h-5" />
+          <span>Home</span>
+        </Link>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          <span>Sign Out</span>
+        </button>
+      </div>
+
       <div className="max-w-2xl mx-auto">
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg p-8 space-y-6">
           <div className="text-center">
@@ -243,11 +352,29 @@ export function Checkout() {
             )}
           </div>
 
+          {/* Error message if pricing failed to load */}
+          {!isLoadingPricing && !pricing && (
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                Failed to load pricing information. Please refresh the page or contact support.
+              </p>
+            </div>
+          )}
+
+          {/* Error message if pricing loaded but priceId is missing */}
+          {pricing && !pricing.priceId && !pricing.isFreeForever && (
+            <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                Unable to start subscription. Please ensure your Stripe configuration is set up correctly.
+              </p>
+            </div>
+          )}
+
           {/* Checkout Button */}
           <button
             onClick={handleCheckout}
-            disabled={isLoading || !pricing}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-semibold rounded-lg transition-colors"
+            disabled={isLoading || !pricing || (!pricing.isFreeForever && !pricing.priceId)}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
           >
             {isLoading ? (
               <>

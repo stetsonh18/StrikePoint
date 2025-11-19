@@ -186,13 +186,34 @@ export class UserPreferencesRepository {
     });
 
     if (error) {
+      // Log the error for debugging
+      console.error('Error calling check_and_set_early_adopter:', error);
+      
+      // If function doesn't exist, provide helpful error message
+      if (error.message?.includes('function') || error.code === '42883') {
+        throw new Error('Early adopter function not found. Please ensure database migrations have been applied.');
+      }
+      
       throw error;
     }
 
+    // Handle case where data might be null or undefined
+    if (!data) {
+      throw new Error('No data returned from early adopter check');
+    }
+
+    // The function returns a TABLE, so Supabase RPC returns an array
+    // Get the first row from the result
+    const result = Array.isArray(data) ? data[0] : data;
+
+    if (!result) {
+      throw new Error('No result returned from early adopter check');
+    }
+
     return {
-      isEarlyAdopter: data.is_early_adopter ?? false,
-      subscriptionPrice: parseFloat(data.subscription_price) || 19.99,
-      spotsRemaining: data.spots_remaining ?? 0,
+      isEarlyAdopter: result.is_early_adopter ?? false,
+      subscriptionPrice: parseFloat(String(result.subscription_price)) || 19.99,
+      spotsRemaining: result.spots_remaining ?? 0,
     };
   }
 
