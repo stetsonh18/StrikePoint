@@ -264,14 +264,20 @@ export class PositionMatchingService {
     const closingQuantity = Math.abs(tx.quantity || 0);
 
     // Calculate P/L for this close
+    // For options: prices are per share, but each contract represents multiplier shares (default 100)
+    // For other assets: multiplier is typically 1
+    const multiplier = position.multiplier || (tx.asset_type === 'option' ? 100 : 1);
+    const closingPrice = Math.abs(tx.price || 0);
+    const openingPrice = position.average_opening_price || 0;
+    
     let realizedPL = 0;
     if (tx.is_long) {
-      // Long position: P/L = (selling price - buying price) * quantity
-      realizedPL = (Math.abs(tx.price || 0) - position.average_opening_price) * closingQuantity;
+      // Long position: P/L = (selling price - buying price) * quantity * multiplier
+      realizedPL = (closingPrice - openingPrice) * closingQuantity * multiplier;
     } else {
-      // Short position: P/L = (selling price - buying price) * quantity
+      // Short position: P/L = (selling price - buying price) * quantity * multiplier
       // For short, we sold first (received credit), bought back to close (paid debit)
-      realizedPL = (position.average_opening_price - Math.abs(tx.price || 0)) * closingQuantity;
+      realizedPL = (openingPrice - closingPrice) * closingQuantity * multiplier;
     }
 
     // Close the position (partial or full)
