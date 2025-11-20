@@ -115,18 +115,18 @@ export function validateEnvironmentVariables(): ValidationResult {
     );
   }
 
-  // Stripe configuration (required when subscriptions are enabled)
+  // Stripe configuration (optional - only needed for checkout/subscriptions)
   if (!stripePublishableKey) {
-    errors.push(
-      'VITE_STRIPE_PUBLISHABLE_KEY is required for the checkout experience. ' +
-      'Create one in Stripe and add it to your environment variables.'
+    warnings.push(
+      'VITE_STRIPE_PUBLISHABLE_KEY is not set. Checkout and subscription features will be disabled. ' +
+      'Create one in Stripe and add it to your environment variables if you need payment functionality.'
     );
   }
 
   if (!stripeRegularPriceId && !stripeEarlyAdopterPriceId) {
-    errors.push(
-      'At least one of VITE_STRIPE_REGULAR_PRICE_ID or VITE_STRIPE_EARLY_ADOPTER_PRICE_ID must be set. ' +
-      'Without a configured price ID the subscription flow cannot start.'
+    warnings.push(
+      'Neither VITE_STRIPE_REGULAR_PRICE_ID nor VITE_STRIPE_EARLY_ADOPTER_PRICE_ID is set. ' +
+      'Subscription checkout will not be available without a configured price ID.'
     );
   }
   
