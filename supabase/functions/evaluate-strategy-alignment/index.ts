@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
   let payload: AlignmentRequestPayload;
   try {
     payload = await req.json();
-  } catch (_error) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

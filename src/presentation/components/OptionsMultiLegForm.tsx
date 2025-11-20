@@ -1,8 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Calculator, TrendingUp, TrendingDown, Search } from 'lucide-react';
+import { X, Plus, Trash2, Calculator, Search } from 'lucide-react';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { StrategyRepository, PositionRepository } from '@/infrastructure/repositories';
-import type { OptionLegFormData, MultiLegStrategyFormData, StrategyDetectionResult, OptionChainEntry, StrategyType, StrategyInsert, OptionContract } from '@/domain/types';
+import type {
+  OptionLegFormData,
+  StrategyDetectionResult,
+  OptionChainEntry,
+  StrategyType,
+  StrategyInsert,
+  OptionContract,
+} from '@/domain/types';
 import { SymbolAutocomplete } from './SymbolAutocomplete';
 import { OptionsChain } from './OptionsChain';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';

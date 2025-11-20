@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Filter, ExternalLink, Newspaper, ChevronLeft, ChevronRight, X, RefreshCw } from 'lucide-react';
-import type { NewsArticle, NewsCategory } from '@/domain/types';
+import type { NewsCategory } from '@/domain/types';
 import { useMarketNews } from '@/application/hooks/useMarketNews';
 import { useQueryClient } from '@tanstack/react-query';
 import { Select } from '@/presentation/components/Select';
@@ -75,8 +75,6 @@ const News: React.FC = () => {
 
   // Article count
   const totalArticles = filteredNews.length;
-  const currentPageStart = pageHistory.length * 20 + 1;
-  const currentPageEnd = currentPageStart + filteredNews.length - 1;
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);

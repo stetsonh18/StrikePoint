@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, TrendingUp, Calculator } from 'lucide-react';
 import { useActiveFuturesContractSpecs } from '@/application/hooks/useFuturesContractSpecs';
 import { TransactionService } from '@/infrastructure/services/transactionService';
-import type { FuturesContractSpec } from '@/domain/types';
 import { formatContractSymbol, calculateFuturesValue, calculateMarginRequirement, calculateExpirationDate } from '@/domain/types/futures.types';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 

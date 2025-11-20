@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp, Star, Upload, XCircle, Plus, Trash2 } from 'lucide-react';
-import type { JournalEntry, JournalEntryType, EmotionType } from '@/domain/types';
+import type { JournalEntry, JournalEntryType, EmotionType, Position, Transaction } from '@/domain/types';
 import { useCreateJournalEntry, useUpdateJournalEntry } from '@/application/hooks/useJournal';
 import { usePositions } from '@/application/hooks/usePositions';
 import { useTransactions } from '@/application/hooks/useTransactions';
@@ -69,8 +69,8 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
   // Update selected IDs when entry or data loads
   useEffect(() => {
     if (entry?.linkedTradeIds && positions.length > 0) {
-      const positionIds = entry.linkedTradeIds.filter((id: string) => 
-        positions.some((p: any) => p.id === id)
+      const positionIds = entry.linkedTradeIds.filter((id: string) =>
+        positions.some((p: Position) => p.id === id)
       );
       setSelectedPositionIds(positionIds);
     }
@@ -78,8 +78,8 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
 
   useEffect(() => {
     if (entry?.linkedTradeIds && transactions.length > 0) {
-      const transactionIds = entry.linkedTradeIds.filter((id: string) => 
-        transactions.some((t: any) => t.id === id)
+      const transactionIds = entry.linkedTradeIds.filter((id: string) =>
+        transactions.some((t: Transaction) => t.id === id)
       );
       setSelectedTransactionIds(transactionIds);
     }

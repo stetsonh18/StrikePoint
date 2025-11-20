@@ -1,5 +1,5 @@
-import { useQuery, useMutation, type UseQueryResult, type UseMutationResult } from '@tanstack/react-query';
-import { getUserFriendlyErrorMessage, isRetryableError, parseError } from '@/shared/utils/errorHandler';
+import type { UseQueryResult, UseMutationResult } from '@tanstack/react-query';
+import { getUserFriendlyErrorMessage, isRetryableError } from '@/shared/utils/errorHandler';
 import { useToast } from './useToast';
 
 /**

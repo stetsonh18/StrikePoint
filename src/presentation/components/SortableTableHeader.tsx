@@ -1,5 +1,5 @@
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
-import { SortDirection, toggleSort, type SortConfig } from '@/shared/utils/tableSorting';
+import { toggleSort, type SortConfig } from '@/shared/utils/tableSorting';
 import { cn } from '@/shared/utils/cn';
 
 interface SortableTableHeaderProps<T> {

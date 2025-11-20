@@ -6,10 +6,9 @@ interface EntryTimeChartProps {
   data: EntryTimePerformanceData[];
   isLoading?: boolean;
   showWinRate?: boolean;
-  title?: string;
 }
 
-export const EntryTimeChart = ({ data, isLoading, showWinRate = false, title }: EntryTimeChartProps) => {
+export const EntryTimeChart = ({ data, isLoading, showWinRate = false }: EntryTimeChartProps) => {
   if (isLoading) {
     return (
       <div className="h-64 flex items-center justify-center">

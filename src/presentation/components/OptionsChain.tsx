@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Calendar, TrendingUp, TrendingDown, Filter } from 'lucide-react';
+import { Search, Calendar } from 'lucide-react';
 import { useOptionsChain } from '@/application/hooks/useOptionsChain';
 import type { OptionChainEntry } from '@/domain/types';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
@@ -15,7 +15,6 @@ export const OptionsChain: React.FC<OptionsChainProps> = ({
 }) => {
   const [selectedExpiration, setSelectedExpiration] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'call' | 'put'>('all');
-  const [strikeRange, setStrikeRange] = useState<{ min: number; max: number } | null>(null);
   const [searchStrike, setSearchStrike] = useState('');
 
   // Fetch options chain - don't pass expiration to get ALL expirations
@@ -52,13 +51,6 @@ export const OptionsChain: React.FC<OptionsChainProps> = ({
         return false;
       }
 
-      // Filter by strike range
-      if (strikeRange) {
-        if (entry.strike < strikeRange.min || entry.strike > strikeRange.max) {
-          return false;
-        }
-      }
-
       // Filter by search strike
       if (searchStrike) {
         const searchNum = parseFloat(searchStrike);
@@ -72,7 +64,7 @@ export const OptionsChain: React.FC<OptionsChainProps> = ({
 
       return true;
     });
-  }, [chainData, selectedExpiration, filterType, strikeRange, searchStrike]);
+  }, [chainData, selectedExpiration, filterType, searchStrike]);
 
   // Group by strike for display
   const groupedByStrike = useMemo(() => {

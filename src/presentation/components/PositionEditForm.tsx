@@ -1,20 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { Position, OptionType } from '@/domain/types';
+import type { Position, OptionType, PositionUpdate } from '@/domain/types';
 import { useUpdatePosition } from '@/application/hooks/usePositions';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 import { useToast } from '@/shared/hooks/useToast';
 
 interface PositionEditFormProps {
   position: Position;
-  userId: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export const PositionEditForm: React.FC<PositionEditFormProps> = ({
   position,
-  userId,
   onClose,
   onSuccess,
 }) => {
@@ -71,11 +69,11 @@ export const PositionEditForm: React.FC<PositionEditFormProps> = ({
     setError(null);
 
     try {
-      const updates: any = {
+      const updates: PositionUpdate = {
         current_quantity: parseFloat(quantity) || 0,
         average_opening_price: parseFloat(averagePrice) || 0,
         notes: notes.trim() || null,
-        tags: tags.trim() ? tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [],
+        tags: tags.trim() ? tags.split(',').map((t) => t.trim()).filter((t) => t.length > 0) : [],
       };
 
       // Recalculate total_cost_basis based on new quantity and average price

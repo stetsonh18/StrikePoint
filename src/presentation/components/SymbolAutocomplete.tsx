@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebouncedSymbolSearch } from '@/application/hooks/useStockSymbolSearch';
-import { useOptionsSymbolSearch } from '@/application/hooks/useOptionsSymbolSearch';
 import { useDebouncedTradierSymbolSearch } from '@/application/hooks/useTradierSymbolSearch';
 import type { SymbolSearchResult } from '@/infrastructure/services/marketDataService';
-import type { OptionsSymbolSearchResult } from '@/application/hooks/useOptionsSymbolSearch';
 import { logger } from '@/shared/utils/logger';
 
 interface SymbolAutocompleteProps {
@@ -37,7 +35,6 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
   
   // Stock search (Finnhub)
   const {
-    debouncedQuery: stockDebouncedQuery,
     data: stockSearchResults = [],
     isLoading: isStockSearching,
     error: stockError,
@@ -49,7 +46,6 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
 
   // Options search (Tradier API)
   const {
-    debouncedQuery: tradierDebouncedQuery,
     data: tradierSearchResults = [],
     isLoading: isTradierSearching,
     error: tradierError,
@@ -59,21 +55,10 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
     isOptionsMode && hasUserInteracted && inputValue.length >= 1
   );
 
-  // Legacy options search (MarketData validation) - kept for backward compatibility
-  const {
-    data: optionsSearchResults = [],
-    isLoading: isOptionsSearching,
-    error: optionsError,
-  } = useOptionsSymbolSearch(
-    inputValue,
-    false // Disabled in favor of Tradier
-  );
-
   // Use Tradier results for options mode, Finnhub for stock mode
   const searchResults = isOptionsMode ? tradierSearchResults : stockSearchResults;
   const isSearching = isOptionsMode ? isTradierSearching : isStockSearching;
   const error = isOptionsMode ? tradierError : stockError;
-  const debouncedQuery = isOptionsMode ? tradierDebouncedQuery : stockDebouncedQuery;
 
   useEffect(() => {
     if (error) {

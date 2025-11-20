@@ -18,6 +18,9 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
   const createMutation = useCreateFuturesContractSpec();
   const updateMutation = useUpdateFuturesContractSpec();
 
+  type FormField = keyof FuturesContractSpecInsert;
+  type ErrorKey = FormField | 'contract_months';
+
   const [formData, setFormData] = useState<FuturesContractSpecInsert>({
     symbol: '',
     name: '',
@@ -34,7 +37,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
   });
 
   const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set(['H', 'M', 'U', 'Z']));
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<ErrorKey, string>>({});
 
   useEffect(() => {
     if (contract) {
@@ -57,7 +60,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
   }, [contract]);
 
   const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: Record<ErrorKey, string> = {};
 
     if (!formData.symbol.trim()) {
       newErrors.symbol = 'Symbol is required';
@@ -94,7 +97,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
       return;
     }
 
-    const dataToSubmit = {
+    const dataToSubmit: FuturesContractSpecInsert = {
       ...formData,
       symbol: formData.symbol.toUpperCase(),
       contract_months: Array.from(selectedMonths),
@@ -109,9 +112,12 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
           await createMutation.mutateAsync(dataToSubmit);
         } else {
           // Update existing user-specific contract
+          const updatePayload: FuturesContractSpecUpdate = {
+            ...dataToSubmit,
+          };
           await updateMutation.mutateAsync({
             id: contract.id,
-            updates: dataToSubmit as FuturesContractSpecUpdate,
+            updates: updatePayload,
           });
         }
       } else {
@@ -123,16 +129,20 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
     }
   };
 
-  const handleInputChange = (field: keyof FuturesContractSpecInsert, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = <K extends keyof FuturesContractSpecInsert>(
+    field: K,
+    value: FuturesContractSpecInsert[K]
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
+    setErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
   };
 
   const toggleMonth = (month: string) => {

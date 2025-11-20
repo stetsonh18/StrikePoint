@@ -1,6 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 import { ReactNode } from 'react';
-import { TrendingUp, BookOpen, Wallet, Activity, FileText, BarChart3 } from 'lucide-react';
+import { TrendingUp, BookOpen, Wallet, FileText, BarChart3 } from 'lucide-react';
 
 interface EnhancedEmptyStateProps {
   icon?: LucideIcon;

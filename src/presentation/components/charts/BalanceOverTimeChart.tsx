@@ -1,4 +1,15 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+  type TooltipProps,
+  type ValueType,
+  type NameType,
+} from 'recharts';
 import type { BalanceOverTimeData } from '@/application/hooks/useBalanceOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -30,10 +41,9 @@ export const BalanceOverTimeChart = ({ data, isLoading }: BalanceOverTimeChartPr
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps<ValueType, NameType>) => {
     if (active && payload && payload.length) {
-      const entry = payload[0].payload;
+      const entry = payload[0].payload as BalanceOverTimeData;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
           <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>

@@ -45,7 +45,7 @@ export class StrategyDetectionService {
         if (remainingPositions.length === 0) continue;
         // Continue with remaining positions
         const byExpiration = this.groupByExpiration(remainingPositions);
-        for (const [expiration, expirationPositions] of Object.entries(byExpiration)) {
+        for (const expirationPositions of Object.values(byExpiration)) {
           const result = await this.detectStrategyPattern(userId, symbol, expirationPositions);
           if (result) {
             strategiesCreated += result.strategiesCreated;
@@ -55,7 +55,7 @@ export class StrategyDetectionService {
       } else {
         // Group by expiration date for same-expiration strategies
         const byExpiration = this.groupByExpiration(positions);
-        for (const [expiration, expirationPositions] of Object.entries(byExpiration)) {
+        for (const expirationPositions of Object.values(byExpiration)) {
           const result = await this.detectStrategyPattern(userId, symbol, expirationPositions);
           if (result) {
             strategiesCreated += result.strategiesCreated;
@@ -195,7 +195,7 @@ export class StrategyDetectionService {
       p4.side === 'long'
     ) {
       // Valid iron condor
-      const strategy = await this.createStrategy(
+      await this.createStrategy(
         userId,
         'iron_condor',
         symbol,
@@ -291,7 +291,7 @@ export class StrategyDetectionService {
         if (hasDifferentStrikes || group.length === 2) {
           // Create a strategy with all positions in this group
           // Determine strategy type based on option type and net debit/credit
-          let strategyType: StrategyType = 'vertical_spread';
+          const strategyType: StrategyType = 'vertical_spread';
           
           // Check if it's a credit or debit spread
           // Long positions have negative cost basis (debit), short positions have positive (credit)

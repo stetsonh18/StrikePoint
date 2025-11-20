@@ -274,17 +274,13 @@ export class PositionMatchingService {
       realizedPL = (position.average_opening_price - Math.abs(tx.price || 0)) * closingQuantity;
     }
 
-    // Account for the fact that amount is already signed (negative for debit, positive for credit)
-    // Total P/L = opening amount + closing amount
-    const totalPL = position.total_cost_basis + tx.amount;
-
     // Close the position (partial or full)
     await PositionRepository.closePosition(
       position.id,
       closingQuantity,
       tx.id,
       tx.amount,
-      totalPL // Use the actual total P/L from amounts
+      realizedPL
     );
 
     // Link transaction to position

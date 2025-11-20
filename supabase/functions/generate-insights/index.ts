@@ -144,7 +144,7 @@ async function generateInsightsWithOpenAI(
       errorDetails = JSON.parse(responseText);
       console.error('[Generate Insights] Parsed error details:', errorDetails);
     } catch (parseError) {
-      console.error('[Generate Insights] Could not parse error response as JSON');
+      console.error('[Generate Insights] Could not parse error response as JSON', parseError);
     }
     const errorMessage = errorDetails?.error?.message || errorDetails?.message || responseText || 'Unknown error';
     throw new Error(`OpenAI API error (${response.status}): ${errorMessage}`);

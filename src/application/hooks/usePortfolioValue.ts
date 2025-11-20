@@ -4,16 +4,33 @@ import { usePositions } from './usePositions';
 import { useStockQuotes } from './useStockQuotes';
 import { useCryptoQuotes } from './useCryptoQuotes';
 import { useOptionQuotes } from './useOptionQuotes';
+import { useOptionsChain } from './useOptionsChain';
 import { getCoinIdFromSymbol } from '@/infrastructure/services/cryptoMarketDataService';
 import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import { useState, useEffect } from 'react';
-import type { Position } from '@/domain/types';
+import type { Position, OptionQuote, OptionsChain } from '@/domain/types';
+
+interface AssetMetrics {
+  count: number;
+  marketValue: number;
+  unrealizedPL: number;
+}
+
+interface AssetMetricsMap {
+  stocks: AssetMetrics;
+  options: AssetMetrics;
+  crypto: AssetMetrics;
+  futures: AssetMetrics;
+}
 
 interface PortfolioValue {
   portfolioValue: number;
   netCashFlow: number;
   unrealizedPL: number;
+  stockMarketValue: number;
+  cryptoMarketValue: number;
   totalMarketValue: number;
+  assetMetrics: AssetMetricsMap;
   isLoading: boolean;
 }
 
@@ -112,125 +129,197 @@ export function usePortfolioValue(userId: string): PortfolioValue {
   // Fetch individual option quotes using Tradier API
   const { data: optionQuotes = {} } = useOptionQuotes(optionSymbols, optionSymbols.length > 0);
 
-  // Calculate market value and unrealized P&L from all open positions
-  // For stocks/crypto: Use current market price if available, otherwise use stored unrealized_pl
-  // For options: Use real-time prices from Tradier API option quotes
-  // For futures: Use stored unrealized_pl (real-time pricing coming soon)
-  const { totalMarketValue, totalUnrealizedPL: unrealizedPL } = useMemo(() => {
+  const optionUnderlyingSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    openPositions.forEach((position) => {
+      if (position.asset_type === 'option' && position.symbol) {
+        symbols.add(position.symbol);
+      }
+    });
+    return Array.from(symbols);
+  }, [openPositions]);
+
+  const chain1 = useOptionsChain(optionUnderlyingSymbols[0] || '', undefined, undefined, undefined, !!optionUnderlyingSymbols[0]);
+  const chain2 = useOptionsChain(optionUnderlyingSymbols[1] || '', undefined, undefined, undefined, !!optionUnderlyingSymbols[1]);
+  const chain3 = useOptionsChain(optionUnderlyingSymbols[2] || '', undefined, undefined, undefined, !!optionUnderlyingSymbols[2]);
+  const chain4 = useOptionsChain(optionUnderlyingSymbols[3] || '', undefined, undefined, undefined, !!optionUnderlyingSymbols[3]);
+  const chain5 = useOptionsChain(optionUnderlyingSymbols[4] || '', undefined, undefined, undefined, !!optionUnderlyingSymbols[4]);
+
+  const chainsByUnderlying = useMemo(() => {
+    const chains = [chain1.data, chain2.data, chain3.data, chain4.data, chain5.data];
+    const map: Record<string, OptionsChain> = {};
+
+    optionUnderlyingSymbols.slice(0, chains.length).forEach((symbol, index) => {
+      const chainData = chains[index];
+      if (chainData) {
+        map[symbol] = chainData;
+      }
+    });
+
+    return map;
+  }, [
+    optionUnderlyingSymbols,
+    chain1.data,
+    chain2.data,
+    chain3.data,
+    chain4.data,
+    chain5.data,
+  ]);
+
+  const { metrics, totalUnrealizedPL } = useMemo(() => {
     if (!openPositions || openPositions.length === 0) {
-      return { totalMarketValue: 0, totalUnrealizedPL: 0 };
+      return {
+        metrics: {
+          stocks: { count: 0, marketValue: 0, unrealizedPL: 0 },
+          options: { count: 0, marketValue: 0, unrealizedPL: 0 },
+          crypto: { count: 0, marketValue: 0, unrealizedPL: 0 },
+          futures: { count: 0, marketValue: 0, unrealizedPL: 0 },
+        } as AssetMetricsMap,
+        totalUnrealizedPL: 0,
+      };
     }
 
-    let totalMarketValue = 0;
-    let totalUnrealizedPL = 0;
-    const breakdown: Record<string, { market: number; pl: number; count: number }> = {};
+    const metrics: AssetMetricsMap = {
+      stocks: { count: 0, marketValue: 0, unrealizedPL: 0 },
+      options: { count: 0, marketValue: 0, unrealizedPL: 0 },
+      crypto: { count: 0, marketValue: 0, unrealizedPL: 0 },
+      futures: { count: 0, marketValue: 0, unrealizedPL: 0 },
+    };
 
     openPositions.forEach((position) => {
-      const assetType = position.asset_type || 'unknown';
-      if (!breakdown[assetType]) {
-        breakdown[assetType] = { market: 0, pl: 0, count: 0 };
-      }
-      breakdown[assetType].count++;
+      const costBasis = Math.abs(position.total_cost_basis || 0);
+      const storedUnrealizedPL = position.unrealized_pl || 0;
 
-      // For stocks, calculate dynamically if we have current quotes
       if (position.asset_type === 'stock' && position.symbol) {
         const quote = stockQuotes[position.symbol];
-        if (quote && position.current_quantity && position.average_opening_price) {
+        let marketValue = costBasis + storedUnrealizedPL;
+        let unrealizedPL = storedUnrealizedPL;
+
+        if (quote && position.current_quantity) {
           const currentPrice = quote.price;
-          const marketValue = currentPrice * position.current_quantity;
-          const costBasis = Math.abs(position.total_cost_basis || 0);
-          const calculatedUnrealizedPL = marketValue - costBasis;
-
-          totalMarketValue += marketValue;
-          totalUnrealizedPL += calculatedUnrealizedPL;
-          breakdown[assetType].market += marketValue;
-          breakdown[assetType].pl += calculatedUnrealizedPL;
-          return;
+          marketValue = currentPrice * position.current_quantity;
+          unrealizedPL = marketValue - costBasis;
         }
+
+        metrics.stocks.count++;
+        metrics.stocks.marketValue += marketValue;
+        metrics.stocks.unrealizedPL += unrealizedPL;
+        return;
       }
 
-      // For crypto, calculate dynamically if we have current quotes
       if (position.asset_type === 'crypto' && position.symbol) {
-        const quote = cryptoQuotes[position.symbol];
-        if (quote && position.current_quantity && position.average_opening_price) {
-          const currentPrice = quote.current_price;
-          const marketValue = currentPrice * position.current_quantity;
-          const costBasis = Math.abs(position.total_cost_basis || 0);
-          const calculatedUnrealizedPL = marketValue - costBasis;
+        const symbol = position.symbol.toUpperCase();
+        const quote = cryptoQuotes[symbol];
+        let marketValue = costBasis + storedUnrealizedPL;
+        let unrealizedPL = storedUnrealizedPL;
 
-          totalMarketValue += marketValue;
-          totalUnrealizedPL += calculatedUnrealizedPL;
-          breakdown[assetType].market += marketValue;
-          breakdown[assetType].pl += calculatedUnrealizedPL;
-          return;
+        if (quote && position.current_quantity) {
+          const currentPrice = quote.current_price;
+          marketValue = currentPrice * position.current_quantity;
+          unrealizedPL = marketValue - costBasis;
         }
+
+        metrics.crypto.count++;
+        metrics.crypto.marketValue += marketValue;
+        metrics.crypto.unrealizedPL += unrealizedPL;
+        return;
       }
 
-      // For options, calculate dynamically if we have option quotes
-      if (position.asset_type === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
+      if (
+        position.asset_type === 'option' &&
+        position.symbol &&
+        position.expiration_date &&
+        position.strike_price &&
+        position.option_type
+      ) {
+        metrics.options.count++;
+        let marketValue = costBasis + storedUnrealizedPL;
+        let unrealizedPL = storedUnrealizedPL;
+
+        let quote: OptionQuote | null = null;
+        let tradierSymbol: string | null = null;
+
         try {
-          const tradierSymbol = buildTradierOptionSymbol(
+          tradierSymbol = buildTradierOptionSymbol(
             position.symbol,
             position.expiration_date,
             position.option_type as 'call' | 'put',
             position.strike_price
           );
-
-          const quote = optionQuotes[tradierSymbol];
-
-          if (quote && position.current_quantity) {
-            const currentPrice = quote.last ||
-              (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
-
-            const multiplier = position.multiplier || 100;
-            const marketValue = position.current_quantity * multiplier * currentPrice;
-            const costBasis = Math.abs(position.total_cost_basis || 0);
-            const isLong = position.side === 'long';
-
-            // Calculate P&L correctly for long vs short:
-            // Long: You paid (negative cost basis), P&L = marketValue - |costBasis|
-            // Short: You received credit (positive cost basis), P&L = costBasis - marketValue
-            const calculatedUnrealizedPL = isLong
-              ? marketValue - costBasis
-              : costBasis - marketValue;
-
-            totalMarketValue += marketValue;
-            totalUnrealizedPL += calculatedUnrealizedPL;
-            breakdown[assetType].market += marketValue;
-            breakdown[assetType].pl += calculatedUnrealizedPL;
-            return;
-          }
+          quote = optionQuotes[tradierSymbol] || null;
         } catch (e) {
-          console.error('Error calculating option P&L:', e, position);
+          console.error('Error building Tradier option symbol:', e, position);
         }
+
+        if (!quote) {
+          const chainData = chainsByUnderlying[position.symbol];
+          if (chainData && position.expiration_date) {
+            const expirationChain = chainData.chain?.[position.expiration_date];
+            if (expirationChain) {
+              const chainEntry = expirationChain.find(
+                (entry) =>
+                  entry.strike === position.strike_price &&
+                  entry.option_type === position.option_type
+              );
+
+              if (chainEntry) {
+                quote = {
+                  symbol: chainEntry.symbol || tradierSymbol || `${position.symbol}-${position.expiration_date}-${position.strike_price}-${position.option_type}`,
+                  underlying: chainEntry.underlying || position.symbol,
+                  expiration: chainEntry.expiration || position.expiration_date,
+                  strike: chainEntry.strike,
+                  option_type: chainEntry.option_type,
+                  bid: chainEntry.bid,
+                  ask: chainEntry.ask,
+                  last: chainEntry.last,
+                };
+              }
+            }
+          }
+        }
+
+        if (quote && position.current_quantity) {
+          const multiplier = position.multiplier || 100;
+          const currentPrice =
+            quote.last ||
+            (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
+          marketValue = position.current_quantity * multiplier * currentPrice;
+          const isLong = position.side === 'long';
+          unrealizedPL = isLong ? marketValue - costBasis : costBasis - marketValue;
+        }
+
+        metrics.options.marketValue += marketValue;
+        metrics.options.unrealizedPL += unrealizedPL;
+        return;
       }
 
-      // For futures, or if no quote available, use stored unrealized_pl
-      const storedUnrealizedPL = position.unrealized_pl || 0;
-
-      // For futures: Only add unrealized P&L (margin-based)
-      // For others: Add cost basis + unrealized P&L = market value
       if (position.asset_type === 'futures') {
-        totalMarketValue += storedUnrealizedPL;
-        totalUnrealizedPL += storedUnrealizedPL;
-        breakdown[assetType].market += storedUnrealizedPL;
-        breakdown[assetType].pl += storedUnrealizedPL;
-      } else {
-        const costBasis = Math.abs(position.total_cost_basis || 0);
-        const marketValue = costBasis + storedUnrealizedPL;
-        totalMarketValue += marketValue;
-        totalUnrealizedPL += storedUnrealizedPL;
-        breakdown[assetType].market += marketValue;
-        breakdown[assetType].pl += storedUnrealizedPL;
+        metrics.futures.count++;
+        metrics.futures.marketValue += storedUnrealizedPL;
+        metrics.futures.unrealizedPL += storedUnrealizedPL;
+        return;
       }
+
+      // Fallback for other/unknown asset types
+      const fallbackMarketValue = costBasis + storedUnrealizedPL;
+      metrics.stocks.count++;
+      metrics.stocks.marketValue += fallbackMarketValue;
+      metrics.stocks.unrealizedPL += storedUnrealizedPL;
     });
 
-    return { totalMarketValue, totalUnrealizedPL };
-  }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes]);
+    const totalUnrealizedPL = Object.values(metrics).reduce((sum, asset) => sum + asset.unrealizedPL, 0);
 
-  // Calculate total portfolio value
-  // Portfolio Value = Net Cash Flow + Market Value of Open Positions
-  // Where Net Cash Flow = Deposits - Withdrawals - Fees + Buy/Sell transactions + Realized P&L
+    return { metrics, totalUnrealizedPL };
+  }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, chainsByUnderlying]);
+
+  const stockMarketValue = metrics.stocks.marketValue;
+  const cryptoMarketValue = metrics.crypto.marketValue;
+  const optionMarketValue = metrics.options.marketValue;
+  const futuresMarketValue = metrics.futures.marketValue;
+
+  const totalMarketValue = stockMarketValue + cryptoMarketValue + optionMarketValue + futuresMarketValue;
+
+  // Portfolio Value = Net Cash Flow + Stock Value + Crypto Value
   const portfolioValue = useMemo(() => {
     return netCashFlow + totalMarketValue;
   }, [netCashFlow, totalMarketValue]);
@@ -238,8 +327,11 @@ export function usePortfolioValue(userId: string): PortfolioValue {
   return {
     portfolioValue,
     netCashFlow,
-    unrealizedPL,
-    totalMarketValue, // Total market value of all open positions
+    unrealizedPL: totalUnrealizedPL,
+    stockMarketValue,
+    cryptoMarketValue,
+    totalMarketValue,
+    assetMetrics: metrics,
     isLoading: cashLoading || positionsLoading,
   };
 }

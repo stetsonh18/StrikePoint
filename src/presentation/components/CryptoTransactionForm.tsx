@@ -10,7 +10,6 @@ interface CryptoTransactionFormProps {
   // Pre-fill values for selling from a position
   initialValues?: {
     symbol?: string;
-    coinId?: string;
     transactionType?: 'Buy' | 'Sell';
     maxQuantity?: number;
   };
@@ -34,7 +33,6 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
     return `${year}-${month}-${day}`;
   });
   const [symbol, setSymbol] = useState(initialValues?.symbol || '');
-  const [coinId, setCoinId] = useState(initialValues?.coinId || '');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [fees, setFees] = useState('');
@@ -42,9 +40,8 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
 
-  const handleSymbolChange = (newSymbol: string, newCoinId: string) => {
+  const handleSymbolChange = (newSymbol: string) => {
     setSymbol(newSymbol);
-    setCoinId(newCoinId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

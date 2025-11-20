@@ -7,7 +7,7 @@ import { useTheme } from '@/shared/theme/useTheme';
  * Allows users to switch between dark and light themes
  */
 export const ThemeToggle: React.FC = () => {
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { toggleTheme, isDark } = useTheme();
 
   const handleClick = () => {
     toggleTheme();

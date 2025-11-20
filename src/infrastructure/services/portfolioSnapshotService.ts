@@ -3,8 +3,9 @@ import { PositionRepository } from '@/infrastructure/repositories/position.repos
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
 import { getStockQuotes } from '@/infrastructure/services/marketDataService';
 import { getCryptoQuotes } from '@/infrastructure/services/cryptoMarketDataService';
-import { getOptionQuotes } from '@/infrastructure/services/optionsMarketDataService';
-import type { Position } from '@/domain/types';
+import { getOptionQuotes, getOptionsChain } from '@/infrastructure/services/optionsMarketDataService';
+import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
+import type { Position, OptionQuote, OptionsChain } from '@/domain/types';
 
 /**
  * Service for generating and managing portfolio snapshots
@@ -14,48 +15,55 @@ export class PortfolioSnapshotService {
    * Generate a portfolio snapshot for a user
    * @param userId - User ID
    * @param snapshotDate - Optional date (defaults to today)
+   * @param skipExistingCheck - Internal flag to skip existing check (used by updateSnapshot)
    */
-  static async generateSnapshot(userId: string, snapshotDate?: string): Promise<void> {
+  static async generateSnapshot(userId: string, snapshotDate?: string, skipExistingCheck: boolean = false): Promise<void> {
     const date = snapshotDate || new Date().toISOString().split('T')[0];
+    console.log(`[PortfolioSnapshotService] Generating snapshot for user ${userId} on date ${date}`);
 
-    // Check if snapshot already exists for this date
-    const existing = await PortfolioSnapshotRepository.getByDate(userId, date);
-    if (existing) {
-      // Update existing snapshot
-      await this.updateSnapshot(userId, date);
-      return;
-    }
+    try {
+      // Check if snapshot already exists for this date (unless we're updating)
+      if (!skipExistingCheck) {
+        const existing = await PortfolioSnapshotRepository.getByDate(userId, date);
+        if (existing) {
+          console.log(`[PortfolioSnapshotService] Snapshot exists for ${date}, updating...`);
+          // Update existing snapshot
+          await this.updateSnapshot(userId, date);
+          return;
+        }
+      }
 
-    // Get all positions
-    const allPositions = await PositionRepository.getAll(userId);
-    const openPositions = allPositions.filter((p) => p.status === 'open');
-    const closedPositions = allPositions.filter((p) => p.status === 'closed');
+      // Get all positions
+      const allPositions = await PositionRepository.getAll(userId);
+      const openPositions = allPositions.filter((p) => p.status === 'open');
+      const closedPositions = allPositions.filter((p) => p.status === 'closed');
+      console.log(`[PortfolioSnapshotService] Found ${allPositions.length} total positions (${openPositions.length} open, ${closedPositions.length} closed)`);
 
-    // Calculate net cash flow from cash transactions
-    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
-    const excludedCodes = ['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'];
-    const netCashFlow = cashTransactions
-      .filter((tx) => !excludedCodes.includes(tx.transaction_code || ''))
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      // Calculate net cash flow from cash transactions
+      const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+      const excludedCodes = ['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'];
+      const netCashFlow = cashTransactions
+        .filter((tx) => !excludedCodes.includes(tx.transaction_code || ''))
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-    // Calculate total market value and unrealized P&L from open positions
-    // Fetch current quotes to calculate accurate unrealized P&L
-    let totalMarketValue = 0;
-    let totalUnrealizedPL = 0;
-    const positionsBreakdown = {
-      stocks: { count: 0, value: 0 },
-      options: { count: 0, value: 0 },
-      crypto: { count: 0, value: 0 },
-      futures: { count: 0, value: 0 },
-    };
+      // Calculate total market value and unrealized P&L from open positions
+      // Fetch current quotes to calculate accurate unrealized P&L
+      let totalMarketValue = 0;
+      let totalUnrealizedPL = 0;
+      const positionsBreakdown = {
+        stocks: { count: 0, value: 0 },
+        options: { count: 0, value: 0 },
+        crypto: { count: 0, value: 0 },
+        futures: { count: 0, value: 0 },
+      };
 
-    // Collect symbols for quote fetching
-    const stockSymbols = openPositions
-      .filter(p => p.asset_type === 'stock' && p.symbol)
-      .map(p => p.symbol!);
-    
-    // Map crypto symbols to coin IDs (common mappings)
-    const cryptoIdMap: Record<string, string> = {
+      // Collect symbols for quote fetching
+      const stockSymbols = openPositions
+        .filter(p => p.asset_type === 'stock' && p.symbol)
+        .map(p => p.symbol!);
+      
+      // Map crypto symbols to coin IDs (common mappings)
+      const cryptoIdMap: Record<string, string> = {
       'BTC': 'bitcoin',
       'ETH': 'ethereum',
       'USDT': 'tether',
@@ -65,28 +73,81 @@ export class PortfolioSnapshotService {
       'ADA': 'cardano',
       'DOGE': 'dogecoin',
       'DOT': 'polkadot',
-      'MATIC': 'matic-network',
-    };
-    
-    const cryptoCoinIds = openPositions
-      .filter(p => p.asset_type === 'crypto' && p.symbol && cryptoIdMap[p.symbol.toUpperCase()])
-      .map(p => cryptoIdMap[p.symbol!.toUpperCase()]);
-    
-    // Fetch quotes in parallel
-    const [stockQuotes, cryptoQuotesData] = await Promise.all([
-      stockSymbols.length > 0 ? getStockQuotes(stockSymbols) : Promise.resolve({}),
-      cryptoCoinIds.length > 0 ? getCryptoQuotes(cryptoCoinIds) : Promise.resolve({}),
-    ]);
-    
-    // Create a symbol-to-quote mapping for crypto
-    const cryptoQuotes: Record<string, any> = {};
-    Object.values(cryptoQuotesData).forEach((quote: any) => {
-      if (quote.symbol) {
-        cryptoQuotes[quote.symbol.toUpperCase()] = quote;
-      }
-    });
+        'MATIC': 'matic-network',
+      };
+      
+      const cryptoCoinIds = openPositions
+        .filter(p => p.asset_type === 'crypto' && p.symbol && cryptoIdMap[p.symbol.toUpperCase()])
+        .map(p => cryptoIdMap[p.symbol!.toUpperCase()]);
+      
+      const optionSymbols = Array.from(
+      new Set(
+        openPositions
+          .filter(
+            (p) =>
+              p.asset_type === 'option' &&
+              p.symbol &&
+              p.expiration_date &&
+              p.strike_price &&
+              p.option_type
+          )
+          .map((p) => {
+            try {
+              return buildTradierOptionSymbol(
+                p.symbol!,
+                p.expiration_date!,
+                p.option_type as 'call' | 'put',
+                p.strike_price!
+              );
+            } catch {
+              return null;
+            }
+          })
+            .filter((symbol): symbol is string => Boolean(symbol))
+          )
+        );
 
-    openPositions.forEach((position: Position) => {
+      // Get unique underlying symbols for options chain fallback
+      const optionUnderlyingSymbols = Array.from(
+        new Set(
+          openPositions
+            .filter((p) => p.asset_type === 'option' && p.symbol)
+            .map((p) => p.symbol!)
+        )
+      ).slice(0, 5); // Limit to 5 to avoid too many API calls
+
+      // Fetch quotes and options chains in parallel
+      // Use Promise.allSettled for chains to avoid failing if one chain fetch fails
+      const [stockQuotes, cryptoQuotesData, optionQuotes, ...chainResults] = await Promise.all([
+        stockSymbols.length > 0 ? getStockQuotes(stockSymbols).catch(() => ({})) : Promise.resolve({}),
+        cryptoCoinIds.length > 0 ? getCryptoQuotes(cryptoCoinIds).catch(() => ({})) : Promise.resolve({}),
+        optionSymbols.length > 0 ? getOptionQuotes(optionSymbols).catch(() => ({})) : Promise.resolve({}),
+        ...optionUnderlyingSymbols.map((symbol) => 
+          getOptionsChain(symbol).catch((error) => {
+            console.error(`[PortfolioSnapshotService] Error fetching options chain for ${symbol}:`, error);
+            return null;
+          })
+        ),
+      ]);
+
+      // Build chainsByUnderlying map for fallback
+      const chainsByUnderlying: Record<string, OptionsChain> = {};
+      optionUnderlyingSymbols.forEach((symbol, index) => {
+        const chainData = chainResults[index];
+        if (chainData) {
+          chainsByUnderlying[symbol] = chainData;
+        }
+      });
+      
+      // Create a symbol-to-quote mapping for crypto
+      const cryptoQuotes: Record<string, any> = {};
+      Object.values(cryptoQuotesData).forEach((quote: any) => {
+        if (quote.symbol) {
+          cryptoQuotes[quote.symbol.toUpperCase()] = quote;
+        }
+      });
+
+      openPositions.forEach((position: Position) => {
       const assetType = position.asset_type || 'unknown';
       const costBasis = Math.abs(position.total_cost_basis || 0);
       
@@ -124,14 +185,64 @@ export class PortfolioSnapshotService {
           unrealizedPL = storedUnrealizedPL;
         }
         positionsBreakdown.crypto.value += marketValue;
-      } else if (assetType === 'option') {
-        // For options, use stored unrealized_pl (real-time option quotes are complex)
-        const storedUnrealizedPL = position.unrealized_pl || 0;
-        const multiplier = position.multiplier || 100;
-        const avgPrice = position.average_opening_price || 0;
-        // Market value = cost basis + unrealized P&L
-        marketValue = costBasis + storedUnrealizedPL;
-        unrealizedPL = storedUnrealizedPL;
+      } else if (assetType === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
+        let quote: OptionQuote | null = null;
+        let tradierSymbol: string | null = null;
+
+        try {
+          tradierSymbol = buildTradierOptionSymbol(
+            position.symbol,
+            position.expiration_date,
+            position.option_type as 'call' | 'put',
+            position.strike_price
+          );
+          quote = optionQuotes[tradierSymbol] || null;
+        } catch (e) {
+          console.error('Error building Tradier option symbol:', e, position);
+        }
+
+        // Fallback to options chain if direct quote is not available
+        if (!quote) {
+          const chainData = chainsByUnderlying[position.symbol];
+          if (chainData && position.expiration_date) {
+            const expirationChain = chainData.chain?.[position.expiration_date];
+            if (expirationChain) {
+              const chainEntry = expirationChain.find(
+                (entry) =>
+                  entry.strike === position.strike_price &&
+                  entry.option_type === position.option_type
+              );
+
+              if (chainEntry) {
+                quote = {
+                  symbol: chainEntry.symbol || tradierSymbol || `${position.symbol}-${position.expiration_date}-${position.strike_price}-${position.option_type}`,
+                  underlying: chainEntry.underlying || position.symbol,
+                  expiration: chainEntry.expiration || position.expiration_date,
+                  strike: chainEntry.strike,
+                  option_type: chainEntry.option_type,
+                  bid: chainEntry.bid,
+                  ask: chainEntry.ask,
+                  last: chainEntry.last,
+                };
+              }
+            }
+          }
+        }
+
+        if (quote && position.current_quantity) {
+          const multiplier = position.multiplier || 100;
+          const currentPrice =
+            quote.last ||
+            (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
+          marketValue = position.current_quantity * multiplier * currentPrice;
+          const isLong = position.side === 'long';
+          unrealizedPL = isLong ? marketValue - costBasis : costBasis - marketValue;
+        } else {
+          const storedUnrealizedPL = position.unrealized_pl || 0;
+          marketValue = costBasis + storedUnrealizedPL;
+          unrealizedPL = storedUnrealizedPL;
+        }
+
         positionsBreakdown.options.value += marketValue;
       } else if (assetType === 'futures') {
         // For futures: Only add unrealized P&L (margin-based)
@@ -146,18 +257,18 @@ export class PortfolioSnapshotService {
         unrealizedPL = storedUnrealizedPL;
       }
 
-      totalMarketValue += marketValue;
-      totalUnrealizedPL += unrealizedPL;
-    });
+        totalMarketValue += marketValue;
+        totalUnrealizedPL += unrealizedPL;
+      });
 
-    // Calculate total realized P&L from closed positions
-    const totalRealizedPL = closedPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+      // Calculate total realized P&L from closed positions
+      const totalRealizedPL = closedPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
 
-    // Calculate portfolio value
-    const portfolioValue = netCashFlow + totalMarketValue;
+      // Calculate portfolio value
+      const portfolioValue = netCashFlow + totalMarketValue;
 
-    // Create snapshot DTO
-    const snapshotDto: CreatePortfolioSnapshotDto = {
+      // Create snapshot DTO
+      const snapshotDto: CreatePortfolioSnapshotDto = {
       user_id: userId,
       snapshot_date: date,
       portfolio_value: portfolioValue,
@@ -170,15 +281,28 @@ export class PortfolioSnapshotService {
       positions_breakdown: positionsBreakdown,
     };
 
-    // Save snapshot (upsert to handle same-day updates)
-    await PortfolioSnapshotRepository.upsert(snapshotDto);
+      // Save snapshot (upsert to handle same-day updates)
+      console.log(`[PortfolioSnapshotService] Saving snapshot:`, {
+        portfolio_value: snapshotDto.portfolio_value,
+        total_market_value: snapshotDto.total_market_value,
+        total_unrealized_pl: snapshotDto.total_unrealized_pl,
+        open_positions_count: snapshotDto.open_positions_count,
+      });
+      
+      await PortfolioSnapshotRepository.upsert(snapshotDto);
+      console.log(`[PortfolioSnapshotService] Successfully saved snapshot for ${date}`);
+    } catch (error) {
+      console.error('[PortfolioSnapshotService] Error generating snapshot:', error);
+      throw new Error(`Failed to generate portfolio snapshot: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
    * Update an existing snapshot (recalculate metrics)
    */
   static async updateSnapshot(userId: string, snapshotDate: string): Promise<void> {
-    await this.generateSnapshot(userId, snapshotDate);
+    // Call generateSnapshot with skipExistingCheck=true to avoid infinite loop
+    await this.generateSnapshot(userId, snapshotDate, true);
   }
 
   /**

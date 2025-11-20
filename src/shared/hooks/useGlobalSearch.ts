@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useTransactions } from '@/application/hooks/useTransactions';
 import { useJournalEntries } from '@/application/hooks/useJournal';
@@ -17,7 +16,7 @@ export interface SearchResult {
   subtitle?: string;
   symbol?: string;
   route: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 const SEARCH_HISTORY_KEY = 'strikepoint_search_history';

@@ -1,11 +1,6 @@
 import { supabase } from '../api/supabase';
 import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
-import type {
-  CashBalance,
-  CashBalanceInsert,
-  CashBalanceUpdate,
-  Transaction,
-} from '@/domain/types';
+import type { CashBalance, CashBalanceInsert, TransactionFilters } from '@/domain/types';
 import { TransactionRepository } from './transaction.repository';
 
 /**
@@ -120,7 +115,7 @@ export class CashBalanceRepository {
     asOfDate?: string
   ): Promise<CashBalance> {
     // Get all cash transactions up to the specified date
-    const filters: any = {
+    const filters: TransactionFilters = {
       asset_type: 'cash',
     };
 
@@ -134,15 +129,13 @@ export class CashBalanceRepository {
     let availableCash = 0;
     let pendingDeposits = 0;
     let pendingWithdrawals = 0;
-    let marginUsed = 0; // This would need to be calculated from positions
+    const marginUsed = 0; // This would need to be calculated from positions
     let totalCash = 0;
 
     // Process each transaction
     for (const tx of transactions) {
       const amount = tx.amount || 0;
       const settleDate = tx.settle_date;
-      const processDate = tx.process_date;
-      const activityDate = tx.activity_date;
 
       // Determine if transaction is settled
       const asOf = asOfDate ? new Date(asOfDate) : new Date();

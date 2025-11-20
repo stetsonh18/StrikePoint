@@ -163,13 +163,14 @@ export const queryKeys = {
     all: ['analytics'] as const,
     winRate: (userId: string, assetType?: AssetType) =>
       ['win-rate-metrics', userId, assetType] as const,
-    dailyPerformance: (userId: string, portfolioValue?: number) => ['daily-performance', userId, portfolioValue] as const,
-    weeklyPerformance: (userId: string, portfolioValue?: number) =>
-      ['weekly-performance', userId, portfolioValue] as const,
+    dailyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
+      ['daily-performance', userId, portfolioValue, unrealizedPL] as const,
+    weeklyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
+      ['weekly-performance', userId, portfolioValue, unrealizedPL] as const,
     monthlyPerformance: (userId: string, assetType?: AssetType, months?: number) =>
       ['monthly-performance', userId, assetType, months] as const,
-    monthlyDashboard: (userId: string, portfolioValue?: number) =>
-      ['monthly-performance-dashboard', userId, portfolioValue] as const,
+    monthlyDashboard: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
+      ['monthly-performance-dashboard', userId, portfolioValue, unrealizedPL] as const,
     symbolPerformance: (userId: string, assetType?: AssetType, days?: number) =>
       ['symbol-performance', userId, assetType, days] as const,
     strategyPerformance: (userId: string) => ['strategy-performance', userId] as const,

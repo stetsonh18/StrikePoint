@@ -46,11 +46,22 @@ export function sortData<T>(
 /**
  * Get nested value from object using dot notation
  */
-function getNestedValue<T>(obj: T, path: string | keyof T): any {
+function getNestedValue<T>(obj: T, path: string | keyof T): unknown {
   if (typeof path === 'string' && path.includes('.')) {
-    return path.split('.').reduce((current: any, prop) => current?.[prop], obj);
+    return path.split('.').reduce<unknown>((current, prop) => {
+      if (current && typeof current === 'object') {
+        return (current as Record<string, unknown>)[prop];
+      }
+      return undefined;
+    }, obj as unknown);
   }
-  return (obj as any)[path];
+
+  const key = typeof path === 'string' ? path : (path as string);
+  if (obj && typeof obj === 'object') {
+    return (obj as Record<string, unknown>)[key];
+  }
+
+  return undefined;
 }
 
 /**

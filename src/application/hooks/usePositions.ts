@@ -6,6 +6,8 @@ import { logger } from '@/shared/utils/logger';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { PositionFilters, Position, PositionUpdate } from '@/domain/types';
 
+type PositionStatisticsResult = Awaited<ReturnType<typeof PositionRepository.getStatistics>>;
+
 const invalidatePositionQueries = (queryClient: QueryClient, userId?: string) => {
   queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
 
@@ -65,11 +67,11 @@ export function usePositionStatistics(
   userId: string,
   startDate?: string,
   endDate?: string,
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<UseQueryOptions<PositionStatisticsResult, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   const queryKey = queryKeys.positions.statistics(userId, startDate, endDate);
 
-  return useQuery({
+  return useQuery<PositionStatisticsResult, Error>({
     queryKey,
     queryFn: () => PositionRepository.getStatistics(userId, startDate, endDate),
     enabled: !!userId,

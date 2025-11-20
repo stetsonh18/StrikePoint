@@ -1,5 +1,4 @@
 import React, { memo } from 'react';
-import { LineChart, Zap, Bitcoin, Activity } from 'lucide-react';
 
 interface PositionCardProps {
   id: string;
@@ -34,7 +33,10 @@ export const PositionCard = memo<PositionCardProps>(({
   const isPositive = totalPL >= 0;
 
   return (
-    <div className="p-4 bg-slate-100 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/30 hover:border-slate-300 dark:hover:border-slate-600/50 transition-colors">
+    <div
+      className="p-4 bg-slate-100 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/30 hover:border-slate-300 dark:hover:border-slate-600/50 transition-colors"
+      data-position-id={id}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${isPositive ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
@@ -67,6 +69,9 @@ export const PositionCard = memo<PositionCardProps>(({
       </div>
       <div className="mt-2 text-xs text-slate-500 dark:text-slate-500">
         <span className="text-slate-600 dark:text-slate-400">Market Value:</span> {formatCurrency(marketValue)}
+      </div>
+      <div className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+        <span className="text-slate-600 dark:text-slate-400">Unrealized P/L:</span> {formatCurrency(unrealizedPL)}
       </div>
     </div>
   );

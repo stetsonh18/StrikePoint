@@ -33,7 +33,7 @@ export interface AIInsight {
   title: string;
   description: string;
   analysis?: string;
-  recommendations?: string[] | any;
+  recommendations?: string[];
 
   // Related data
   related_symbols?: string[];
@@ -59,7 +59,7 @@ export interface AIInsight {
   updated_at: string;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Performance Analysis Insight

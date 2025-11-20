@@ -1,5 +1,4 @@
 import { AlertCircle, RefreshCw, X } from 'lucide-react';
-import { useToast } from '@/shared/hooks/useToast';
 
 interface ErrorDisplayProps {
   title?: string;

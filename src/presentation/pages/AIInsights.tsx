@@ -15,8 +15,7 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react';
-import type { AIInsight, InsightType, InsightPriority } from '@/domain/types';
-import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
+import type { InsightType, InsightPriority } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useAIInsights, useMarkInsightAsRead, useDismissInsight } from '@/application/hooks/useAIInsights';
 import { useStrategyPlans } from '@/application/hooks/useStrategyPlans';
@@ -114,16 +113,6 @@ const AIInsights: React.FC = () => {
       general: <Brain size={20} />,
     };
     return icons[type];
-  };
-
-  const getPriorityColor = (priority: InsightPriority) => {
-    const colors = {
-      critical: 'border-l-red-500',
-      high: 'border-l-orange-500',
-      medium: 'border-l-emerald-500',
-      low: 'border-l-blue-500',
-    };
-    return colors[priority];
   };
 
   const formatDate = (dateStr: string) => {

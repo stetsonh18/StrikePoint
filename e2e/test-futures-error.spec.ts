@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 test.describe('Futures Page Error Investigation', () => {
   test('navigate to futures page and capture errors', async ({ page }) => {
@@ -83,7 +83,7 @@ test.describe('Futures Page Error Investigation', () => {
         }
         return null;
       });
-    } catch (e) {
+    } catch {
       // Ignore
     }
 

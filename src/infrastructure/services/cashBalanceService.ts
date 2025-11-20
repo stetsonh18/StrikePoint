@@ -1,5 +1,5 @@
 import { CashBalanceRepository } from '../repositories/cashBalance.repository';
-import type { Transaction, CashBalance, CashBalanceInsert } from '@/domain/types';
+import type { Transaction, CashBalance } from '@/domain/types';
 
 /**
  * Cash Balance Service

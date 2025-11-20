@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions, type QueryClient } from '@tanstack/react-query';
-import { AIInsightRepository, type AIInsightInsert, type AIInsightUpdate } from '@/infrastructure/repositories/aiInsight.repository';
+import {
+  AIInsightRepository,
+  type AIInsightInsert,
+  type AIInsightStatistics,
+  type AIInsightUpdate,
+} from '@/infrastructure/repositories/aiInsight.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { AIInsight, AIInsightFilters } from '@/domain/types';
 
@@ -48,11 +53,11 @@ export function useAIInsight(
  */
 export function useAIInsightStatistics(
   userId: string,
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<UseQueryOptions<AIInsightStatistics, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   const queryKey = queryKeys.aiInsights.statistics(userId);
 
-  return useQuery({
+  return useQuery<AIInsightStatistics, Error>({
     queryKey,
     queryFn: () => AIInsightRepository.getStatistics(userId),
     enabled: !!userId,

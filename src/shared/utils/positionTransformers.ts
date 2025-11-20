@@ -48,6 +48,13 @@ export function buildTradierOptionSymbol(
   optionType: 'call' | 'put',
   strikePrice: number
 ): string {
+  if (!underlying?.trim()) {
+    throw new Error('Underlying symbol is required to build an option symbol');
+  }
+
+  // OCC/OPRA symbology expects a trimmed, upper-cased root capped at 6 chars.
+  const root = underlying.trim().toUpperCase().slice(0, 6);
+
   // Parse expiration date (YYYY-MM-DD) to YYMMDD
   // Use string parsing to avoid timezone issues
   const dateParts = expirationDate.split('-');
@@ -63,11 +70,14 @@ export function buildTradierOptionSymbol(
   // Convert option type to C or P
   const typeChar = optionType.toUpperCase() === 'CALL' ? 'C' : 'P';
 
-  // Convert strike to cents and pad to 8 digits
-  const strikeInCents = Math.round(strikePrice * 100);
-  const strikeStr = strikeInCents.toString().padStart(8, '0');
+  /**
+   * OPRA strike formatting stores strikes with 1/1000 precision.
+   * See: https://www.theocc.com/Company-Information/Documents-and-Archives
+   */
+  const strikeInThousandths = Math.round(strikePrice * 1000);
+  const strikeStr = strikeInThousandths.toString().padStart(8, '0');
 
-  return `${underlying}${expStr}${typeChar}${strikeStr}`;
+  return `${root}${expStr}${typeChar}${strikeStr}`;
 }
 
 /**

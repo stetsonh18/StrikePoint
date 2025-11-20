@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
   let payload: StrategyPlanRequestPayload;
   try {
     payload = await req.json();
-  } catch (_error) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -216,7 +216,7 @@ ${questionSummary}
           )
         : 1;
 
-    let isPrimary = Boolean(payload.makePrimary);
+    const isPrimary = Boolean(payload.makePrimary);
     if (isPrimary) {
       await adminClient
         .from('trading_strategy_plans')

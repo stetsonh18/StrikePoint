@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:analyze": "ANALYZE=true vite build",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "setup:stock-codes": "node scripts/setup-stock-codes.js"
@@ -48,6 +49,7 @@
     "terser": "^5.44.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^2.1.4"
   }
 }

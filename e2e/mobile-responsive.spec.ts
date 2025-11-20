@@ -1,4 +1,4 @@
-import { test, expect, devices } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 // Test mobile responsiveness across different device sizes
 const mobileDevices = [

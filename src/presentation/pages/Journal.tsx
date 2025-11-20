@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Plus, Search, Star, Calendar, TrendingUp, BookOpen, Filter, Edit, Trash2, X } from 'lucide-react';
-import type { JournalEntry, JournalEntryType, EmotionType } from '@/domain/types';
+import type { JournalEntry, JournalEntryType, EmotionType, JournalEntryFilters } from '@/domain/types';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
 import { useAuthStore } from '@/application/stores/auth.store';
 import {
@@ -10,8 +10,6 @@ import {
 } from '@/application/hooks/useJournal';
 import { JournalEntryForm } from '@/presentation/components/JournalEntryForm';
 import { Select } from '@/presentation/components/Select';
-import { LoadingSpinner } from '@/presentation/components/LoadingSpinner';
-import { EmptyState } from '@/presentation/components/EmptyState';
 import { EnhancedEmptyState, EmptyJournal } from '@/presentation/components/EnhancedEmptyState';
 import { logger } from '@/shared/utils/logger';
 import { useToast } from '@/shared/hooks/useToast';
@@ -61,8 +59,8 @@ const Journal: React.FC = () => {
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   // Fetch data
-  const filters = useMemo(() => {
-    const filterObj: any = {};
+  const filters = useMemo<JournalEntryFilters>(() => {
+    const filterObj: JournalEntryFilters = {};
     if (filterType !== 'all') {
       filterObj.entryType = filterType;
     }
@@ -98,15 +96,6 @@ const Journal: React.FC = () => {
         entry.tags?.some((tag) => tag.toLowerCase().includes(query))
     );
   }, [entries, searchQuery]);
-
-  // Get unique tags from entries for filter
-  const availableTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    entries.forEach((entry) => {
-      entry.tags?.forEach((tag) => tagSet.add(tag));
-    });
-    return Array.from(tagSet).sort();
-  }, [entries]);
 
   const handleAddTag = useCallback(() => {
     const tag = tagInput.trim().toLowerCase();

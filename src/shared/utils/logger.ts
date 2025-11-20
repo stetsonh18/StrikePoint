@@ -56,6 +56,9 @@ class Logger {
         });
       } catch (sentryError) {
         // Silently fail if Sentry is not initialized
+        if (this.isDevelopment) {
+          console.warn('[Logger] Failed to send warning to Sentry:', sentryError);
+        }
       }
     }
   }

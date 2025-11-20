@@ -7,6 +7,10 @@
 // ENUMS AND COMMON TYPES
 // ============================================================================
 
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+export type JsonArray = Json[];
+export type JsonObject = { [key: string]: Json };
+
 export type AssetType = 'stock' | 'option' | 'crypto' | 'futures' | 'cash';
 export type OptionType = 'call' | 'put';
 export type TransactionSide = 'long' | 'short';
@@ -48,8 +52,8 @@ export interface Import {
   total_rows: number | null;
   transactions_imported: number;
   duplicates_skipped: number;
-  errors: any[];  // JSONB array of error messages
-  warnings: any[]; // JSONB array of warnings
+  errors: JsonArray;  // JSONB array of error messages
+  warnings: JsonArray; // JSONB array of warnings
   started_at: string | null;
   completed_at: string | null;
   created_at: string;

@@ -10,7 +10,6 @@ import { useMarketNews } from '@/application/hooks/useMarketNews';
 import { useStockQuotes } from '@/application/hooks/useStockQuotes';
 import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
 import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
-import { useInitialInvestment } from '@/application/hooks/useInitialInvestment';
 import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import { getCoinIdFromSymbol } from '@/infrastructure/services/cryptoMarketDataService';
 import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
@@ -18,7 +17,6 @@ import { useDailyPerformance } from '@/application/hooks/useDailyPerformance';
 import { useWeeklyPerformance } from '@/application/hooks/useWeeklyPerformance';
 import { useMonthlyPerformanceDashboard } from '@/application/hooks/useMonthlyPerformanceDashboard';
 import { PortfolioSnapshotService } from '@/infrastructure/services/portfolioSnapshotService';
-import { formatDate } from '@/shared/utils/dateUtils';
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from 'recharts';
 import type { Position } from '@/domain/types';
 import { PositionCardSkeleton, StatCardSkeleton, ArticleSkeleton } from '@/presentation/components/SkeletonLoader';
@@ -42,11 +40,17 @@ export const Dashboard = () => {
   const { theme } = useTheme();
 
   const { data: positionStats, isLoading: statsLoading, error: statsError } = usePositionStatistics(userId);
-  const { data: transactions, isLoading: transactionsLoading, error: transactionsError } = useTransactions(userId);
+  const { data: transactions, isLoading: transactionsLoading } = useTransactions(userId);
   const { data: allPositions, isLoading: positionsLoading, error: positionsError } = usePositions(userId);
-  const { portfolioValue, netCashFlow, unrealizedPL: portfolioUnrealizedPL, totalMarketValue, isLoading: portfolioLoading, error: portfolioError } = usePortfolioValue(userId);
-  const { articles: marketNews = [], isLoading: newsLoading, error: newsError } = useMarketNews('general', undefined, true);
-  const { data: initialInvestment = 0 } = useInitialInvestment(userId);
+  const {
+    portfolioValue,
+    netCashFlow,
+    unrealizedPL: portfolioUnrealizedPL,
+    assetMetrics,
+    isLoading: portfolioLoading,
+    error: portfolioError,
+  } = usePortfolioValue(userId);
+  const { articles: marketNews = [], isLoading: newsLoading } = useMarketNews('general', undefined, true);
   const { data: winRateMetrics } = useWinRateMetrics(userId);
   const { data: dailyPerformance } = useDailyPerformance(userId);
   const { data: weeklyPerformance } = useWeeklyPerformance(userId);
@@ -56,14 +60,56 @@ export const Dashboard = () => {
 
   const realizedPL = positionStats?.totalRealizedPL || 0;
   const unrealizedPL = portfolioUnrealizedPL; // Use calculated unrealized P&L from all open positions
-  const totalOpenPositions = positionStats?.open || 0;
+  const { normalizedOpenPositions, normalizedTotalPositions } = useMemo(() => {
+    if (!allPositions) {
+      return { normalizedOpenPositions: 0, normalizedTotalPositions: 0 };
+    }
+
+    const calculateNormalizedContracts = (positions: Position[], useOpeningQuantity = false) => {
+      let total = 0;
+      const strategiesMap = new Map<string, { positions: Position[]; contractSum: number }>();
+
+      positions.forEach((position) => {
+        const quantity = useOpeningQuantity
+          ? Math.abs(position.opening_quantity ?? position.current_quantity ?? 0)
+          : Math.abs(position.current_quantity ?? 0);
+
+        if (position.strategy_id) {
+          const existing = strategiesMap.get(position.strategy_id) ?? { positions: [], contractSum: 0 };
+          existing.positions.push(position);
+          existing.contractSum += quantity;
+          strategiesMap.set(position.strategy_id, existing);
+        } else {
+          const contribution = quantity > 0 ? quantity : useOpeningQuantity ? Math.abs(position.opening_quantity || 0) || 1 : 0;
+          total += contribution;
+        }
+      });
+
+      strategiesMap.forEach(({ positions, contractSum }) => {
+        if (positions.length === 0) {
+          total += contractSum;
+          return;
+        }
+        const normalizedContracts = positions.length > 0 ? contractSum / positions.length : contractSum;
+        total += normalizedContracts;
+      });
+
+      return total;
+    };
+
+    const openPositions = allPositions.filter((position) => position.status === 'open');
+    const normalizedOpen = calculateNormalizedContracts(openPositions);
+    const normalizedTotal = calculateNormalizedContracts(allPositions, true);
+
+    return {
+      normalizedOpenPositions: normalizedOpen,
+      normalizedTotalPositions: normalizedTotal,
+    };
+  }, [allPositions]);
+
+  const totalOpenPositions = normalizedOpenPositions || positionStats?.open || 0;
   
   // Calculate realized P&L percentage
-  const realizedPLPercent = useMemo(() => {
-    if (initialInvestment === 0) return 0;
-    return (realizedPL / initialInvestment) * 100;
-  }, [realizedPL, initialInvestment]);
-
   // Snapshot generation mutation
   const generateSnapshotMutation = useMutation({
     mutationFn: () => PortfolioSnapshotService.generateSnapshot(userId),
@@ -163,97 +209,65 @@ export const Dashboard = () => {
   const { data: cryptoQuotes = {} } = useCryptoQuotes(cryptoCoinIds, cryptoCoinIds.length > 0);
   const { data: optionQuotes = {} } = useOptionQuotes(optionSymbols, optionSymbols.length > 0);
 
-  // Calculate asset type breakdown with values - using same logic as usePortfolioValue
-  const assetBreakdown = useMemo(() => {
-    const breakdown = {
-      stocks: { count: 0, value: 0 },
-      options: { count: 0, value: 0 },
-      crypto: { count: 0, value: 0 },
-      futures: { count: 0, value: 0 },
-      cash: { count: 1, value: cashBalance }, // Always 1 cash account
+  // Normalize position counts by asset type for multi-leg strategies
+  const normalizedAssetCounts = useMemo(() => {
+    if (!allPositions) {
+      return {
+        stocks: 0,
+        options: 0,
+        crypto: 0,
+        futures: 0,
+      };
+    }
+
+    const normalizeByAssetType = (assetType: string) => {
+      const positions = allPositions.filter((p) => p.asset_type === assetType && p.status === 'open');
+      if (positions.length === 0) return 0;
+
+      let totalCount = 0;
+      const strategiesMap = new Map<string, Position[]>();
+
+      positions.forEach((position) => {
+        if (position.strategy_id) {
+          if (!strategiesMap.has(position.strategy_id)) {
+            strategiesMap.set(position.strategy_id, []);
+          }
+          strategiesMap.get(position.strategy_id)!.push(position);
+        } else {
+          // Single-leg position counts as 1
+          totalCount += 1;
+        }
+      });
+
+      // Normalize multi-leg strategies
+      strategiesMap.forEach((strategyPositions) => {
+        const legCount = strategyPositions.length;
+        // For multi-leg strategies, count as 1 position (normalized)
+        totalCount += 1;
+      });
+
+      return totalCount;
     };
 
-    openPositions.forEach((position) => {
-      // For stocks, calculate dynamically if we have current quotes
-      if (position.asset_type === 'stock' && position.symbol) {
-        const quote = stockQuotes[position.symbol];
-        if (quote && position.current_quantity && position.average_opening_price) {
-          const currentPrice = quote.price;
-          const marketValue = currentPrice * position.current_quantity;
-          breakdown.stocks.count++;
-          breakdown.stocks.value += marketValue;
-          return;
-        }
-      }
+    return {
+      stocks: normalizeByAssetType('stock'),
+      options: normalizeByAssetType('option'),
+      crypto: normalizeByAssetType('crypto'),
+      futures: normalizeByAssetType('futures'),
+    };
+  }, [allPositions]);
 
-      // For crypto, calculate dynamically if we have current quotes
-      if (position.asset_type === 'crypto' && position.symbol) {
-        const quote = cryptoQuotes[position.symbol];
-        if (quote && position.current_quantity && position.average_opening_price) {
-          const currentPrice = quote.current_price;
-          const marketValue = currentPrice * position.current_quantity;
-          breakdown.crypto.count++;
-          breakdown.crypto.value += marketValue;
-          return;
-        }
-      }
-
-      // For options, calculate dynamically if we have option quotes
-      if (position.asset_type === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
-        try {
-          const tradierSymbol = buildTradierOptionSymbol(
-            position.symbol,
-            position.expiration_date,
-            position.option_type as 'call' | 'put',
-            position.strike_price
-          );
-
-          const quote = optionQuotes[tradierSymbol];
-
-          if (quote && position.current_quantity) {
-            const currentPrice = quote.last ||
-              (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
-
-            const multiplier = position.multiplier || 100;
-            const marketValue = position.current_quantity * multiplier * currentPrice;
-
-            breakdown.options.count++;
-            breakdown.options.value += marketValue;
-            return;
-          }
-        } catch (e) {
-          console.error('Error calculating option market value:', e, position);
-        }
-      }
-
-      // For futures, or if no quote available, use stored unrealized_pl
-      const storedUnrealizedPL = position.unrealized_pl || 0;
-
-      // For futures: Only add unrealized P&L (margin-based)
-      // For others: Add cost basis + unrealized P&L = market value
-      if (position.asset_type === 'futures') {
-        breakdown.futures.count++;
-        breakdown.futures.value += storedUnrealizedPL;
-      } else {
-        // Fallback for positions without quotes
-        const costBasis = Math.abs(position.total_cost_basis || 0);
-        const marketValue = costBasis + storedUnrealizedPL;
-        
-        if (position.asset_type === 'stock') {
-          breakdown.stocks.count++;
-          breakdown.stocks.value += marketValue;
-        } else if (position.asset_type === 'option') {
-          breakdown.options.count++;
-          breakdown.options.value += marketValue;
-        } else if (position.asset_type === 'crypto') {
-          breakdown.crypto.count++;
-          breakdown.crypto.value += marketValue;
-        }
-      }
-    });
-
-    return breakdown;
-  }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, cashBalance]);
+  // Asset breakdown uses metrics derived from usePortfolioValue per updated business rules
+  // But uses normalized counts for position display
+  const assetBreakdown = useMemo(() => {
+    return {
+      stocks: { count: normalizedAssetCounts.stocks, value: assetMetrics.stocks.marketValue },
+      options: { count: normalizedAssetCounts.options, value: assetMetrics.options.unrealizedPL },
+      crypto: { count: normalizedAssetCounts.crypto, value: assetMetrics.crypto.marketValue },
+      futures: { count: normalizedAssetCounts.futures, value: assetMetrics.futures.unrealizedPL },
+      cash: { count: 1, value: cashBalance },
+    };
+  }, [assetMetrics, cashBalance, normalizedAssetCounts]);
 
   // Calculate top performing positions with details
   const topPositions = useMemo(() => {
@@ -291,7 +305,7 @@ export const Dashboard = () => {
               const multiplier = p.multiplier || 100;
               marketValue = p.current_quantity * multiplier * currentPrice;
             }
-          } catch (e) {
+          } catch {
             // Fallback to stored values
           }
         }
@@ -503,7 +517,7 @@ export const Dashboard = () => {
               icon={Activity}
               iconColor="text-blue-400"
               bgColor="bg-blue-500/10"
-              subtitle={`${allPositions?.length || 0} total`}
+              subtitle={`${normalizedTotalPositions || allPositions?.length || 0} total`}
             />
           </>
         )}
@@ -524,6 +538,11 @@ export const Dashboard = () => {
                   {dailyPerformance.dailyPLPercent >= 0 ? '+' : ''}{dailyPerformance.dailyPLPercent.toFixed(2)}%
                 </p>
               )}
+              {dailyPerformance && (
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  {`${formatCurrency(dailyPerformance.realizedPL)} realized / ${formatCurrency(dailyPerformance.unrealizedPL)} unrealized`}
+                </p>
+              )}
             </div>
             <TrendingUp className={`w-8 h-8 ${dailyPerformance && dailyPerformance.dailyPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} />
           </div>
@@ -538,6 +557,11 @@ export const Dashboard = () => {
                   {weeklyPerformance.weeklyPLPercent >= 0 ? '+' : ''}{weeklyPerformance.weeklyPLPercent.toFixed(2)}%
                 </p>
               )}
+              {weeklyPerformance && (
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  {`${formatCurrency(weeklyPerformance.realizedPL)} realized / ${formatCurrency(weeklyPerformance.unrealizedPL)} unrealized`}
+                </p>
+              )}
             </div>
             <TrendingUp className={`w-8 h-8 ${weeklyPerformance && weeklyPerformance.weeklyPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} />
           </div>
@@ -550,6 +574,11 @@ export const Dashboard = () => {
               {monthlyPerformance && monthlyPerformance.monthlyPLPercent !== 0 && (
                 <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
                   {monthlyPerformance.monthlyPLPercent >= 0 ? '+' : ''}{monthlyPerformance.monthlyPLPercent.toFixed(2)}%
+                </p>
+              )}
+              {monthlyPerformance && (
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  {`${formatCurrency(monthlyPerformance.realizedPL)} realized / ${formatCurrency(monthlyPerformance.unrealizedPL)} unrealized`}
                 </p>
               )}
             </div>

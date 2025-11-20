@@ -242,12 +242,6 @@ export class InsightDataAggregationService {
     // Find leveraged positions (options with short side)
     const leveragedPositions = optionPositions.filter(p => p.side === 'short');
 
-    // Calculate performance metrics
-    const last7DaysTransactions = allTransactions.filter(t => {
-      if (!t.transaction_date) return false;
-      return new Date(t.transaction_date) >= sevenDaysAgo;
-    });
-
     const last7DaysClosed = closedPositions.filter(p => {
       if (!p.closed_at) return false;
       return new Date(p.closed_at) >= sevenDaysAgo;

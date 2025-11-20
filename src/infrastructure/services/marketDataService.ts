@@ -285,7 +285,8 @@ const categoryMap: Record<string, string> = {
 export async function getMarketNews(category: string = 'general', minId?: number): Promise<import('@/domain/types').NewsArticle[]> {
   try {
     // Map app category to Finnhub category
-    const finnhubCategory = Object.entries(categoryMap).find(([_, appCat]) => appCat === category)?.[0] || category;
+    const matchingCategory = Object.entries(categoryMap).find(([, appCat]) => appCat === category);
+    const finnhubCategory = matchingCategory?.[0] || category;
 
     const params = new URLSearchParams({
       category: finnhubCategory,

@@ -3,6 +3,9 @@ import { StrategyRepository } from '@/infrastructure/repositories';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { StrategyFilters, Strategy } from '@/domain/types';
 
+type StrategySummaryResult = Awaited<ReturnType<typeof StrategyRepository.getSummaries>>;
+type StrategyStatisticsResult = Awaited<ReturnType<typeof StrategyRepository.getStatistics>>;
+
 export function useStrategies(
   userId: string,
   filters?: StrategyFilters,
@@ -35,11 +38,11 @@ export function useOpenStrategies(
 export function useStrategySummaries(
   userId: string,
   filters?: StrategyFilters,
-  options?: Omit<UseQueryOptions<any[], Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<UseQueryOptions<StrategySummaryResult, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   const queryKey = ['strategy-summaries', userId, filters] as const;
 
-  return useQuery({
+  return useQuery<StrategySummaryResult, Error>({
     queryKey,
     queryFn: () => StrategyRepository.getSummaries(userId, filters),
     enabled: !!userId,
@@ -51,11 +54,11 @@ export function useStrategyStatistics(
   userId: string,
   startDate?: string,
   endDate?: string,
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<UseQueryOptions<StrategyStatisticsResult, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   const queryKey = ['strategy-statistics', userId, startDate, endDate] as const;
 
-  return useQuery({
+  return useQuery<StrategyStatisticsResult, Error>({
     queryKey,
     queryFn: () => StrategyRepository.getStatistics(userId, startDate, endDate),
     enabled: !!userId,

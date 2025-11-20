@@ -11,7 +11,7 @@ import { AIInsightRepository } from '@/infrastructure/repositories/aiInsight.rep
 import { FuturesContractSpecRepository } from '@/infrastructure/repositories/futuresContractSpec.repository';
 import { logger } from '@/shared/utils/logger';
 import { SubscriptionService } from '@/infrastructure/services/subscription.service';
-import { getSubscriptionStatus, cancelSubscription, createBillingPortalSession } from '@/infrastructure/services/stripe.service';
+import { cancelSubscription, createBillingPortalSession } from '@/infrastructure/services/stripe.service';
 import { CreditCard, XCircle, Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 

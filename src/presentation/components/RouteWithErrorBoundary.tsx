@@ -7,7 +7,7 @@ import { LoadingSpinner } from './LoadingSpinner';
  * This ensures proper error handling for lazy-loaded route components
  */
 export function createRouteWithErrorBoundary(
-  importFn: () => Promise<{ default: ComponentType<any> } | ComponentType<any>>
+  importFn: () => Promise<{ default: ComponentType<unknown> } | ComponentType<unknown>>
 ) {
   const LazyComponent = lazy(async () => {
     const module = await importFn();
@@ -15,7 +15,7 @@ export function createRouteWithErrorBoundary(
     if ('default' in module && module.default) {
       return { default: module.default };
     }
-    return { default: module as ComponentType<any> };
+    return { default: module as ComponentType<unknown> };
   });
 
   return function RouteWithErrorBoundary(): ReactElement {

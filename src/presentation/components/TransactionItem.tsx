@@ -21,7 +21,10 @@ export const TransactionItem = memo<TransactionItemProps>(({
   formatCurrency,
 }) => {
   return (
-    <div className="p-3 bg-slate-100 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/30">
+    <div
+      className="p-3 bg-slate-100 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700/30"
+      data-transaction-id={id}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{underlying_symbol || instrument}</p>

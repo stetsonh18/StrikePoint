@@ -16,7 +16,7 @@ export interface AIInsightInsert {
   confidence?: number;
   actionable?: boolean;
   expires_at?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AIInsightUpdate {

@@ -205,7 +205,6 @@ export const StrategyChart = ({ data, isLoading, chartType = 'donut', metric = '
           radius={[8, 8, 0, 0]}
         >
           {barData.map((entry, index) => {
-            const color = STRATEGY_COLORS[entry.strategyType] || '#64748b';
             if (metric === 'pl') {
               return <Cell key={`cell-${index}`} fill={entry.pl >= 0 ? '#10b981' : '#ef4444'} />;
             } else if (metric === 'winRate') {

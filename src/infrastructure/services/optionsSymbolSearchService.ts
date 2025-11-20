@@ -54,7 +54,7 @@ export async function searchOptionsSymbols(query: string): Promise<string[]> {
       if (isValid) {
         validatedSymbols.push(symbol);
       }
-    } catch (error) {
+    } catch {
       // Skip on error
       continue;
     }
@@ -67,7 +67,7 @@ export async function searchOptionsSymbols(query: string): Promise<string[]> {
       if (isValid && !validatedSymbols.includes(query.toUpperCase())) {
         validatedSymbols.push(query.toUpperCase());
       }
-    } catch (error) {
+    } catch {
       // Skip on error
     }
   }

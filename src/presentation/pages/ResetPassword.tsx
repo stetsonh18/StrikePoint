@@ -56,6 +56,7 @@ export function ResetPassword() {
           }
         }
       } catch (err) {
+        console.error(err);
         setError('An error occurred while validating the reset link.');
         setIsValidToken(false);
       } finally {

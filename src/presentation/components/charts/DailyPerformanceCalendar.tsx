@@ -133,7 +133,7 @@ export const DailyPerformanceCalendar = React.memo(({
     });
 
     return { weeks, monthlyPL, daysWithTrades, dataMap };
-  }, [data, selectedMonth, currentYear, currentMonth]);
+  }, [data, currentYear, currentMonth]);
 
   const { weeks, monthlyPL, daysWithTrades, dataMap } = calendarData;
 
@@ -163,6 +163,22 @@ export const DailyPerformanceCalendar = React.memo(({
     }
     return 'text-blue-100';
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <div className="text-slate-400 text-sm">Loading performance calendar...</div>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <div className="text-slate-400 text-sm">No performance data available yet.</div>
+      </div>
+    );
+  }
 
   // Navigate months
   const goToPreviousMonth = () => {

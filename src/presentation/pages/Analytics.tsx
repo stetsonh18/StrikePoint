@@ -47,7 +47,6 @@ import { useStockQuotes } from '@/application/hooks/useStockQuotes';
 import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
 import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
 import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
-import { Tooltip } from '@/presentation/components/Tooltip';
 import { MetricCard } from '@/presentation/components/MetricCard';
 
 type AnalyticsTab = 'all' | 'stocks' | 'options' | 'crypto' | 'futures';
@@ -155,7 +154,7 @@ export const Analytics = () => {
             p.strike_price
           );
           symbols.push(tradierSymbol);
-        } catch (e) {
+        } catch {
           // Skip invalid option symbols
         }
       }
@@ -230,7 +229,7 @@ export const Analytics = () => {
             totalUnrealizedPL += calculatedUnrealizedPL;
             return;
           }
-        } catch (e) {
+        } catch {
           // Skip invalid option symbols
         }
       }
@@ -947,7 +946,7 @@ export const Analytics = () => {
                       </h3>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {Object.entries(entryTimeByStrategyData)
-                          .filter(([_, data]) => data.length > 0)
+                          .filter(([, data]) => data.length > 0)
                           .map(([strategyType, data]) => {
                             const strategyName = strategyType
                               .split('_')
@@ -1331,40 +1330,6 @@ export const Analytics = () => {
         </div>
       </div>
     </div>
-  );
-};
-
-interface MetricCardProps {
-  title: string;
-  value: string;
-  description: string;
-  tooltip?: string;
-}
-
-// Legacy MetricCard for tooltip support - will be migrated to SharedMetricCard
-const LegacyMetricCard = ({ title, value, description, tooltip }: MetricCardProps) => {
-  const cardContent = (
-    <div className="group bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all" />
-      <div className="relative">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-slate-400">{title}</p>
-          {tooltip && (
-            <Tooltip content={tooltip} position="top" showIcon />
-          )}
-        </div>
-        <p className="text-3xl font-bold text-slate-100 mb-2">{value}</p>
-        <p className="text-sm text-slate-500">{description}</p>
-      </div>
-    </div>
-  );
-
-  return tooltip ? (
-    <Tooltip content={tooltip} position="top">
-      {cardContent}
-    </Tooltip>
-  ) : (
-    cardContent
   );
 };
 

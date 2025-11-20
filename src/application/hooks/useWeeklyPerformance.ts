@@ -1,56 +1,46 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
-import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
+import { PositionRepository } from '@/infrastructure/repositories/position.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
+import { getDateRangeForDays } from './utils/dateRange';
 
 export interface WeeklyPerformance {
   weeklyPL: number;
   weeklyPLPercent: number;
-  currentValue: number;
-  weekAgoValue: number | null;
+  realizedPL: number;
+  unrealizedPL: number;
 }
 
+const DAYS_IN_WEEK = 7;
+
 /**
- * Hook to compare current portfolio value vs 7 days ago snapshot
+ * Hook to calculate performance for the last 7 days (realized + current unrealized)
  */
 export function useWeeklyPerformance(
   userId: string,
   options?: Omit<UseQueryOptions<WeeklyPerformance, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const { portfolioValue } = usePortfolioValue(userId);
-  const queryKey = queryKeys.analytics.weeklyPerformance(userId, portfolioValue);
+  const { portfolioValue, unrealizedPL } = usePortfolioValue(userId);
+  const queryKey = queryKeys.analytics.weeklyPerformance(userId, portfolioValue, unrealizedPL);
 
   return useQuery<WeeklyPerformance, Error>({
     queryKey,
     queryFn: async () => {
-      const currentValue = portfolioValue;
-      
-      // Get snapshot from 7 days ago
-      const weekAgoSnapshot = await PortfolioSnapshotRepository.getFromDaysAgo(userId, 7);
-      
-      if (!weekAgoSnapshot) {
-        return {
-          weeklyPL: 0,
-          weeklyPLPercent: 0,
-          currentValue,
-          weekAgoValue: null,
-        };
-      }
+      const { start, end } = getDateRangeForDays(DAYS_IN_WEEK);
+      const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
+      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
-      const weekAgoValue = weekAgoSnapshot.portfolio_value;
-      const weeklyPL = currentValue - weekAgoValue;
-      const weeklyPLPercent = weekAgoValue !== 0
-        ? ((weeklyPL / Math.abs(weekAgoValue)) * 100)
-        : 0;
+      const weeklyPL = realizedPL + unrealizedPL;
+      const weeklyPLPercent = portfolioValue !== 0 ? (weeklyPL / Math.abs(portfolioValue)) * 100 : 0;
 
       return {
         weeklyPL,
         weeklyPLPercent,
-        currentValue,
-        weekAgoValue,
+        realizedPL,
+        unrealizedPL,
       };
     },
-    enabled: !!userId && portfolioValue !== undefined,
+    enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
     ...options,
   });

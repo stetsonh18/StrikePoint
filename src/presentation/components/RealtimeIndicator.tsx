@@ -50,7 +50,7 @@ export function RealtimeIndicator({
         setStatus('idle');
         setIsRefreshing(false);
       }, 1000);
-    } catch (error) {
+    } catch {
       setStatus('error');
       setIsRefreshing(false);
     }

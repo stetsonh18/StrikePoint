@@ -474,4 +474,29 @@ export class PositionRepository {
 
     return data || [];
   }
+
+  /**
+   * Get realized P&L for positions closed within a date range
+   */
+  static async getRealizedPLByDateRange(
+    userId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at'>[]> {
+    const { data, error } = await supabase
+      .from('positions')
+      .select('id, realized_pl, closed_at')
+      .eq('user_id', userId)
+      .eq('status', 'closed')
+      .gte('closed_at', startDate)
+      .lte('closed_at', endDate);
+
+    if (error) {
+      const parsed = parseError(error);
+      logErrorWithContext(error, { context: 'PositionRepository.getRealizedPLByDateRange', userId, startDate, endDate });
+      throw new Error(`Failed to fetch realized P&L: ${parsed.message}`, { cause: error });
+    }
+
+    return data || [];
+  }
 }

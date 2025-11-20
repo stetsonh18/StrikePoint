@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     console.log(`[Tradier Options Chain] Fetching chain for: ${underlyingSymbol}`);
 
     // Step 1: Get available expirations if not provided
-    let expirationDate = expiration;
+    const expirationDate = expiration;
     let allExpirations: string[] = [];
     
     // For daily expiration symbols (like SPX), generate all trading days instead of using expirations endpoint
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
         // SPX has daily expirations on every trading day
         const today = new Date();
         const tradingDays: string[] = [];
-        let currentDate = new Date(today);
+        const currentDate = new Date(today);
         const endDate = new Date(today);
         endDate.setDate(endDate.getDate() + 60);
         

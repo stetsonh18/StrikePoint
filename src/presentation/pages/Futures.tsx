@@ -887,7 +887,6 @@ const Futures: React.FC = () => {
           {editingPosition ? (
             <PositionEditForm
               position={editingPosition}
-              userId={userId}
               onClose={() => {
                 setShowTransactionForm(false);
                 setEditingPosition(null);

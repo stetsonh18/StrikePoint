@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
           filesToDeleteAfterUpload: './dist/**/*.map',
         },
         // Don't fail build if Sentry upload fails
-        errorHandler: (err, invokeErr, compilation) => {
+        errorHandler: (err) => {
           console.warn('[Sentry] Failed to upload source maps:', err);
         },
       })
@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           // Ensure proper chunk dependencies
-          chunkFileNames: (_chunkInfo) => {
+          chunkFileNames: () => {
             return isProduction
               ? 'assets/js/[name]-[hash].js'
               : 'assets/js/[name].js';
@@ -141,6 +141,11 @@ export default defineConfig(({ mode }) => {
 
       // Report compressed size
       reportCompressedSize: true,
+    },
+    test: {
+      include: ['src/**/*.{test,spec}.{ts,tsx}'],
+      exclude: ['e2e/**'],
+      environment: 'node',
     },
     // Note: API calls go through Supabase Edge Functions
     // No proxy needed - Edge Functions are accessed directly via Supabase URL

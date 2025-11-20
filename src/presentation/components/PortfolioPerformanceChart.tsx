@@ -38,6 +38,7 @@ export const PortfolioPerformanceChart = React.memo<PortfolioPerformanceChartPro
       dateValue: item.date,
       portfolioValue: item.portfolioValue,
       netCashFlow: item.netCashFlow,
+      totalDeposits: item.totalDeposits,
       realizedPL: item.realizedPL,
       unrealizedPL: item.unrealizedPL,
       totalPL: item.realizedPL + item.unrealizedPL,
@@ -53,6 +54,7 @@ export const PortfolioPerformanceChart = React.memo<PortfolioPerformanceChartPro
   const portfolioTooltipFormatter = useCallback((value: number, name: string) => {
     if (name === 'portfolioValue') return [formatCurrency(value), 'Portfolio Value'];
     if (name === 'netCashFlow') return [formatCurrency(value), 'Net Cash Flow'];
+    if (name === 'totalDeposits') return [formatCurrency(value), 'Total Deposits'];
     return [formatCurrency(value), name];
   }, [formatCurrency]);
 
@@ -162,6 +164,15 @@ export const PortfolioPerformanceChart = React.memo<PortfolioPerformanceChartPro
                   dot={false}
                   strokeDasharray="5 5"
                   name="Net Cash Flow"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="totalDeposits"
+                  stroke="#f59e0b"
+                  strokeWidth={1.5}
+                  dot={false}
+                  strokeDasharray="4 4"
+                  name="Total Deposits"
                 />
               </LineChart>
             </ResponsiveContainer>

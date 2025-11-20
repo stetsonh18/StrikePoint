@@ -224,6 +224,7 @@ export function Checkout() {
       navigate('/');
       toast.success('Signed out successfully');
     } catch (error) {
+      console.error(error);
       toast.error('Failed to sign out');
     }
   };
