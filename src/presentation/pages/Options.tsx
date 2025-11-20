@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers, Edit, Trash2 } from 'lucide-react';
-import type { OptionContract, OptionTransaction, OptionChainEntry, Position, Transaction } from '@/domain/types';
+import type { OptionContract, OptionTransaction, OptionChainEntry, Position, Transaction, Strategy } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
 import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
@@ -26,6 +26,111 @@ import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
 import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
+import { StrategyManagementService } from '@/infrastructure/services/strategyManagementService';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
+
+interface StrategyMetricsResult {
+  strategyId?: string;
+  totalContracts: number;
+  strategyUnits: number;
+  marketValue: number;
+  unrealizedPL: number;
+  unrealizedPLPercent: number;
+  referenceCost: number;
+  hasCalls: boolean;
+  hasPuts: boolean;
+}
+
+function gcd(a: number, b: number): number {
+  if (!a) return b;
+  if (!b) return a;
+  return gcd(b, a % b);
+}
+
+function computeStrategyMetrics(
+  strategyGroup: OptionContract[],
+  positionLookup: Map<string, Position>,
+  strategyLookup: Map<string, Strategy>
+): StrategyMetricsResult {
+  if (strategyGroup.length === 0) {
+    return {
+      strategyId: undefined,
+      totalContracts: 0,
+      strategyUnits: 0,
+      marketValue: 0,
+      unrealizedPL: 0,
+      unrealizedPLPercent: 0,
+      referenceCost: 0,
+      hasCalls: false,
+      hasPuts: false,
+    };
+  }
+
+  const firstOriginal = positionLookup.get(strategyGroup[0].id);
+  const strategyId = firstOriginal?.strategy_id;
+  const strategy = strategyId ? strategyLookup.get(strategyId) : undefined;
+
+  let totalContracts = 0;
+  let totalMarketValue = 0;
+  let longLegsValue = 0;
+  let shortLegsValue = 0;
+  let totalLegPL = 0;
+  let totalCostBasis = 0;
+  let hasCalls = false;
+  let hasPuts = false;
+
+  const legQuantities = strategyGroup.map((pos) => Math.abs(pos.quantity));
+
+  strategyGroup.forEach((pos, index) => {
+    totalContracts += Math.abs(pos.quantity);
+    const legMarketValue = pos.marketValue || 0;
+    totalMarketValue += legMarketValue;
+
+    if (pos.side === 'long') {
+      longLegsValue += legMarketValue;
+    } else {
+      shortLegsValue += legMarketValue;
+    }
+
+    const original = positionLookup.get(pos.id);
+    const legCostBasis = Math.abs(original?.total_cost_basis ?? pos.costBasis ?? 0);
+    totalCostBasis += legCostBasis;
+    totalLegPL += pos.unrealizedPL || 0;
+
+    if (pos.optionType === 'call') hasCalls = true;
+    if (pos.optionType === 'put') hasPuts = true;
+  });
+
+  const strategyUnits = legQuantities.reduce((acc, qty) => {
+    if (qty <= 0) return acc;
+    if (acc === 0) return qty;
+    return gcd(acc, qty);
+  }, 0);
+
+  let finalPL = totalLegPL;
+  let referenceCost = totalCostBasis;
+
+  if (strategy) {
+    const netCreditDebit = strategy.total_opening_cost ?? 0;
+    const costToClose = shortLegsValue - longLegsValue;
+    finalPL = netCreditDebit - costToClose;
+    referenceCost = Math.abs(netCreditDebit);
+  }
+
+  const finalPLPercent = referenceCost > 0 ? (finalPL / referenceCost) * 100 : 0;
+
+  return {
+    strategyId,
+    totalContracts,
+    strategyUnits,
+    marketValue: totalMarketValue,
+    unrealizedPL: finalPL,
+    unrealizedPLPercent: finalPLPercent,
+    referenceCost,
+    hasCalls,
+    hasPuts,
+  };
+}
 
 const Options: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -79,6 +184,22 @@ const Options: React.FC = () => {
 
   // Fetch all strategies (including closed) for realized P&L calculation
   const { data: allStrategies } = useStrategies(userId);
+
+  const originalPositionMap = useMemo(() => {
+    const map = new Map<string, Position>();
+    (allPositions || []).forEach((position) => {
+      map.set(position.id, position);
+    });
+    return map;
+  }, [allPositions]);
+
+  const strategyMap = useMemo(() => {
+    const map = new Map<string, Strategy>();
+    (strategies || []).forEach((strategy) => {
+      map.set(strategy.id, strategy);
+    });
+    return map;
+  }, [strategies]);
 
 
   // Build Tradier option symbols for all open positions
@@ -141,12 +262,15 @@ const Options: React.FC = () => {
   const positions = useMemo(() => {
     if (!allPositions) return [];
     
+    // Relaxed filter: only require asset_type and status
+    // Let toOptionContract validate and filter out invalid positions
     const basePositions = allPositions
-      .filter((p) => p.asset_type === 'option' && p.status === 'open' && p.option_type && p.strike_price && p.expiration_date)
+      .filter((p) => p.asset_type === 'option' && p.status === 'open')
       .map((p) => {
         try {
           return toOptionContract(p);
         } catch (e) {
+          logger.warn('Skipping invalid option position during transformation', { position: p, error: e });
           return null;
         }
       })
@@ -333,26 +457,6 @@ const Options: React.FC = () => {
   }, [allOptionPositions, allStrategies]);
 
   // Calculate portfolio summary
-  const portfolioSummary = useMemo(() => {
-    const totalValue = positions.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
-    const totalCost = positions.reduce((sum, pos) => sum + pos.costBasis, 0);
-    const totalPL = positions.reduce((sum, pos) => sum + (pos.unrealizedPL || 0), 0);
-    const totalPLPercent = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
-
-    const callsCount = positions.filter(p => p.optionType === 'call').length;
-    const putsCount = positions.filter(p => p.optionType === 'put').length;
-
-    return {
-      totalValue,
-      totalCost,
-      totalPL,
-      totalPLPercent,
-      positionsCount: positions.length,
-      callsCount,
-      putsCount,
-      realizedPL,
-    };
-  }, [positions, realizedPL]);
 
   // Group positions by strategy_id - positions with same strategy_id are grouped together
   // Only group if the strategy has more than one position (multi-leg)
@@ -424,6 +528,66 @@ const Options: React.FC = () => {
     return filtered;
   }, [groupedPositions, searchQuery, filterType, positionSort]);
 
+  const portfolioSummary = useMemo(() => {
+    if (!groupedPositions) {
+      return {
+        totalValue: 0,
+        totalCost: 0,
+        totalPL: 0,
+        totalPLPercent: 0,
+        positionsCount: 0,
+        callsCount: 0,
+        putsCount: 0,
+        realizedPL,
+      };
+    }
+
+    const aggregatedEntries: Array<{ marketValue: number; costBasis: number; unrealizedPL: number }> = [];
+    let callsCount = 0;
+    let putsCount = 0;
+
+    groupedPositions.individual.forEach((position) => {
+      const original = originalPositionMap.get(position.id);
+      const costBasis = Math.abs(original?.total_cost_basis ?? position.costBasis ?? 0);
+      aggregatedEntries.push({
+        marketValue: position.marketValue || 0,
+        costBasis,
+        unrealizedPL: position.unrealizedPL || 0,
+      });
+
+      if (position.optionType === 'call') callsCount += 1;
+      if (position.optionType === 'put') putsCount += 1;
+    });
+
+    groupedPositions.strategies.forEach((strategyGroup) => {
+      const metrics = computeStrategyMetrics(strategyGroup, originalPositionMap, strategyMap);
+      aggregatedEntries.push({
+        marketValue: metrics.marketValue,
+        costBasis: metrics.referenceCost,
+        unrealizedPL: metrics.unrealizedPL,
+      });
+      if (metrics.hasCalls) callsCount += 1;
+      if (metrics.hasPuts) putsCount += 1;
+    });
+
+    const totalValue = aggregatedEntries.reduce((sum, entry) => sum + entry.marketValue, 0);
+    const totalCost = aggregatedEntries.reduce((sum, entry) => sum + entry.costBasis, 0);
+    const totalPL = aggregatedEntries.reduce((sum, entry) => sum + entry.unrealizedPL, 0);
+    const totalPLPercent = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
+    const positionsCount = groupedPositions.individual.length + groupedPositions.strategies.length;
+
+    return {
+      totalValue,
+      totalCost,
+      totalPL,
+      totalPLPercent,
+      positionsCount,
+      callsCount,
+      putsCount,
+      realizedPL,
+    };
+  }, [groupedPositions, originalPositionMap, strategyMap, realizedPL]);
+
   // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
     let filtered = transactions;
@@ -493,6 +657,32 @@ const Options: React.FC = () => {
   }, [allPositions]);
 
   const handleDeletePosition = useCallback(async (position: OptionContract) => {
+    const original = originalPositionMap.get(position.id);
+    const strategyId = original?.strategy_id;
+    const strategyLegs = strategyId ? (allPositions?.filter(p => p.strategy_id === strategyId) ?? []) : [];
+
+    if (strategyId && strategyLegs.length > 1) {
+      const confirmedStrategyDelete = await confirmation.confirm({
+        title: 'Delete Multi-Leg Strategy',
+        message:
+          'This will delete every leg in this strategy along with the related transactions and cash activity. This action cannot be undone.',
+        confirmLabel: 'Delete Strategy',
+        cancelLabel: 'Cancel',
+        variant: 'danger',
+      });
+
+      if (!confirmedStrategyDelete) return;
+
+      await StrategyManagementService.deleteStrategyWithPositions(userId, strategyId);
+      toast.success('Strategy deleted successfully');
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+      queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+      return;
+    }
+
     const confirmed = await confirmation.confirm({
       title: 'Delete Position',
       message: `Are you sure you want to delete the position for ${position.underlyingSymbol} ${position.optionType.toUpperCase()} $${position.strikePrice}? This action cannot be undone.`,
@@ -502,8 +692,8 @@ const Options: React.FC = () => {
     });
 
     if (!confirmed) return;
-    await deletePositionMutation.mutateAsync(position.id);
-  }, [confirmation, deletePositionMutation]);
+    await deletePositionMutation.mutateAsync({ id: position.id, userId });
+  }, [allPositions, confirmation, deletePositionMutation, originalPositionMap, queryClient, toast, userId]);
 
   const handleEditTransaction = useCallback((transaction: OptionTransaction) => {
     // Find the original transaction from allTransactions
@@ -792,18 +982,8 @@ const Options: React.FC = () => {
                 {/* Strategy groups - simplified for mobile */}
                 {filteredGroupedPositions.strategies.map((strategyGroup, groupIdx) => {
                   const firstPosition = strategyGroup[0];
-                  const originalPosition = allPositions.find(p => p.id === firstPosition.id);
-                  const strategyId = originalPosition?.strategy_id;
-                  const strategy = strategies?.find(s => s.id === strategyId);
-                  const totalContracts = strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0);
-                  const weightedAvgCurrentPrice = totalContracts > 0
-                    ? strategyGroup.reduce((sum, pos) => sum + (pos.currentPrice || 0) * pos.quantity, 0) / totalContracts
-                    : 0;
-                  const totalMarketValue = strategyGroup.reduce((sum, pos) => sum + (pos.marketValue || 0), 0);
-                  const totalUnrealizedPL = strategyGroup.reduce((sum, pos) => sum + (pos.unrealizedPL || 0), 0);
-                  const totalOpeningCost = strategy?.total_opening_cost || strategyGroup.reduce((sum, pos) => sum + pos.averagePrice * pos.quantity, 0);
-                  const totalPLPercent = totalOpeningCost > 0 ? (totalUnrealizedPL / totalOpeningCost) * 100 : 0;
-                  
+                  const metrics = computeStrategyMetrics(strategyGroup, originalPositionMap, strategyMap);
+
                   return (
                     <MobileTableCard key={`strategy-${groupIdx}`}>
                       <MobileTableCardHeader
@@ -815,20 +995,20 @@ const Options: React.FC = () => {
                           </span>
                         }
                       />
-                      <MobileTableCardRow label="Total Contracts" value={totalContracts} />
-                      <MobileTableCardRow label="Market Value" value={formatCurrency(totalMarketValue)} highlight />
+                      <MobileTableCardRow label="Total Contracts" value={metrics.strategyUnits || metrics.totalContracts} />
+                      <MobileTableCardRow label="Market Value" value={formatCurrency(metrics.marketValue)} highlight />
                       <MobileTableCardRow
                         label="Unrealized P&L"
-                        value={formatCurrency(totalUnrealizedPL)}
-                        positive={totalUnrealizedPL >= 0}
-                        negative={totalUnrealizedPL < 0}
+                        value={formatCurrency(metrics.unrealizedPL)}
+                        positive={metrics.unrealizedPL >= 0}
+                        negative={metrics.unrealizedPL < 0}
                         highlight
                       />
                       <MobileTableCardRow
                         label="P&L %"
-                        value={formatPercent(totalPLPercent)}
-                        positive={totalPLPercent >= 0}
-                        negative={totalPLPercent < 0}
+                        value={formatPercent(metrics.unrealizedPLPercent)}
+                        positive={metrics.unrealizedPLPercent >= 0}
+                        negative={metrics.unrealizedPLPercent < 0}
                       />
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
                         <button
@@ -1152,14 +1332,10 @@ const Options: React.FC = () => {
                       {/* Grouped strategy positions */}
                       {filteredGroupedPositions.strategies.map((strategyGroup, groupIdx) => {
                         const firstPosition = strategyGroup[0];
-                        
-                        // Find the strategy for this group to get total_opening_cost
-                        const originalPosition = allPositions.find(p => p.id === firstPosition.id);
-                        const strategyId = originalPosition?.strategy_id;
-                        const strategy = strategies?.find(s => s.id === strategyId);
+                        const metrics = computeStrategyMetrics(strategyGroup, originalPositionMap, strategyMap);
                         
                         // Calculate weighted average current price and average entry price
-                        const totalContracts = strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0);
+                        const totalContracts = metrics.strategyUnits || strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0);
                         const weightedAvgCurrentPrice = totalContracts > 0
                           ? strategyGroup.reduce((sum, pos) => {
                               const posValue = (pos.currentPrice || pos.averagePrice) * pos.quantity;
@@ -1175,67 +1351,9 @@ const Options: React.FC = () => {
                             }, 0) / totalContracts
                           : 0;
                         
-                        // Calculate total value and P&L correctly accounting for long/short
-                        let totalValue = 0;
-                        let totalPL = 0;
-                        let totalCostBasis = 0;
-                        
-                        strategyGroup.forEach((pos) => {
-                          const origPos = allPositions.find(p => p.id === pos.id);
-                          const actualCostBasis = origPos?.total_cost_basis || 0;
-                          const isLong = pos.side === 'long';
-                          
-                          const marketValue = pos.marketValue || 0;
-                          totalValue += marketValue;
-                          
-                          // Calculate P&L for this position
-                          // Long: You paid (negative cost basis), P&L = marketValue - |costBasis|
-                          // Short: You received credit (positive cost basis), P&L = costBasis - marketValue
-                          const posPL = isLong
-                            ? marketValue - Math.abs(actualCostBasis)
-                            : Math.abs(actualCostBasis) - marketValue;
-                          totalPL += posPL;
-                          totalCostBasis += Math.abs(actualCostBasis);
-                        });
-                        
-                        // For spreads, calculate P&L using strategy's total_opening_cost (net credit/debit)
-                        // This is more accurate for multi-leg strategies
-                        let finalPL = totalPL;
-                        let finalPLPercent = totalCostBasis > 0 ? (totalPL / totalCostBasis) * 100 : 0;
-                        
-                        if (strategy && strategy.total_opening_cost !== undefined) {
-                          // For spreads, calculate cost to close and compare to net credit/debit
-                          let longLegsValue = 0;
-                          let shortLegsValue = 0;
-                          
-                          strategyGroup.forEach((pos) => {
-                            const marketValue = pos.marketValue || 0;
-                            if (pos.side === 'long') {
-                              longLegsValue += marketValue;
-                            } else {
-                              shortLegsValue += marketValue;
-                            }
-                          });
-                          
-                          // Cost to close the spread (always positive, represents money you'd pay to close)
-                          const costToClose = shortLegsValue - longLegsValue;
-                          
-                          // Net credit/debit when opened (positive = credit received, negative = debit paid)
-                          const netCreditDebit = strategy.total_opening_cost;
-                          
-                          // P&L = Credit/Debit received when opening - Cost/Value to close
-                          // For credit spread: P&L = credit - costToClose
-                          // For debit spread: P&L = -debit - (-valueToClose) = valueToClose - debit
-                          // Since costToClose = shortLegsValue - longLegsValue, and valueToClose = longLegsValue - shortLegsValue = -costToClose
-                          // We can use: finalPL = netCreditDebit - costToClose
-                          // This works for both: credit (positive netCreditDebit) and debit (negative netCreditDebit)
-                          finalPL = netCreditDebit - costToClose;
-                          
-                          // Calculate percentage based on net credit/debit
-                          const netCreditDebitAbs = Math.abs(netCreditDebit);
-                          finalPLPercent = netCreditDebitAbs > 0 ? (finalPL / netCreditDebitAbs) * 100 : 0;
-                        }
-                        
+                        const totalValue = metrics.marketValue;
+                        const finalPL = metrics.unrealizedPL;
+                        const finalPLPercent = metrics.unrealizedPLPercent;
                         const daysToExp = getDaysToExpiration(firstPosition.expirationDate);
                         
                         return (
@@ -1275,7 +1393,7 @@ const Options: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
-                              {strategyGroup.reduce((sum, pos) => sum + pos.quantity, 0)}
+                              {metrics.strategyUnits || totalContracts}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
                               {formatCurrency(weightedAvgEntryPrice)}/contract
@@ -1497,8 +1615,11 @@ const Options: React.FC = () => {
                 setEditingTransaction(null);
               }}
               onSuccess={() => {
-                queryClient.invalidateQueries({ queryKey: ['positions'] });
-                queryClient.invalidateQueries({ queryKey: ['position-statistics'] });
+                queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+                queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+                queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+                queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+                queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
                 setShowTransactionForm(false);
                 setEditingPosition(null);
                 setEditingTransaction(null);
@@ -1513,13 +1634,36 @@ const Options: React.FC = () => {
                 setEditingPosition(null);
                 setEditingTransaction(null);
               }}
-              onSuccess={() => {
-                queryClient.invalidateQueries({ queryKey: ['positions'] });
-                queryClient.invalidateQueries({ queryKey: ['transactions'] });
-                queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+              onSuccess={async () => {
+                // Close the form first
                 setShowTransactionForm(false);
                 setEditingPosition(null);
                 setEditingTransaction(null);
+                
+                // Invalidate all position-related queries
+                await queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+                await queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+                await queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+                await queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+                await queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+                
+                // Wait for position matching to complete, then refetch with retries
+                const maxRetries = 6;
+                const retryDelay = 800;
+                
+                for (let attempt = 0; attempt < maxRetries; attempt++) {
+                  await new Promise(resolve => setTimeout(resolve, retryDelay));
+                  
+                  // Force refetch - use predicate to match all position queries for this user
+                  await queryClient.refetchQueries({ 
+                    predicate: (query) => {
+                      const key = query.queryKey;
+                      if (!Array.isArray(key) || key.length === 0) return false;
+                      // Match ['positions', 'list', userId, ...] or ['positions', ...]
+                      return key[0] === 'positions' && (key.length < 3 || key[2] === userId);
+                    }
+                  });
+                }
               }}
             />
           )}
@@ -1543,12 +1687,35 @@ const Options: React.FC = () => {
             setShowCloseForm(false);
             setSelectedPositionForClose(null);
           }}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['positions'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
+          onSuccess={async () => {
+            // Close the form first
             setShowCloseForm(false);
             setSelectedPositionForClose(null);
+            
+            // Invalidate all position-related queries
+            await queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+            
+            // Wait for position matching to complete, then refetch with retries
+            const maxRetries = 6;
+            const retryDelay = 800;
+            
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              
+              // Force refetch - use predicate to match all position queries for this user
+              await queryClient.refetchQueries({ 
+                predicate: (query) => {
+                  const key = query.queryKey;
+                  return Array.isArray(key) && 
+                         (key[0] === 'positions' || 
+                          (key.length > 1 && key[0] === 'positions' && key[1] === 'list' && key[2] === userId));
+                }
+              });
+            }
           }}
         />
       )}
@@ -1559,12 +1726,40 @@ const Options: React.FC = () => {
         <OptionsMultiLegForm
           userId={userId}
           onClose={() => setShowMultiLegForm(false)}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['positions'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
-            queryClient.invalidateQueries({ queryKey: ['strategies'] });
+          onSuccess={async () => {
+            // Close the form first
             setShowMultiLegForm(false);
+            
+            // Invalidate all position-related queries
+            await queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+            
+            // Wait for position matching to complete, then refetch with retries
+            const maxRetries = 6;
+            const retryDelay = 800;
+            
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              
+              // Force refetch - use predicate to match all position queries for this user
+              await queryClient.refetchQueries({ 
+                predicate: (query) => {
+                  const key = query.queryKey;
+                  return Array.isArray(key) && 
+                         (key[0] === 'positions' || 
+                          (key.length > 1 && key[0] === 'positions' && key[1] === 'list' && key[2] === userId));
+                }
+              });
+              
+              // Also refetch strategies
+              await queryClient.refetchQueries({ 
+                queryKey: queryKeys.strategies.all,
+                exact: false
+              });
+            }
           }}
         />
       )}
@@ -1579,13 +1774,41 @@ const Options: React.FC = () => {
             setShowCloseMultiLegForm(false);
             setSelectedStrategyGroupForClose(null);
           }}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['positions'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            queryClient.invalidateQueries({ queryKey: ['cash-balance'] });
-            queryClient.invalidateQueries({ queryKey: ['strategies'] });
+          onSuccess={async () => {
+            // Close the form first
             setShowCloseMultiLegForm(false);
             setSelectedStrategyGroupForClose(null);
+            
+            // Invalidate all position-related queries
+            await queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+            
+            // Wait for position matching to complete, then refetch with retries
+            const maxRetries = 6;
+            const retryDelay = 800;
+            
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              
+              // Force refetch - use predicate to match all position queries for this user
+              await queryClient.refetchQueries({ 
+                predicate: (query) => {
+                  const key = query.queryKey;
+                  return Array.isArray(key) && 
+                         (key[0] === 'positions' || 
+                          (key.length > 1 && key[0] === 'positions' && key[1] === 'list' && key[2] === userId));
+                }
+              });
+              
+              // Also refetch strategies
+              await queryClient.refetchQueries({ 
+                queryKey: queryKeys.strategies.all,
+                exact: false
+              });
+            }
           }}
         />
       )}
