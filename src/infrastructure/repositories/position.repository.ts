@@ -1,5 +1,6 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
+import { CashTransactionRepository } from './cashTransaction.repository';
 import type {
   Position,
   PositionInsert,
@@ -26,7 +27,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.create', position });
+      logErrorWithContext(error, { context: 'PositionRepository.create', position });
       throw new Error(`Failed to create position: ${parsed.message}`, { cause: error });
     }
 
@@ -46,7 +47,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.createMany', count: positions.length });
+      logErrorWithContext(error, { context: 'PositionRepository.createMany', count: positions.length });
       throw new Error(`Failed to create positions: ${parsed.message}`, { cause: error });
     }
 
@@ -66,7 +67,7 @@ export class PositionRepository {
     if (error) {
       if (error.code === 'PGRST116') return null;
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getById', id });
+      logErrorWithContext(error, { context: 'PositionRepository.getById', id });
       throw new Error(`Failed to fetch position: ${parsed.message}`, { cause: error });
     }
 
@@ -107,7 +108,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getAll', userId, filters });
+      logErrorWithContext(error, { context: 'PositionRepository.getAll', userId, filters });
       throw new Error(`Failed to fetch positions: ${parsed.message}`, { cause: error });
     }
 
@@ -125,7 +126,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getOpenPositions', userId });
+      logErrorWithContext(error, { context: 'PositionRepository.getOpenPositions', userId });
       throw new Error(`Failed to fetch open positions: ${parsed.message}`, { cause: error });
     }
 
@@ -192,16 +193,16 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { 
-        context: 'PositionRepository.findOpenPosition', 
-        userId, 
-        symbol, 
-        optionType, 
-        strikePrice, 
-        expirationDate, 
-        side, 
-        assetType, 
-        contractMonth 
+      logErrorWithContext(error, {
+        context: 'PositionRepository.findOpenPosition',
+        userId,
+        symbol,
+        optionType,
+        strikePrice,
+        expirationDate,
+        side,
+        assetType,
+        contractMonth
       });
       throw new Error(`Failed to find open position: ${parsed.message}`, { cause: error });
     }
@@ -222,7 +223,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.update', id, updates });
+      logErrorWithContext(error, { context: 'PositionRepository.update', id, updates });
       throw new Error(`Failed to update position: ${parsed.message}`, { cause: error });
     }
 
@@ -296,7 +297,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getByStrategyId', strategyId });
+      logErrorWithContext(error, { context: 'PositionRepository.getByStrategyId', strategyId });
       throw new Error(`Failed to fetch positions: ${parsed.message}`, { cause: error });
     }
 
@@ -326,7 +327,7 @@ export class PositionRepository {
       .eq('user_id', position.user_id);
 
     if (journalError) {
-      logError(journalError, { context: 'PositionRepository.delete - fetching journal entries', id });
+      logErrorWithContext(journalError, { context: 'PositionRepository.delete - fetching journal entries', id });
       // Continue with deletion even if journal fetch fails
     } else if (allJournalEntries && allJournalEntries.length > 0) {
       // Filter journal entries that contain this position ID in their linked_position_ids array
@@ -342,18 +343,46 @@ export class PositionRepository {
           .in('id', journalIds);
 
         if (deleteJournalError) {
-          logError(deleteJournalError, { context: 'PositionRepository.delete - deleting journal entries', id });
+          logErrorWithContext(deleteJournalError, { context: 'PositionRepository.delete - deleting journal entries', id });
           // Continue with position deletion even if journal deletion fails
         }
       }
     }
 
-    // Delete the position (transactions and cash transactions will cascade delete via FKs)
+    // Capture transactions linked to this position so we can delete their cash counterparts
+    let transactionIds: string[] = [];
+    const { data: positionTransactions, error: positionTransactionsError } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('position_id', id);
+
+    if (positionTransactionsError) {
+      logErrorWithContext(positionTransactionsError, { context: 'PositionRepository.delete - fetching transactions', id });
+    } else if (positionTransactions?.length) {
+      transactionIds = positionTransactions
+        .map((tx) => tx.id)
+        .filter((txId): txId is string => Boolean(txId));
+    }
+
+    if (transactionIds.length > 0) {
+      try {
+        await CashTransactionRepository.deleteByTransactionIds(transactionIds);
+      } catch (cashDeleteError) {
+        logErrorWithContext(cashDeleteError, {
+          context: 'PositionRepository.delete - deleting cash transactions',
+          id,
+          transactionIds,
+        });
+        // Continue even if cash transactions can't be deleted to avoid blocking the position removal
+      }
+    }
+
+    // Delete the position (transactions will cascade delete via FK)
     const { error } = await supabase.from('positions').delete().eq('id', id);
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.delete', id });
+      logErrorWithContext(error, { context: 'PositionRepository.delete', id });
       throw new Error(`Failed to delete position: ${parsed.message}`, { cause: error });
     }
   }
@@ -381,7 +410,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getStatistics', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'PositionRepository.getStatistics', userId, startDate, endDate });
       throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 
@@ -439,7 +468,7 @@ export class PositionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'PositionRepository.getExpiringSoon', userId, daysAhead });
+      logErrorWithContext(error, { context: 'PositionRepository.getExpiringSoon', userId, daysAhead });
       throw new Error(`Failed to fetch expiring positions: ${parsed.message}`, { cause: error });
     }
 

@@ -27,13 +27,11 @@ export function getStripe(): Promise<Stripe | null> {
  * Create a Stripe checkout session
  */
 export async function createCheckoutSession(
-  userId: string,
   priceId: string,
   discountCode?: string
 ): Promise<{ sessionId: string; url: string }> {
   const { data, error } = await supabase.functions.invoke('stripe-create-checkout', {
     body: {
-      userId,
       priceId,
       discountCode,
     },
@@ -50,13 +48,9 @@ export async function createCheckoutSession(
 /**
  * Create a Stripe billing portal session
  */
-export async function createBillingPortalSession(
-  userId: string
-): Promise<{ url: string }> {
+export async function createBillingPortalSession(): Promise<{ url: string }> {
   const { data, error } = await supabase.functions.invoke('stripe-billing-portal', {
-    body: {
-      userId,
-    },
+    body: {},
   });
 
   if (error) {
@@ -96,11 +90,9 @@ export async function getSubscriptionStatus(userId: string): Promise<{
 /**
  * Cancel a subscription
  */
-export async function cancelSubscription(userId: string): Promise<void> {
+export async function cancelSubscription(): Promise<void> {
   const { data, error } = await supabase.functions.invoke('stripe-cancel-subscription', {
-    body: {
-      userId,
-    },
+    body: {},
   });
 
   if (error) {

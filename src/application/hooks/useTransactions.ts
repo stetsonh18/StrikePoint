@@ -1,10 +1,28 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions, type QueryClient } from '@tanstack/react-query';
 import { TransactionRepository } from '@/infrastructure/repositories';
 import { useToast } from '@/shared/hooks/useToast';
 import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { TransactionFilters, Transaction, TransactionUpdate, TransactionStatistics } from '@/domain/types';
+
+const invalidateTransactionQueries = (queryClient: QueryClient, userId: string) => {
+  queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all, exact: false });
+  queryClient.invalidateQueries({ queryKey: queryKeys.transactions.statistics(userId), exact: false });
+  queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+  queryClient.invalidateQueries({ queryKey: queryKeys.cash.transactions.all, exact: false });
+  queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value(userId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.netCashFlow(userId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.initialInvestment(userId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return Array.isArray(key) && key[0] === 'win-rate-metrics' && key[1] === userId;
+    },
+  });
+};
 
 export function useTransactions(
   userId: string,
@@ -47,23 +65,7 @@ export function useUpdateTransaction() {
     mutationFn: ({ id, updates }: { id: string; updates: TransactionUpdate }) =>
       TransactionRepository.update(id, updates),
     onSuccess: (data) => {
-      // Invalidate all transaction-related queries for this user
-      const userId = data.user_id;
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all });
-      queryClient.invalidateQueries({ 
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            Array.isArray(key) &&
-            key[0] === 'transaction-statistics' &&
-            key[1] === userId
-          );
-        }
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
-      // Invalidate win rate metrics when transactions are updated
-      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
+      invalidateTransactionQueries(queryClient, data.user_id);
     },
   });
 }
@@ -81,25 +83,8 @@ export function useDeleteTransaction() {
     },
     onSuccess: (result, variables) => {
       const { userId } = variables;
-      // Invalidate all transaction-related queries for this user
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all });
-      queryClient.invalidateQueries({ 
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            Array.isArray(key) &&
-            key[0] === 'transaction-statistics' &&
-            key[1] === userId
-          );
-        }
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.cash.balance(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
-      // Invalidate win rate metrics when transactions are deleted
-      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
+      invalidateTransactionQueries(queryClient, userId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.strategies.all, exact: false });
       
       // Show appropriate message based on what was deleted
       if (result.wasStrategy) {

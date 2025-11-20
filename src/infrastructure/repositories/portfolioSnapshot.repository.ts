@@ -217,7 +217,10 @@ export class PortfolioSnapshotRepository {
   }
 
   /**
-   * Get snapshot from N days ago
+   * Get snapshot from N days ago.
+   * Returns the closest snapshot on or before the target date, but if no such snapshot exists yet
+   * (e.g., user has fewer days of history), it falls back to the earliest available snapshot after
+   * that date so we can still show a delta based on existing data.
    */
   static async getFromDaysAgo(userId: string, daysAgo: number): Promise<PortfolioSnapshot | null> {
     const targetDate = new Date();
@@ -237,11 +240,28 @@ export class PortfolioSnapshotRepository {
       throw new Error(`Failed to get portfolio snapshot from ${daysAgo} days ago: ${error.message}`);
     }
 
-    if (!snapshots || snapshots.length === 0) {
+    if (snapshots && snapshots.length > 0) {
+      return snapshots[0];
+    }
+
+    // Fallback: if we don't have a snapshot that old yet, return the oldest available snapshot
+    const { data: fallbackSnapshots, error: fallbackError } = await supabase
+      .from('portfolio_snapshots')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('snapshot_date', dateString)
+      .order('snapshot_date', { ascending: true })
+      .limit(1);
+
+    if (fallbackError) {
+      throw new Error(`Failed to get fallback portfolio snapshot: ${fallbackError.message}`);
+    }
+
+    if (!fallbackSnapshots || fallbackSnapshots.length === 0) {
       return null;
     }
 
-    return snapshots[0];
+    return fallbackSnapshots[0];
   }
 
   /**

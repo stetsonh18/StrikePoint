@@ -128,6 +128,7 @@ export interface Strategy {
   // Dates
   opened_at: string; // Timestamptz
   expiration_date: string | null; // Date (YYYY-MM-DD)
+  entry_time: string | null; // Time (HH:MM format)
 
   // P/L tracking
   total_opening_cost: number; // Negative = debit, positive = credit

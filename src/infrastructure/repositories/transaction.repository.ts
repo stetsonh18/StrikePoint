@@ -1,6 +1,6 @@
 import { supabase } from '../api/supabase';
 import { logger } from '@/shared/utils/logger';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import { validateData, TransactionInsertSchema, TransactionUpdateSchema } from '@/shared/utils/validationSchemas';
 import type {
   Transaction,
@@ -34,7 +34,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.create', transaction });
+      logErrorWithContext(error, { context: 'TransactionRepository.create', transaction });
       throw new Error(`Failed to create transaction: ${parsed.message}`, { cause: error });
     }
 
@@ -63,7 +63,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.createMany', count: transactions.length });
+      logErrorWithContext(error, { context: 'TransactionRepository.createMany', count: transactions.length });
       throw new Error(`Failed to create transactions: ${parsed.message}`, { cause: error });
     }
 
@@ -83,7 +83,7 @@ export class TransactionRepository {
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.getById', id });
+      logErrorWithContext(error, { context: 'TransactionRepository.getById', id });
       throw new Error(`Failed to fetch transaction: ${parsed.message}`, { cause: error });
     }
 
@@ -129,7 +129,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.getAll', userId, filters });
+      logErrorWithContext(error, { context: 'TransactionRepository.getAll', userId, filters });
       throw new Error(`Failed to fetch transactions: ${parsed.message}`, { cause: error });
     }
 
@@ -148,7 +148,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.getByImportId', importId });
+      logErrorWithContext(error, { context: 'TransactionRepository.getByImportId', importId });
       throw new Error(`Failed to fetch transactions: ${parsed.message}`, { cause: error });
     }
 
@@ -177,7 +177,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.getOptionsForDetection', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'TransactionRepository.getOptionsForDetection', userId, startDate, endDate });
       throw new Error(`Failed to fetch options: ${parsed.message}`, { cause: error });
     }
 
@@ -210,14 +210,14 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { 
-        context: 'TransactionRepository.findOpeningTransactions', 
-        userId, 
-        underlyingSymbol, 
-        expirationDate, 
-        strikePrice, 
-        optionType, 
-        isLong 
+      logErrorWithContext(error, {
+        context: 'TransactionRepository.findOpeningTransactions',
+        userId,
+        underlyingSymbol,
+        expirationDate,
+        strikePrice,
+        optionType,
+        isLong
       });
       throw new Error(`Failed to find opening transactions: ${parsed.message}`, { cause: error });
     }
@@ -245,7 +245,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.update', id, updates });
+      logErrorWithContext(error, { context: 'TransactionRepository.update', id, updates });
       throw new Error(`Failed to update transaction: ${parsed.message}`, { cause: error });
     }
 
@@ -276,7 +276,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.updateMany', ids, updates });
+      logErrorWithContext(error, { context: 'TransactionRepository.updateMany', ids, updates });
       throw new Error(`Failed to update transactions: ${parsed.message}`, { cause: error });
     }
 
@@ -304,7 +304,7 @@ export class TransactionRepository {
     // If this transaction is part of a multi-leg strategy, delete all transactions in that strategy
     if (transaction.strategy_id) {
       logger.info(`Transaction ${id} is part of strategy ${transaction.strategy_id}, deleting all strategy transactions`);
-      
+
       // Find all transactions with the same strategy_id
       const { data: strategyTransactions, error: strategyError } = await supabase
         .from('transactions')
@@ -318,7 +318,7 @@ export class TransactionRepository {
       } else if (strategyTransactions && strategyTransactions.length > 0) {
         // Delete all transactions in the strategy (cash transactions will cascade via FK)
         const transactionIds = strategyTransactions.map(t => t.id);
-        
+
         // Process each transaction to clean up positions and journal entries
         for (const txId of transactionIds) {
           await this.cleanupTransactionReferences(txId, transaction.user_id);
@@ -332,12 +332,12 @@ export class TransactionRepository {
 
         if (deleteError) {
           const parsed = parseError(deleteError);
-          logError(deleteError, { context: 'TransactionRepository.delete (strategy cascade)', strategyId: transaction.strategy_id });
+          logErrorWithContext(deleteError, { context: 'TransactionRepository.delete (strategy cascade)', strategyId: transaction.strategy_id });
           throw new Error(`Failed to delete strategy transactions: ${parsed.message}`, { cause: deleteError });
         }
 
         logger.info(`Deleted ${transactionIds.length} transactions for strategy ${transaction.strategy_id}`);
-        
+
         // Optionally delete the strategy if it has no more transactions
         // Check if there are any remaining transactions for this strategy
         const { count } = await supabase
@@ -375,7 +375,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.delete', id });
+      logErrorWithContext(error, { context: 'TransactionRepository.delete', id });
       throw new Error(`Failed to delete transaction: ${parsed.message}`, { cause: error });
     }
 
@@ -503,7 +503,7 @@ export class TransactionRepository {
       );
 
     if (error) {
-      logError(error, { context: 'TransactionRepository.findDuplicates', userId, transactionCount: transactions.length });
+      logErrorWithContext(error, { context: 'TransactionRepository.findDuplicates', userId, transactionCount: transactions.length });
       return [];
     }
 
@@ -543,7 +543,7 @@ export class TransactionRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionRepository.getStatistics', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'TransactionRepository.getStatistics', userId, startDate, endDate });
       throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 

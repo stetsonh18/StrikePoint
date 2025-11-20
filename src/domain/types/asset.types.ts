@@ -1,6 +1,6 @@
 // Asset Types
-export type AssetType = 'stock' | 'option' | 'crypto' | 'futures' | 'cash';
-export type OptionType = 'call' | 'put';
+import { AssetType, OptionType } from './database.types';
+export type { AssetType, OptionType };
 export type PositionSide = 'long' | 'short';
 
 // Stock Position

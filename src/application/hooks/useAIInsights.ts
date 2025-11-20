@@ -1,7 +1,11 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { AIInsightRepository, type AIInsightFilters, type AIInsightInsert, type AIInsightUpdate } from '@/infrastructure/repositories/aiInsight.repository';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions, type QueryClient } from '@tanstack/react-query';
+import { AIInsightRepository, type AIInsightInsert, type AIInsightUpdate } from '@/infrastructure/repositories/aiInsight.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
-import type { AIInsight } from '@/domain/types';
+import type { AIInsight, AIInsightFilters } from '@/domain/types';
+
+const invalidateAIInsightQueries = (queryClient: QueryClient) => {
+  queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all, exact: false });
+};
 
 /**
  * Hook to fetch AI insights with optional filtering
@@ -66,9 +70,7 @@ export function useCreateAIInsight() {
   return useMutation<AIInsight, Error, AIInsightInsert>({
     mutationFn: (insight: AIInsightInsert) => AIInsightRepository.create(insight),
     onSuccess: () => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
+      invalidateAIInsightQueries(queryClient);
     },
   });
 }
@@ -82,9 +84,7 @@ export function useCreateManyAIInsights() {
   return useMutation<AIInsight[], Error, AIInsightInsert[]>({
     mutationFn: (insights: AIInsightInsert[]) => AIInsightRepository.createMany(insights),
     onSuccess: () => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
+      invalidateAIInsightQueries(queryClient);
     },
   });
 }
@@ -99,10 +99,8 @@ export function useUpdateAIInsight() {
     mutationFn: ({ id, updates }: { id: string; updates: AIInsightUpdate }) =>
       AIInsightRepository.update(id, updates),
     onSuccess: (data) => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
+      invalidateAIInsightQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
     },
   });
 }
@@ -116,10 +114,8 @@ export function useMarkInsightAsRead() {
   return useMutation<AIInsight, Error, string>({
     mutationFn: (id: string) => AIInsightRepository.markAsRead(id),
     onSuccess: (data) => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
+      invalidateAIInsightQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
     },
   });
 }
@@ -133,10 +129,8 @@ export function useDismissInsight() {
   return useMutation<AIInsight, Error, string>({
     mutationFn: (id: string) => AIInsightRepository.dismiss(id),
     onSuccess: (data) => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
+      invalidateAIInsightQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
     },
   });
 }
@@ -151,8 +145,7 @@ export function useAddInsightFeedback() {
     mutationFn: ({ id, rating, feedback }: { id: string; rating: number; feedback?: string }) =>
       AIInsightRepository.addFeedback(id, rating, feedback),
     onSuccess: (data) => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
+      invalidateAIInsightQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.detail(data.id) });
     },
   });
@@ -167,9 +160,7 @@ export function useDeleteAIInsight() {
   return useMutation<void, Error, string>({
     mutationFn: (id: string) => AIInsightRepository.delete(id),
     onSuccess: () => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
+      invalidateAIInsightQueries(queryClient);
     },
   });
 }
@@ -183,9 +174,7 @@ export function useCleanupExpiredInsights() {
   return useMutation<number, Error, string>({
     mutationFn: (userId: string) => AIInsightRepository.cleanupExpired(userId),
     onSuccess: () => {
-      // Invalidate all AI insight-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.aiInsights.statistics('') });
+      invalidateAIInsightQueries(queryClient);
     },
   });
 }

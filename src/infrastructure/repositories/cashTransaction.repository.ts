@@ -139,5 +139,23 @@ export class CashTransactionRepository {
       throw new Error(`Failed to delete cash transaction: ${error.message}`);
     }
   }
-}
 
+  /**
+   * Delete cash transactions linked to a set of transaction IDs
+   */
+  static async deleteByTransactionIds(transactionIds: string[]): Promise<void> {
+    if (!transactionIds || transactionIds.length === 0) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('cash_transactions')
+      .delete()
+      .in('transaction_id', transactionIds);
+
+    if (error) {
+      logger.error('Error deleting cash transactions by transaction IDs', error, { transactionIds });
+      throw new Error(`Failed to delete linked cash transactions: ${error.message}`);
+    }
+  }
+}

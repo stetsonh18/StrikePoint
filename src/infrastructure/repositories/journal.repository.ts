@@ -1,16 +1,8 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
-import type { JournalEntry, JournalEntryType, EmotionType, JournalStats } from '@/domain/types';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
+import type { JournalEntry, JournalEntryType, EmotionType, JournalStats, JournalEntryFilters } from '@/domain/types';
 
-export interface JournalEntryFilters {
-  startDate?: string;
-  endDate?: string;
-  entryType?: JournalEntryType | 'all';
-  emotions?: EmotionType[];
-  tags?: string[];
-  linkedSymbols?: string[];
-  isFavorite?: boolean;
-}
+
 
 export interface JournalEntryInsert {
   user_id: string;
@@ -73,7 +65,7 @@ export class JournalRepository {
       ...(row.linked_position_ids || []),
       ...(row.linked_transaction_ids || []),
     ];
-    
+
     return {
       id: row.id,
       userId: row.user_id,
@@ -144,7 +136,7 @@ export class JournalRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.getAll', userId, filters });
+      logErrorWithContext(error, { context: 'JournalRepository.getAll', userId, filters });
       throw new Error(`Failed to fetch journal entries: ${parsed.message}`, { cause: error });
     }
 
@@ -166,7 +158,7 @@ export class JournalRepository {
         return null; // Not found
       }
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.getById', id });
+      logErrorWithContext(error, { context: 'JournalRepository.getById', id });
       throw new Error(`Failed to fetch journal entry: ${parsed.message}`, { cause: error });
     }
 
@@ -185,7 +177,7 @@ export class JournalRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.create', entry });
+      logErrorWithContext(error, { context: 'JournalRepository.create', entry });
       throw new Error(`Failed to create journal entry: ${parsed.message}`, { cause: error });
     }
 
@@ -205,7 +197,7 @@ export class JournalRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.update', id, updates });
+      logErrorWithContext(error, { context: 'JournalRepository.update', id, updates });
       throw new Error(`Failed to update journal entry: ${parsed.message}`, { cause: error });
     }
 
@@ -223,7 +215,7 @@ export class JournalRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.delete', id });
+      logErrorWithContext(error, { context: 'JournalRepository.delete', id });
       throw new Error(`Failed to delete journal entry: ${parsed.message}`, { cause: error });
     }
   }
@@ -249,7 +241,7 @@ export class JournalRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'JournalRepository.getStatistics', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'JournalRepository.getStatistics', userId, startDate, endDate });
       throw new Error(`Failed to fetch journal stats: ${parsed.message}`, { cause: error });
     }
 
@@ -306,7 +298,7 @@ export class JournalRepository {
     const avgExecutionQuality =
       entriesWithExecution.length > 0
         ? entriesWithExecution.reduce((sum, e) => sum + (e.executionQuality || 0), 0) /
-          entriesWithExecution.length
+        entriesWithExecution.length
         : undefined;
 
     // Count linked trades

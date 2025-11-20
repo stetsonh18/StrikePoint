@@ -202,7 +202,7 @@ const Stocks: React.FC = () => {
     });
 
     if (!confirmed) return;
-    await deletePositionMutation.mutateAsync(position.id);
+    await deletePositionMutation.mutateAsync({ id: position.id, userId });
   }, [confirmation, deletePositionMutation]);
 
   const handleEditTransaction = useCallback((transaction: StockTransaction) => {

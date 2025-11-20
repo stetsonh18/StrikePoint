@@ -110,9 +110,11 @@ export function Checkout() {
     setIsLoading(true);
 
     try {
-      // If free forever, just apply the discount
+      // If server indicates free access, redeem code if provided and bypass checkout
       if (pricing.isFreeForever) {
-        await SubscriptionService.applyDiscountCode(userId, discountCode || 'free4ever');
+        if (discountCode) {
+          await SubscriptionService.redeemDiscountCode(userId, discountCode);
+        }
         // Invalidate subscription queries to refresh status
         queryClient.invalidateQueries({ queryKey: ['subscription-status', userId] });
         queryClient.invalidateQueries({ queryKey: ['needs-subscription', userId] });
@@ -134,7 +136,6 @@ export function Checkout() {
 
       // Create checkout session
       const { sessionId, url } = await createCheckoutSession(
-        userId,
         pricing.priceId,
         discountCode || undefined
       );

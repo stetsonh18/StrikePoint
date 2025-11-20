@@ -461,17 +461,19 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Price per Share *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="150.00"
-                    required
-                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Price per Share *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="150.00"
+                      required
+                      className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
@@ -611,14 +613,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Price per Contract *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="5.50"
-                    required
-                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="5.50"
+                      required
+                      className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   />
                 </div>
                 <div>
@@ -628,6 +632,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
+                    inputMode="decimal"
                     value={fees}
                     onChange={(e) => setFees(e.target.value)}
                     placeholder="0.00"

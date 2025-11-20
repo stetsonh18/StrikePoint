@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Service to trigger AI insight generation
@@ -28,7 +29,7 @@ export class AIInsightGenerationService {
       });
 
       if (error) {
-        console.error('[AI Insight Generation] Edge Function error:', error);
+        logger.error('[AI Insight Generation] Edge Function error', error);
         throw error;
       }
 
@@ -37,7 +38,7 @@ export class AIInsightGenerationService {
         count: data.count,
       };
     } catch (error) {
-      console.error('[AI Insight Generation] Error:', error);
+      logger.error('[AI Insight Generation] Error', error);
       return {
         success: false,
         count: 0,

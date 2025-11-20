@@ -1,0 +1,7 @@
+
+> strikepoint@0.0.0 typecheck
+> tsc --noEmit -p tsconfig.app.json
+
+src/application/hooks/useJournal.ts(1,10): error TS1109: Expression expected.
+src/application/hooks/useJournal.ts(2,12): error TS1109: Expression expected.
+src/application/hooks/useJournal.ts(3,1): error TS1128: Declaration or statement expected.

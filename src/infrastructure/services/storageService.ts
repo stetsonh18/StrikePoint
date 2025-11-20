@@ -1,4 +1,5 @@
 import { supabase } from '../api/supabase';
+import { logger } from '@/shared/utils/logger';
 
 const BUCKET_NAME = 'journal-attachments';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -20,14 +21,14 @@ export class StorageService {
    */
   private static async ensureBucketExists(): Promise<void> {
     const { data: buckets, error } = await supabase.storage.listBuckets();
-    
+
     if (error) {
-      console.error('Error checking buckets:', error);
+      logger.error('Error checking buckets', error);
       throw new Error(`Failed to check storage buckets: ${error.message}`);
     }
 
     const bucketExists = buckets?.some((bucket) => bucket.name === BUCKET_NAME);
-    
+
     if (!bucketExists) {
       console.warn(`Bucket ${BUCKET_NAME} does not exist. Please create it in Supabase dashboard.`);
     }
@@ -71,7 +72,7 @@ export class StorageService {
       });
 
     if (error) {
-      console.error('Error uploading image:', error);
+      logger.error('Error uploading image', error);
       throw new Error(`Failed to upload image: ${error.message}`);
     }
 
@@ -109,7 +110,7 @@ export class StorageService {
       });
 
     if (error) {
-      console.error('Error uploading chart:', error);
+      logger.error('Error uploading chart', error);
       throw new Error(`Failed to upload chart: ${error.message}`);
     }
 
@@ -131,7 +132,7 @@ export class StorageService {
     const { error } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
 
     if (error) {
-      console.error('Error deleting file:', error);
+      logger.error('Error deleting file', error);
       throw new Error(`Failed to delete file: ${error.message}`);
     }
   }
@@ -145,7 +146,7 @@ export class StorageService {
     const { error } = await supabase.storage.from(BUCKET_NAME).remove(filePaths);
 
     if (error) {
-      console.error('Error deleting files:', error);
+      logger.error('Error deleting files', error);
       throw new Error(`Failed to delete files: ${error.message}`);
     }
   }

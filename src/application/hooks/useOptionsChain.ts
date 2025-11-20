@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
-import { getOptionsChain, type OptionsChain } from '@/infrastructure/services/optionsMarketDataService';
+import { getOptionsChain } from '@/infrastructure/services/optionsMarketDataService';
+import type { OptionsChain } from '@/domain/types';
 import { logger } from '@/shared/utils/logger';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 

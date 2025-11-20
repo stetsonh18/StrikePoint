@@ -62,16 +62,16 @@ export default defineConfig(({ mode }) => {
     build: {
       // Generate source maps for production (will be uploaded to Sentry)
       sourcemap: isProduction ? 'hidden' : false, // 'hidden' = source maps exist but aren't referenced
-      
+
       // Target modern browsers for smaller bundle
       target: 'esnext',
-      
+
       // Optimize chunk splitting
       rollupOptions: {
         output: {
           // Ensure proper chunk dependencies
-          chunkFileNames: (chunkInfo) => {
-            return isProduction 
+          chunkFileNames: (_chunkInfo) => {
+            return isProduction
               ? 'assets/js/[name]-[hash].js'
               : 'assets/js/[name].js';
           },
@@ -80,8 +80,8 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules')) {
               // React ecosystem - must be first to ensure React is available
               if (
-                id.includes('react') || 
-                id.includes('react-dom') || 
+                id.includes('react') ||
+                id.includes('react-dom') ||
                 id.includes('react-router') ||
                 id.includes('@tanstack/react-query') ||
                 id.includes('@tanstack/react-table') ||
@@ -118,7 +118,7 @@ export default defineConfig(({ mode }) => {
             : 'assets/[ext]/[name].[ext]',
         },
       },
-      
+
       // Minify with terser for better compression
       minify: isProduction ? 'terser' : false,
       terserOptions: isProduction ? {
@@ -132,13 +132,13 @@ export default defineConfig(({ mode }) => {
           comments: false, // Remove comments
         },
       } : undefined,
-      
+
       // Chunk size warnings
       chunkSizeWarningLimit: 1000, // Warn if chunk exceeds 1MB
-      
+
       // CSS code splitting
       cssCodeSplit: true,
-      
+
       // Report compressed size
       reportCompressedSize: true,
     },

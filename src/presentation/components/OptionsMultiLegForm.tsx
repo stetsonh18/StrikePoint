@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, Calculator, TrendingUp, TrendingDown, Search } from 'lucide-react';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { StrategyRepository, PositionRepository } from '@/infrastructure/repositories';
@@ -32,7 +32,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   // Initialize form from existing positions if provided (for closing)
   // Store original positions to reference later
   const originalPositions = useMemo(() => initialPositions || [], [initialPositions]);
-  
+
   const initialLegs = useMemo(() => {
     if (initialPositions && initialPositions.length > 0) {
       return initialPositions.map((pos) => ({
@@ -42,6 +42,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         side: pos.side, // Keep original side - we'll flip it in transaction code
         quantity: pos.quantity,
         price: 0, // User will enter close price
+        fee: 0,
+        priceInput: '',
       }));
     }
     // Default legs for opening new positions
@@ -53,6 +55,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         side: 'long',
         quantity: 1,
         price: 0,
+        fee: 0,
+        priceInput: '',
       },
       {
         expiration: '',
@@ -61,6 +65,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         side: 'short',
         quantity: 1,
         price: 0,
+        fee: 0,
       },
     ];
   }, [initialPositions]);
@@ -78,9 +83,82 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   });
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
+  const [isWorthlessClose, setIsWorthlessClose] = useState(false);
+  const savedLegPricesRef = useRef<Array<{ price: number; priceInput?: string }> | null>(null);
+  const [transactionTime, setTransactionTime] = useState(() => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  });
+
+  const roundTo5Minutes = (time: string): string => {
+    if (!time) return '00:00';
+    const [hours, minutes] = time.split(':').map(Number);
+    const roundedMinutes = Math.floor((minutes || 0) / 5) * 5;
+    return `${String(hours || 0).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`;
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTransactionTime(roundTo5Minutes(e.target.value));
+  };
+
+  const getTimestampFromDateTime = (date: string, time: string) => {
+    const safeTime = time || '00:00';
+    const [hours, minutes] = safeTime.split(':').map(Number);
+    const dateTime = new Date(`${date}T00:00:00`);
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      dateTime.setHours(hours, minutes, 0, 0);
+    }
+    return dateTime.toISOString();
+  };
 
   // Legs state - initialize from initialPositions if provided
   const [legs, setLegs] = useState<OptionLegFormData[]>(initialLegs);
+
+  useEffect(() => {
+    if (!isClosing) {
+      setIsWorthlessClose(false);
+      savedLegPricesRef.current = null;
+      setLegs((prev) =>
+        prev.map((leg) => ({
+          ...leg,
+          priceInput: leg.price?.toString() ?? '',
+        }))
+      );
+    }
+  }, [isClosing]);
+
+  useEffect(() => {
+    if (!isClosing) return;
+
+    if (isWorthlessClose) {
+      setLegs((prev) => {
+        savedLegPricesRef.current = prev.map((leg) => ({
+          price: leg.price || 0,
+          priceInput: leg.priceInput,
+        }));
+        return prev.map((leg) => ({ ...leg, price: 0, priceInput: '0' }));
+      });
+    } else if (savedLegPricesRef.current) {
+      const previous = savedLegPricesRef.current;
+      savedLegPricesRef.current = null;
+      setLegs((prev) =>
+        prev.map((leg, index) => {
+          const saved = previous[index];
+          return {
+            ...leg,
+            price: saved?.price ?? leg.price,
+            priceInput:
+              saved?.priceInput ??
+              (typeof saved?.price === 'number'
+                ? saved.price.toString()
+                : leg.priceInput ?? leg.price?.toString() ?? ''),
+          };
+        })
+      );
+    }
+  }, [isWorthlessClose, isClosing]);
 
   // Add a new leg
   const addLeg = () => {
@@ -97,6 +175,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         side: 'long',
         quantity: 1,
         price: 0,
+        fee: 0,
+        priceInput: '',
       },
     ]);
   };
@@ -113,6 +193,22 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   // Update a leg
   const updateLeg = (index: number, updates: Partial<OptionLegFormData>) => {
     setLegs(legs.map((leg, i) => (i === index ? { ...leg, ...updates } : leg)));
+  };
+
+  const handleLegPriceChange = (index: number, rawValue: string) => {
+    setLegs((prev) =>
+      prev.map((leg, i) => {
+        if (i !== index) return leg;
+        if (rawValue === '') {
+          return { ...leg, price: 0, priceInput: '' };
+        }
+        const numeric = Number(rawValue);
+        if (Number.isNaN(numeric)) {
+          return { ...leg, priceInput: rawValue };
+        }
+        return { ...leg, price: Math.max(0, numeric), priceInput: rawValue };
+      })
+    );
   };
 
   // Calculate strategy metrics
@@ -134,7 +230,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
     // Strategy detection logic
     if (legs.length === 2) {
       const [leg1, leg2] = legs;
-      
+
       // Calendar Spread: Same strike, different expirations, opposite sides
       if (leg1.optionType === leg2.optionType && leg1.strike === leg2.strike && leg1.expiration !== leg2.expiration && leg1.side !== leg2.side) {
         suggestedType = 'calendar_spread';
@@ -185,7 +281,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
       const puts = legs.filter((l) => l.optionType === 'put');
       const sorted = [...legs].sort((a, b) => a.strike - b.strike);
       const [l1, l2, l3, l4] = sorted;
-      
+
       // Iron Butterfly: Straddle + wings (4 legs, same expiration)
       // Pattern: Long put (lower), Short put (middle), Short call (middle), Long call (higher)
       if (
@@ -221,6 +317,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
     };
   }, [legs]);
 
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -253,23 +351,27 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         }
       }
 
+      const timeTag = isClosing ? 'EXIT_TIME' : 'ENTRY_TIME';
+      const timeNote = `${timeTag}:${transactionTime}`;
+      const combinedNotes = notes ? `${notes}\n${timeNote}` : timeNote;
+
       if (isClosing && initialPositions && initialPositions.length > 0) {
         // CLOSING MODE: Close existing positions
         // Get all positions to find the strategy
         const allPositions = await PositionRepository.getAll(userId, {
           status: 'open',
         });
-        
+
         logger.debug('[OptionsMultiLegForm] Closing positions', {
           initialPositionsCount: initialPositions.length,
           initialPositionIds: initialPositions.map(p => p.id),
           allPositionsCount: allPositions.length,
         });
-        
+
         // Find the existing strategy from the first position
         const firstPositionId = initialPositions[0].id;
         const firstPosition = allPositions.find(p => p.id === firstPositionId);
-        
+
         logger.debug('[OptionsMultiLegForm] Position lookup', {
           lookingForId: firstPositionId,
           foundPosition: firstPosition ? {
@@ -278,7 +380,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             symbol: firstPosition.symbol,
           } : null,
         });
-        
+
         const existingStrategyId = firstPosition?.strategy_id;
 
         if (!existingStrategyId) {
@@ -295,7 +397,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
           // Get the original position to know the original side
           const originalPosition = originalPositions[index];
           const originalSide = originalPosition?.side || leg.side;
-          
+
           // For closing: 
           // - LONG position -> STC (Sell to Close) - sell transaction
           // - SHORT position -> BTC (Buy to Close) - buy transaction
@@ -313,9 +415,9 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             description:
               description ||
               `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
-            notes: notes || null,
+            notes: combinedNotes,
             tags: [],
-            fees: 0, // Fees can be added per leg if needed
+            fees: leg.fee || 0,
             asset_type: 'option' as const,
             transaction_code: transactionCode,
             underlying_symbol: underlyingSymbol,
@@ -344,14 +446,14 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             price: t.price,
           })),
         });
-        
+
         await TransactionService.createManualTransactions(transactions, existingStrategyId);
-        
+
         logger.info('[OptionsMultiLegForm] Successfully closed multi-leg strategy', {
           strategyId: existingStrategyId,
           legCount: transactions.length,
         });
-        
+
         onSuccess();
       } else {
         // OPENING MODE: Create new strategy and positions
@@ -378,6 +480,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         // Find primary expiration (use first leg's expiration, or most common)
         const primaryExpiration = legs[0]?.expiration || null;
 
+        const openedAtTimestamp = getTimestampFromDateTime(transactionDate, transactionTime);
+
         const strategyInsert: StrategyInsert = {
           user_id: userId,
           strategy_type: strategyType,
@@ -385,8 +489,9 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
           direction: null, // Can be calculated later
           leg_count: legs.length,
           legs: strategyLegs as any,
-          opened_at: new Date(transactionDate).toISOString(),
+          opened_at: openedAtTimestamp,
           expiration_date: primaryExpiration,
+          entry_time: transactionTime, // Save entry time in HH:MM format
           total_opening_cost: totalOpeningCost,
           total_closing_proceeds: 0,
           realized_pl: 0,
@@ -421,9 +526,9 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             description:
               description ||
               `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
-            notes: notes || null,
+            notes: combinedNotes,
             tags: [],
-            fees: 0, // Fees can be added per leg if needed
+            fees: leg.fee || 0,
             asset_type: 'option' as const,
             transaction_code: transactionCode,
             underlying_symbol: underlyingSymbol,
@@ -454,7 +559,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         const positionsToLink = allPositions.filter((pos) => {
           if (pos.strategy_id) return false; // Already linked
           if (pos.symbol !== underlyingSymbol) return false; // Wrong symbol
-          
+
           // Check if this position matches one of our legs
           return legs.some((leg) => {
             return (
@@ -495,8 +600,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
               {isClosing ? 'Close Multi-Leg Options Strategy' : 'Multi-Leg Options Strategy'}
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-              {isClosing 
-                ? 'Enter close prices for each leg of the spread' 
+              {isClosing
+                ? 'Enter close prices for each leg of the spread'
                 : 'Enter all legs of your options strategy'}
             </p>
           </div>
@@ -519,8 +624,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             )}
 
             {/* Common Fields */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-1">
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Underlying Symbol *
                 </label>
@@ -568,7 +673,38 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                   className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  {isClosing ? 'Close Time (5-min increments) *' : 'Entry Time (5-min increments) *'}
+                </label>
+                <input
+                  type="time"
+                  step="300"
+                  value={transactionTime}
+                  onChange={handleTimeChange}
+                  required
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                />
+              </div>
             </div>
+
+            {isClosing && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col gap-2">
+                <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={isWorthlessClose}
+                    onChange={(e) => setIsWorthlessClose(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  Mark this strategy as expired worthless
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Enables a zero-cost close so you can realize the full credit from an expiring spread without entering market
+                  quotes. You can toggle this off to restore your previous close prices.
+                </p>
+              </div>
+            )}
 
             {/* Strategy Summary */}
             <div className="p-4 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
@@ -582,9 +718,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                 <div>
                   <span className="text-xs text-slate-600 dark:text-slate-400">Net Debit/Credit</span>
                   <div
-                    className={`text-lg font-semibold ${
-                      strategyMetrics.netDebit < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
-                    }`}
+                    className={`text-lg font-semibold ${strategyMetrics.netDebit < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
                   >
                     {strategyMetrics.netDebit < 0 ? '-' : '+'}
                     ${Math.abs(strategyMetrics.netDebit).toFixed(2)}
@@ -651,7 +786,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
                         Expiration *
@@ -663,11 +798,10 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         required
                         disabled={isClosing}
                         readOnly={isClosing}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                          isClosing
-                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isClosing
+                          ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                          }`}
                       />
                     </div>
                     <div>
@@ -683,11 +817,10 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         placeholder="150.00"
                         disabled={isClosing}
                         readOnly={isClosing}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                          isClosing
-                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isClosing
+                          ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                          }`}
                       />
                     </div>
                     <div>
@@ -701,11 +834,10 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         }
                         required
                         disabled={isClosing}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                          isClosing
-                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isClosing
+                          ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                          }`}
                       >
                         <option value="call">Call</option>
                         <option value="put">Put</option>
@@ -720,11 +852,10 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         disabled={isClosing}
                         onChange={(e) => updateLeg(index, { side: e.target.value as 'long' | 'short' })}
                         required
-                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                          isClosing
-                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isClosing
+                          ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                          }`}
                       >
                         <option value="long">Long</option>
                         <option value="short">Short</option>
@@ -743,11 +874,10 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                         placeholder="1"
                         disabled={isClosing}
                         readOnly={isClosing}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                          isClosing
-                            ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
-                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isClosing
+                          ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50'
+                          }`}
                       />
                     </div>
                     <div>
@@ -757,10 +887,29 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
                       <input
                         type="number"
                         step="0.01"
-                        value={leg.price || ''}
-                        onChange={(e) => updateLeg(index, { price: parseFloat(e.target.value) || 0 })}
+                        min="0"
+                        inputMode="decimal"
+                        value={leg.priceInput ?? (Number.isFinite(leg.price) ? leg.price.toString() : '')}
+                        onChange={(e) => handleLegPriceChange(index, e.target.value)}
                         required
                         placeholder="2.50"
+                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        {isClosing ? 'Close Fees' : 'Entry Fees'}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        inputMode="decimal"
+                        value={leg.fee ?? ''}
+                        onChange={(e) =>
+                          updateLeg(index, { fee: e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value)) })
+                        }
+                        placeholder="0.35"
                         className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                       />
                     </div>
@@ -870,4 +1019,6 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
     </div>
   );
 };
+
+
 

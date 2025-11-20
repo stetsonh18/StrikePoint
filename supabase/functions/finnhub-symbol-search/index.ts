@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { requireAuth } from '../_shared/auth.ts';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = Deno.env.get('FINNHUB_API_KEY');
@@ -16,6 +17,11 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireAuth(req, { requireActiveSubscription: true });
+    if (auth instanceof Response) {
+      return auth;
+    }
+
     if (!FINNHUB_API_KEY) {
       return new Response(
         JSON.stringify({ error: 'Finnhub API key not configured' }),

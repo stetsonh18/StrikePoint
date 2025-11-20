@@ -10,11 +10,25 @@
 
 // Get Supabase URL and construct Edge Functions base URL
 import { env } from '@/shared/utils/envValidation';
+import { logger } from '@/shared/utils/logger';
+import { supabase } from '../api/supabase';
 
 const supabaseUrl = env.supabaseUrl;
 const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
+
+async function getEdgeAuthHeaders() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error('You must be signed in to access market data.');
+  }
+
+  return {
+    Authorization: `Bearer ${data.session.access_token}`,
+    'Content-Type': 'application/json',
+  };
+}
 
 export interface SymbolSearchResult {
   symbol: string;
@@ -36,17 +50,12 @@ export async function searchSymbolsTradier(query: string): Promise<SymbolSearchR
   try {
     // Call Supabase Edge Function (Tradier API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-symbol-search?q=${encodeURIComponent(query)}&types=stock,option,etf`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[searchSymbolsTradier] Backend API Error:', errorText);
+      logger.error('[searchSymbolsTradier] Backend API Error', new Error(errorText));
       throw new Error(`Backend API error: ${response.status}`);
     }
 
@@ -63,20 +72,20 @@ export async function searchSymbolsTradier(query: string): Promise<SymbolSearchR
     if (data.result && Array.isArray(data.result)) {
       const results = data.result
         .map((item: any) => ({
-          symbol: item.symbol || '',
-          name: item.name || item.description || item.symbol || '',
-          type: item.type || 'stock',
+          symbol: (item.symbol as string) || '',
+          name: (item.name as string) || (item.description as string) || (item.symbol as string) || '',
+          type: (item.type as string) || 'stock',
           region: item.exchange ? 'United States' : 'United States',
           currency: 'USD',
         }))
-        .filter(r => r.symbol && r.name); // Filter out invalid entries
+        .filter((r: SymbolSearchResult) => r.symbol && r.name); // Filter out invalid entries
 
       return results;
     }
 
     return [];
   } catch (error) {
-    console.error('[searchSymbolsTradier] Error searching symbols:', error);
+    logger.error('[searchSymbolsTradier] Error searching symbols', error);
     return [];
   }
 }
@@ -106,17 +115,12 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
   try {
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/finnhub-symbol-search?keywords=${encodeURIComponent(keywords)}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[searchSymbols] Backend API Error:', errorText);
+      logger.error('[searchSymbols] Backend API Error', new Error(errorText));
       throw new Error(`Backend API error: ${response.status}`);
     }
 
@@ -136,7 +140,7 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
         .map((item: any) => {
           // Determine region based on symbol suffix or type
           let region = 'United States';
-          const symbol = item.symbol || '';
+          const symbol = (item.symbol as string) || '';
 
           if (symbol.includes('.TO')) region = 'Canada';
           else if (symbol.includes('.L') || symbol.includes('.LON')) region = 'United Kingdom';
@@ -154,14 +158,14 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
             currency: region === 'United States' ? 'USD' : undefined,
           };
         })
-        .filter(r => r.symbol && r.name); // Filter out invalid entries
+        .filter((r: SymbolSearchResult) => r.symbol && r.name); // Filter out invalid entries
 
       return results;
     }
 
     return [];
   } catch (error) {
-    console.error('[searchSymbols] Error searching symbols:', error);
+    logger.error('[searchSymbols] Error searching symbols', error);
     return [];
   }
 }
@@ -178,18 +182,12 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
   try {
     // Call Supabase Edge Function for Tradier (access token is handled server-side)
     const quoteUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-stock-quote/${encodeURIComponent(symbol)}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-
-    const response = await fetch(quoteUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(quoteUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[getStockQuote] API error for ${symbol}: ${response.status} ${response.statusText}`, errorText);
+      logger.error(`[getStockQuote] API error for ${symbol}: ${response.status} ${response.statusText}`, new Error(errorText));
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
@@ -197,13 +195,13 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
 
     // Check for error in response
     if (data.error) {
-      console.error(`[getStockQuote] Error in response for ${symbol}:`, data.error);
+      logger.error(`[getStockQuote] Error in response for ${symbol}`, new Error(String(data.error)));
       throw new Error(data.error);
     }
 
     // Validate response status
     if (data.s !== 'ok') {
-      console.error(`[getStockQuote] Invalid response status for ${symbol}:`, data.s);
+      logger.error(`[getStockQuote] Invalid response status for ${symbol}`, new Error(String(data.s)));
       throw new Error(`Invalid response status: ${data.s}`);
     }
 
@@ -227,7 +225,7 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
       changePercent: `${changepct.toFixed(2)}%`,
     };
   } catch (error) {
-    console.error(`[getStockQuote] Error fetching quote for ${symbol}:`, error);
+    logger.error(`[getStockQuote] Error fetching quote for ${symbol}`, error);
     // Return null to allow graceful degradation in UI
     return null;
   }
@@ -248,7 +246,7 @@ export async function getStockQuotes(symbols: string[]): Promise<Record<string, 
   });
 
   const results = await Promise.all(quotePromises);
-  
+
   const quotes: Record<string, StockQuote> = {};
   results.forEach(({ symbol, quote }) => {
     if (quote) {
@@ -288,24 +286,19 @@ export async function getMarketNews(category: string = 'general', minId?: number
   try {
     // Map app category to Finnhub category
     const finnhubCategory = Object.entries(categoryMap).find(([_, appCat]) => appCat === category)?.[0] || category;
-    
+
     const params = new URLSearchParams({
       category: finnhubCategory,
     });
-    
+
     if (minId) {
       params.append('minId', minId.toString());
     }
 
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/finnhub-news?${params.toString()}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       throw new Error(`Backend API error: ${response.status}`);
@@ -323,12 +316,12 @@ export async function getMarketNews(category: string = 'general', minId?: number
     if (Array.isArray(data)) {
       return data.map((article: any) => {
         // Parse related symbols (comma-separated string)
-        const symbols = article.related 
+        const symbols = article.related
           ? article.related.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
           : [];
 
         // Convert Unix timestamp to ISO string
-        const publishedAt = article.datetime 
+        const publishedAt = article.datetime
           ? new Date(article.datetime * 1000).toISOString()
           : new Date().toISOString();
 
@@ -352,10 +345,10 @@ export async function getMarketNews(category: string = 'general', minId?: number
 
     return [];
   } catch (error) {
-    console.error('[getMarketNews] Error fetching market news:', error);
+    logger.error('[getMarketNews] Error fetching market news', error);
     return [];
   }
 }
 
-export type { SymbolSearchResult, StockQuote, MarketNewsArticle };
+export type { StockQuote };
 

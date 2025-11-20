@@ -144,6 +144,11 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
                   <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Opened</p>
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {formatDate(new Date(strategy.opened_at).toISOString())}
+                    {strategy.entry_time && (
+                      <span className="text-slate-500 dark:text-slate-400 font-normal ml-1">
+                        at {strategy.entry_time}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div>

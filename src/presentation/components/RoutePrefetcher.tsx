@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/application/stores/auth.store';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
+import { PositionRepository, TransactionRepository } from '@/infrastructure/repositories';
 
 /**
  * Component that prefetches data for likely next routes
@@ -31,9 +33,10 @@ export function RoutePrefetcher() {
         case '/':
           // Prefetch analytics and positions data
           schedule(() => {
-            queryClient.prefetchQuery({
-              queryKey: ['position_statistics', userId],
-              staleTime: 5 * 60 * 1000, // 5 minutes
+            queryClient.ensureQueryData({
+              queryKey: queryKeys.positions.statistics(userId),
+              queryFn: () => PositionRepository.getStatistics(userId),
+              staleTime: 5 * 60 * 1000,
             });
           });
           break;
@@ -43,10 +46,11 @@ export function RoutePrefetcher() {
         case '/futures':
           // Prefetch other asset types when on one asset type page
           schedule(() => {
-            const assetTypes = ['stock', 'option', 'crypto', 'futures'];
+            const assetTypes: Array<'stock' | 'option' | 'crypto' | 'futures'> = ['stock', 'option', 'crypto', 'futures'];
             assetTypes.forEach((assetType) => {
-              queryClient.prefetchQuery({
-                queryKey: ['positions', userId, { asset_type: assetType }],
+              queryClient.ensureQueryData({
+                queryKey: queryKeys.positions.list(userId, { asset_type: assetType }),
+                queryFn: () => PositionRepository.getAll(userId, { asset_type: assetType }),
                 staleTime: 5 * 60 * 1000,
               });
             });
@@ -55,12 +59,14 @@ export function RoutePrefetcher() {
         case '/journal':
           // Prefetch positions and transactions for journal linking
           schedule(() => {
-            queryClient.prefetchQuery({
-              queryKey: ['positions', userId],
+            queryClient.ensureQueryData({
+              queryKey: queryKeys.positions.list(userId),
+              queryFn: () => PositionRepository.getAll(userId),
               staleTime: 5 * 60 * 1000,
             });
-            queryClient.prefetchQuery({
-              queryKey: ['transactions', userId],
+            queryClient.ensureQueryData({
+              queryKey: queryKeys.transactions.list(userId),
+              queryFn: () => TransactionRepository.getAll(userId),
               staleTime: 5 * 60 * 1000,
             });
           });

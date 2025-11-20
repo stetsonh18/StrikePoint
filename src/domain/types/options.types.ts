@@ -85,6 +85,8 @@ export interface OptionLegFormData {
   side: 'long' | 'short';
   quantity: number;
   price: number;
+  fee?: number;
+  priceInput?: string;
 }
 
 /**

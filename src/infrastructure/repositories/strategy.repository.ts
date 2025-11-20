@@ -1,5 +1,5 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import type {
   Strategy,
   StrategyInsert,
@@ -26,7 +26,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.create', strategy });
+      logErrorWithContext(error, { context: 'StrategyRepository.create', strategy });
       throw new Error(`Failed to create strategy: ${parsed.message}`, { cause: error });
     }
 
@@ -46,7 +46,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.createMany', count: strategies.length });
+      logErrorWithContext(error, { context: 'StrategyRepository.createMany', count: strategies.length });
       throw new Error(`Failed to create strategies: ${parsed.message}`, { cause: error });
     }
 
@@ -66,7 +66,7 @@ export class StrategyRepository {
     if (error) {
       if (error.code === 'PGRST116') return null;
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getById', id });
+      logErrorWithContext(error, { context: 'StrategyRepository.getById', id });
       throw new Error(`Failed to fetch strategy: ${parsed.message}`, { cause: error });
     }
 
@@ -103,7 +103,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getAll', userId, filters });
+      logErrorWithContext(error, { context: 'StrategyRepository.getAll', userId, filters });
       throw new Error(`Failed to fetch strategies: ${parsed.message}`, { cause: error });
     }
 
@@ -135,7 +135,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getSummaries', userId, filters });
+      logErrorWithContext(error, { context: 'StrategyRepository.getSummaries', userId, filters });
       throw new Error(`Failed to fetch strategy summaries: ${parsed.message}`, { cause: error });
     }
 
@@ -162,7 +162,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.update', id, updates });
+      logErrorWithContext(error, { context: 'StrategyRepository.update', id, updates });
       throw new Error(`Failed to update strategy: ${parsed.message}`, { cause: error });
     }
 
@@ -241,7 +241,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getAdjustmentHistory', strategyId });
+      logErrorWithContext(error, { context: 'StrategyRepository.getAdjustmentHistory', strategyId });
       throw new Error(`Failed to fetch adjustment history: ${parsed.message}`, { cause: error });
     }
 
@@ -256,7 +256,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.delete', id });
+      logErrorWithContext(error, { context: 'StrategyRepository.delete', id });
       throw new Error(`Failed to delete strategy: ${parsed.message}`, { cause: error });
     }
   }
@@ -282,7 +282,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getStatistics', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'StrategyRepository.getStatistics', userId, startDate, endDate });
       throw new Error(`Failed to fetch statistics: ${parsed.message}`, { cause: error });
     }
 
@@ -334,7 +334,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.getExpiringSoon', userId, daysAhead });
+      logErrorWithContext(error, { context: 'StrategyRepository.getExpiringSoon', userId, daysAhead });
       throw new Error(`Failed to fetch expiring strategies: ${parsed.message}`, { cause: error });
     }
 
@@ -354,7 +354,7 @@ export class StrategyRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'StrategyRepository.searchBySymbol', userId, symbol });
+      logErrorWithContext(error, { context: 'StrategyRepository.searchBySymbol', userId, symbol });
       throw new Error(`Failed to search strategies: ${parsed.message}`, { cause: error });
     }
 

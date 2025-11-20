@@ -1,10 +1,36 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions, type QueryClient } from '@tanstack/react-query';
 import { PositionRepository } from '@/infrastructure/repositories';
 import { useToast } from '@/shared/hooks/useToast';
 import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { PositionFilters, Position, PositionUpdate } from '@/domain/types';
+
+const invalidatePositionQueries = (queryClient: QueryClient, userId?: string) => {
+  queryClient.invalidateQueries({ queryKey: queryKeys.positions.all, exact: false });
+
+  if (userId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics(userId), exact: false });
+    queryClient.invalidateQueries({ queryKey: queryKeys.positions.open(userId), exact: false });
+    queryClient.invalidateQueries({ queryKey: queryKeys.positions.expiring(userId), exact: false });
+    queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value(userId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.history(userId), exact: false });
+    queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all, exact: false });
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && key[0] === 'win-rate-metrics' && key[1] === userId;
+      },
+    });
+  } else {
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && (key[0] === 'portfolio-value' || key[0] === 'analytics');
+      },
+    });
+  }
+};
 
 export function usePositions(
   userId: string,
@@ -75,12 +101,8 @@ export function useUpdatePosition() {
   return useMutation<Position, Error, { id: string; updates: PositionUpdate }>({
     mutationFn: ({ id, updates }: { id: string; updates: PositionUpdate }) =>
       PositionRepository.update(id, updates),
-    onSuccess: () => {
-      // Invalidate all position-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
-      // Invalidate win rate metrics when positions are updated
-      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
+    onSuccess: (data) => {
+      invalidatePositionQueries(queryClient, data.user_id);
     },
   });
 }
@@ -92,16 +114,10 @@ export function useDeletePosition() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  return useMutation<void, Error, string>({
-    mutationFn: (id: string) => PositionRepository.delete(id),
-    onSuccess: () => {
-      // Invalidate all position-related queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.positions.statistics('', undefined, undefined) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.value('') });
-      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
-      // Invalidate win rate metrics when positions are deleted
-      queryClient.invalidateQueries({ queryKey: ['win-rate-metrics'] });
+  return useMutation<void, Error, { id: string; userId: string }>({
+    mutationFn: ({ id }) => PositionRepository.delete(id),
+    onSuccess: (_result, variables) => {
+      invalidatePositionQueries(queryClient, variables.userId);
       toast.success('Position deleted successfully');
     },
     onError: (error) => {

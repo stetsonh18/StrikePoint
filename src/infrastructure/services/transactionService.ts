@@ -7,6 +7,7 @@ import { StockCashIntegrationService } from './stockCashIntegrationService';
 import { CryptoCashIntegrationService } from './cryptoCashIntegrationService';
 import { FuturesCashIntegrationService } from './futuresCashIntegrationService';
 import { OptionsCashIntegrationService } from './optionsCashIntegrationService';
+import { logger } from '@/shared/utils/logger';
 import type { TransactionInsert, Transaction } from '@/domain/types';
 
 /**
@@ -39,7 +40,7 @@ export class TransactionService {
         try {
           await StockCashIntegrationService.processStockTransaction(createdTransaction);
         } catch (error) {
-          console.error('Error creating cash transaction for stock trade:', error);
+          logger.error('Error creating cash transaction for stock trade', error);
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to create cash transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
@@ -47,7 +48,7 @@ export class TransactionService {
         try {
           await CryptoCashIntegrationService.processCryptoTransaction(createdTransaction);
         } catch (error) {
-          console.error('Error creating cash transaction for crypto trade:', error);
+          logger.error('Error creating cash transaction for crypto trade', error);
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to create cash transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
@@ -55,7 +56,7 @@ export class TransactionService {
         try {
           await OptionsCashIntegrationService.processOptionsTransaction(createdTransaction);
         } catch (error) {
-          console.error('Error creating cash transaction for options trade:', error);
+          logger.error('Error creating cash transaction for options trade', error);
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to create cash transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
@@ -95,7 +96,7 @@ export class TransactionService {
           // Process expirations
           await PositionMatchingService.processExpirations(transaction.user_id);
         } catch (error) {
-          console.error('Error processing futures transaction:', error);
+          logger.error('Error processing futures transaction', error);
           // Re-throw to ensure user knows about the issue
           throw new Error(`Failed to process futures transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
@@ -120,7 +121,7 @@ export class TransactionService {
             await StrategyDetectionService.detectStrategies(transaction.user_id);
           }
         } catch (error) {
-          console.error('Error processing position matching:', error);
+          logger.error('Error processing position matching', error);
           // Don't fail the transaction creation if matching fails, but cash transaction is already created
         }
       }
@@ -132,7 +133,7 @@ export class TransactionService {
           createdTransaction
         );
       } catch (error) {
-        console.error('Error updating cash balance:', error);
+        logger.error('Error updating cash balance', error);
         // Don't fail the transaction creation if balance update fails
       }
     }
@@ -174,14 +175,14 @@ export class TransactionService {
       const batchCreated = await TransactionRepository.createMany(transactionsToInsert);
       createdTransactions.push(...batchCreated);
     } catch (error) {
-      console.error('Error creating batch transactions:', error);
+      logger.error('Error creating batch transactions', error);
       // Fallback to individual creation if batch fails
       for (const transaction of transactions) {
         try {
           const created = await this.createManualTransaction(transaction);
           createdTransactions.push(created);
         } catch (err) {
-          console.error('Error creating individual transaction:', err);
+          logger.error('Error creating individual transaction', err);
         }
       }
     }
@@ -210,7 +211,7 @@ export class TransactionService {
           }
         }
       } catch (error) {
-        console.error('Error creating cash transactions:', error);
+        logger.error('Error creating cash transactions', error);
       }
     } else {
       // Update cash balance for cash transactions
@@ -219,7 +220,7 @@ export class TransactionService {
           await CashBalanceService.updateBalanceFromTransaction(userId, cashTx);
         }
       } catch (error) {
-        console.error('Error updating cash balance:', error);
+        logger.error('Error updating cash balance', error);
       }
     }
 
@@ -236,7 +237,7 @@ export class TransactionService {
           await StrategyDetectionService.detectStrategies(userId);
         }
       } catch (error) {
-        console.error('Error processing batch position matching:', error);
+        logger.error('Error processing batch position matching', error);
       }
     }
 

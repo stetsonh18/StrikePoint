@@ -13,7 +13,7 @@ export type CashTransactionType =
   | 'transfer_out'
   | 'other';
 
-export interface CashTransaction {
+export interface DomainCashTransaction {
   id: string;
   userId: string;
   transactionType: CashTransactionType;
@@ -28,7 +28,7 @@ export interface CashTransaction {
   updatedAt: string;
 }
 
-export interface CashBalance {
+export interface DomainCashBalance {
   id: string;
   userId: string;
   availableCash: number;

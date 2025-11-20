@@ -2,7 +2,7 @@ import { PositionRepository } from '@/infrastructure/repositories/position.repos
 import { StrategyRepository } from '@/infrastructure/repositories/strategy.repository';
 import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
-import type { Position } from '@/domain/types';
+import type { Position, Strategy } from '@/domain/types';
 import type { AssetType } from '@/domain/types/asset.types';
 
 export interface WinRateMetrics {
@@ -50,113 +50,228 @@ export interface MonthlyPerformance {
   winRate: number;
 }
 
+type TradeStatus = 'open' | 'closed' | 'partial';
+
+interface NormalizedTrade {
+  id: string;
+  userId: string;
+  assetType: AssetType;
+  symbol: string;
+  strategyId: string | null;
+  strategyType?: string | null;
+  direction: string | null;
+  openedAt: string | null;
+  closedAt: string | null;
+  updatedAt: string | null;
+  expirationDate: string | null;
+  realizedPL: number;
+  unrealizedPL: number;
+  status: TradeStatus;
+  legs: Position[];
+}
+
 /**
  * Service for calculating performance metrics from closed positions
  */
 export class PerformanceMetricsService {
+  /**
+   * Normalize positions into trade objects so multi-leg strategies count as single trades.
+   */
+  private static async getNormalizedTrades(userId: string): Promise<NormalizedTrade[]> {
+    const [positions, strategies] = await Promise.all([
+      PositionRepository.getAll(userId),
+      StrategyRepository.getAll(userId),
+    ]);
+
+    const strategyMap = new Map(strategies.map((strategy) => [strategy.id, strategy]));
+    const positionsByStrategyId = new Map<string, Position[]>();
+    positions.forEach((position) => {
+      if (!position.strategy_id) {
+        return;
+      }
+      if (!positionsByStrategyId.has(position.strategy_id)) {
+        positionsByStrategyId.set(position.strategy_id, []);
+      }
+      positionsByStrategyId.get(position.strategy_id)!.push(position);
+    });
+
+    const usedPositionIds = new Set<string>();
+    const trades: NormalizedTrade[] = [];
+
+    positionsByStrategyId.forEach((groupPositions, strategyId) => {
+      groupPositions.forEach((position) => usedPositionIds.add(position.id));
+      trades.push(this.buildNormalizedTrade(groupPositions, strategyMap.get(strategyId)));
+    });
+
+    positions
+      .filter((position) => !usedPositionIds.has(position.id))
+      .forEach((position) => {
+        trades.push(this.buildNormalizedTrade([position]));
+      });
+
+    return trades;
+  }
+
+  private static buildNormalizedTrade(positions: Position[], strategy?: Strategy): NormalizedTrade {
+    const primaryPosition = positions[0];
+    const assetType = this.getPrimaryAssetType(positions);
+    const symbol = strategy?.underlying_symbol || primaryPosition.symbol || 'Unknown';
+    const openedAt = strategy?.opened_at || this.getEarliestDate(positions.map((p) => p.opened_at));
+    const closedAt = strategy?.closed_at || this.getLatestDate(positions.map((p) => p.closed_at));
+    const updatedAt = strategy?.updated_at || this.getLatestDate(positions.map((p) => p.updated_at));
+    const expirationDate =
+      strategy?.expiration_date || positions.find((p) => p.expiration_date)?.expiration_date || null;
+    const realizedPL = positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
+    const unrealizedPL = positions.reduce((sum, position) => sum + (position.unrealized_pl || 0), 0);
+    const status = this.inferTradeStatus(positions, strategy);
+    const direction = strategy?.direction || primaryPosition.side || null;
+
+    return {
+      id: strategy?.id || primaryPosition.id,
+      userId: primaryPosition.user_id,
+      assetType,
+      symbol,
+      strategyId: strategy?.id || primaryPosition.strategy_id || null,
+      strategyType: strategy?.strategy_type || null,
+      direction,
+      openedAt,
+      closedAt,
+      updatedAt,
+      expirationDate,
+      realizedPL,
+      unrealizedPL,
+      status,
+      legs: positions,
+    };
+  }
+
+  private static getPrimaryAssetType(positions: Position[]): AssetType {
+    const preference: AssetType[] = ['option', 'futures', 'stock', 'crypto', 'cash'];
+    for (const assetType of preference) {
+      if (positions.some((position) => position.asset_type === assetType)) {
+        return assetType;
+      }
+    }
+    return positions[0].asset_type as AssetType;
+  }
+
+  private static getEarliestDate(values: Array<string | null>): string | null {
+    const valid = values.filter((value): value is string => Boolean(value));
+    if (valid.length === 0) {
+      return null;
+    }
+    return valid.reduce((earliest, current) =>
+      new Date(current) < new Date(earliest) ? current : earliest
+    );
+  }
+
+  private static getLatestDate(values: Array<string | null>): string | null {
+    const valid = values.filter((value): value is string => Boolean(value));
+    if (valid.length === 0) {
+      return null;
+    }
+    return valid.reduce((latest, current) =>
+      new Date(current) > new Date(latest) ? current : latest
+    );
+  }
+
+  private static inferTradeStatus(positions: Position[], strategy?: Strategy): TradeStatus {
+    const strategyStatus = strategy?.status;
+    if (strategyStatus && ['closed', 'assigned', 'expired'].includes(strategyStatus)) {
+      return 'closed';
+    }
+    if (strategyStatus === 'partially_closed') {
+      return 'partial';
+    }
+
+    const allClosed = positions.every((position) => position.status === 'closed');
+    if (allClosed) {
+      return 'closed';
+    }
+    const someClosed = positions.some((position) => position.status === 'closed');
+    if (someClosed) {
+      return 'partial';
+    }
+    return 'open';
+  }
+
+  private static isRealizedTrade(trade: NormalizedTrade): boolean {
+    return trade.status === 'closed' || trade.realizedPL !== 0;
+  }
+
+  private static filterTradesByAssetType(trades: NormalizedTrade[], assetType?: AssetType): NormalizedTrade[] {
+    if (!assetType) {
+      return trades;
+    }
+    return trades.filter((trade) => trade.assetType === assetType);
+  }
+
+  private static getDate(value?: string | null): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private static getTradeClosedDate(trade: NormalizedTrade): Date | null {
+    return this.getDate(trade.closedAt) || this.getDate(trade.updatedAt) || this.getDate(trade.openedAt);
+  }
+
+  private static getTradeOpenedDate(trade: NormalizedTrade): Date | null {
+    return this.getDate(trade.openedAt);
+  }
+
+  private static getTradeExpirationDate(trade: NormalizedTrade): Date | null {
+    return this.getDate(trade.expirationDate);
+  }
+
+  private static getTradeSymbol(trade: NormalizedTrade): string {
+    return trade.symbol || 'Unknown';
+  }
+
   /**
    * Calculate win rate from closed positions
    * Includes fully closed positions and partially closed positions (with realized P/L)
    * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
   static async calculateWinRate(userId: string): Promise<WinRateMetrics> {
-    // Get all positions and strategies
-    const allPositions = await PositionRepository.getAll(userId);
-    const allStrategies = await StrategyRepository.getAll(userId);
-    
-    // Get strategies that should be counted as trades
-    // Include strategies that are:
-    // 1. Not open (closed, partially_closed, assigned, or expired), OR
-    // 2. Have realized_pl (even if still marked as open - this handles cases where positions are closed but strategy status wasn't updated)
-    // 3. Have all positions closed (calculate realized_pl from positions if strategy doesn't have it)
-    const strategiesWithRealizedPL = allStrategies.filter((s) => {
-      // If strategy is not open, include it
-      if (s.status !== 'open') {
-        return true;
-      }
-      
-      // If strategy has realized_pl, include it
-      if ((s.realized_pl || 0) !== 0) {
-        return true;
-      }
-      
-      // If strategy is open but has no realized_pl, check if all its positions are closed
-      // If so, calculate realized_pl from positions and include it
-      const strategyPositions = allPositions.filter(p => p.strategy_id === s.id);
-      if (strategyPositions.length > 0) {
-        const allPositionsClosed = strategyPositions.every(p => p.status === 'closed');
-        if (allPositionsClosed) {
-          // Calculate realized_pl from positions
-          const calculatedPL = strategyPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-          // Update the strategy's realized_pl for this calculation
-          s.realized_pl = calculatedPL;
-          return calculatedPL !== 0; // Only include if there's actual P/L
-        }
-      }
-      
-      return false;
-    });
-    
-    // Log for debugging
-    console.log('[PerformanceMetrics] Strategies found:', {
-      total: allStrategies.length,
-      withRealizedPL: strategiesWithRealizedPL.length,
-      strategies: strategiesWithRealizedPL.map(s => ({
-        id: s.id,
-        status: s.status,
-        realized_pl: s.realized_pl,
-        underlying: s.underlying_symbol
-      }))
-    });
-    
-    // Get individual positions with realized P/L
-    // CRITICAL: Exclude ALL positions that are part of a strategy (regardless of strategy status)
-    // Multi-leg strategies should ONLY be counted at the strategy level, never at the individual position level
-    // This ensures a multi-leg strategy counts as a single win or loss based on the strategy's total P/L
-    const individualPositionsWithRealizedPL = allPositions.filter(
-      (p) => {
-        const hasRealizedPL = p.status === 'closed' || 
-          (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity);
-        
-        if (!hasRealizedPL) return false;
-        
-        // If position is part of ANY strategy, exclude it - the strategy will be counted instead
-        // This prevents double-counting and ensures multi-leg strategies are treated as single trades
-        if (p.strategy_id) {
-          return false; // Always exclude positions that are part of a strategy
-        }
-        
-        // Only include positions that are NOT part of a strategy
-        return true;
-      }
-    );
+    const trades = await this.getNormalizedTrades(userId);
+    const realizedTrades = trades.filter((trade) => this.isRealizedTrade(trade));
+    const winningTrades = realizedTrades.filter((trade) => trade.realizedPL > 0);
+    const losingTrades = realizedTrades.filter((trade) => trade.realizedPL < 0);
 
-    // Calculate realized P&L from strategies (multi-leg trades count as one)
-    const strategyRealizedPL = strategiesWithRealizedPL.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
-    
-    // Calculate realized P&L from individual positions (single-leg trades)
-    const individualRealizedPL = individualPositionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    
-    // Total realized P&L
-    const realizedPL = strategyRealizedPL + individualRealizedPL;
-    
-    // Calculate unrealized P&L from open positions
-    // Use stored unrealized_pl value (should be updated by real-time price services)
-    // If stored value is 0, it means either no unrealized P&L or value hasn't been calculated yet
-    const openPositions = allPositions.filter((p) => p.status === 'open');
-    const unrealizedPL = openPositions.reduce((sum, p) => {
-      // Use stored unrealized_pl - this should be updated by market data services
-      // For positions where unrealized_pl is 0, we can't calculate without current market prices
-      // The unrealized_pl field should be updated when positions are viewed/refreshed
-      return sum + (p.unrealized_pl || 0);
-    }, 0);
-    
-    // Total number of trades = strategies + individual positions
-    const totalTrades = strategiesWithRealizedPL.length + individualPositionsWithRealizedPL.length;
-    
-    // Calculate average P&L per trade
+    const realizedPL = realizedTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+    const unrealizedPL = trades
+      .filter((trade) => trade.status !== 'closed')
+      .reduce((sum, trade) => sum + trade.unrealizedPL, 0);
+
+    const totalTrades = realizedTrades.length;
+    const totalGains = winningTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.realizedPL, 0));
+    const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
+    const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
+    const winRate = totalTrades > 0 ? (winningTrades.length / totalTrades) * 100 : 0;
+    const profitFactor =
+      totalLosses > 0 ? totalGains / totalLosses : totalGains > 0 ? Infinity : 0;
     const averagePLPerTrade = totalTrades > 0 ? realizedPL / totalTrades : 0;
-    
+
+    const holdingPeriods = realizedTrades
+      .map((trade) => {
+        const opened = this.getTradeOpenedDate(trade);
+        const closed = this.getTradeClosedDate(trade);
+        if (!opened || !closed) {
+          return null;
+        }
+        return Math.max(
+          1,
+          Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24))
+        );
+      })
+      .filter((value): value is number => value !== null);
+    const averageHoldingPeriodDays =
+      holdingPeriods.length > 0
+        ? holdingPeriods.reduce((sum, value) => sum + value, 0) / holdingPeriods.length
+        : 0;
+
     // Calculate initial investment (sum of deposits)
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
     const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
@@ -201,59 +316,15 @@ export class PerformanceMetricsService {
       };
     }
 
-    // Separate winning and losing strategies
-    const winningStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) > 0);
-    const losingStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) < 0);
-    
-    // Separate winning and losing individual positions
-    const winningIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
-    const losingIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
-    
-    // Combine all winning and losing trades
-    const winningTrades = [...winningStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
-                          ...winningIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
-    const losingTrades = [...losingStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
-                          ...losingIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
-
-    // Calculate totals
-    const totalGains = winningTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0));
-
-    // Calculate averages
-    const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
-    const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
-
-    // Calculate win rate
-    const winRate = (winningTrades.length / totalTrades) * 100;
-
-    // Calculate profit factor
-    const profitFactor = totalLosses > 0 ? totalGains / totalLosses : (totalGains > 0 ? Infinity : 0);
-
-    // Calculate largest win and loss
-    const largestWin = winningTrades.length > 0 
-      ? Math.max(...winningTrades.map(t => t.realized_pl || 0))
+    const largestWin = winningTrades.length > 0
+      ? Math.max(...winningTrades.map((trade) => trade.realizedPL))
       : 0;
     const largestLoss = losingTrades.length > 0
-      ? Math.min(...losingTrades.map(t => t.realized_pl || 0))
+      ? Math.min(...losingTrades.map((trade) => trade.realizedPL))
       : 0;
 
-    // Calculate expectancy: (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
     const lossRate = (losingTrades.length / totalTrades) * 100;
     const expectancy = (winRate / 100) * averageGain - (lossRate / 100) * averageLoss;
-
-    // Calculate average holding period
-    let totalHoldingDays = 0;
-    let tradesWithDates = 0;
-    [...winningTrades, ...losingTrades].forEach((t) => {
-      if (t.opened_at && t.closed_at) {
-        const opened = new Date(t.opened_at);
-        const closed = new Date(t.closed_at);
-        const days = Math.max(1, Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24)));
-        totalHoldingDays += days;
-        tradesWithDates++;
-      }
-    });
-    const averageHoldingPeriodDays = tradesWithDates > 0 ? totalHoldingDays / tradesWithDates : 0;
 
     return {
       winRate,
@@ -262,7 +333,7 @@ export class PerformanceMetricsService {
       losingTrades: losingTrades.length,
       averageGain,
       averageLoss,
-      profitFactor: isFinite(profitFactor) ? profitFactor : 0,
+      profitFactor: Number.isFinite(profitFactor) ? profitFactor : 0,
       totalGains,
       totalLosses,
       largestWin,
@@ -305,105 +376,45 @@ export class PerformanceMetricsService {
    * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
   static async calculateWinRateByAssetType(userId: string, assetType: AssetType): Promise<WinRateMetrics> {
-    // Get all positions and strategies
-    const allPositions = await PositionRepository.getAll(userId);
-    const allStrategies = await StrategyRepository.getAll(userId);
-    
-    // Filter strategies by asset type (only option strategies for now, as multi-leg is primarily for options)
-    // For other asset types, we'll only count individual positions
-    // Include strategies that are not open OR have realized_pl OR have all positions closed
-    const strategiesWithRealizedPL = assetType === 'option' 
-      ? allStrategies.filter((s) => {
-          // For options, check if strategy has underlying_symbol OR if its positions are options
-          const strategyPositions = allPositions.filter(p => p.strategy_id === s.id && p.asset_type === assetType);
-          if (strategyPositions.length === 0) return false; // No positions of this asset type
-          
-          // If strategy is not open, include it
-          if (s.status !== 'open') {
-            return true;
-          }
-          
-          // If strategy has realized_pl, include it
-          if ((s.realized_pl || 0) !== 0) {
-            return true;
-          }
-          
-          // If strategy is open but has no realized_pl, check if all its positions are closed
-          const allPositionsClosed = strategyPositions.every(p => p.status === 'closed');
-          if (allPositionsClosed) {
-            // Calculate realized_pl from positions
-            const calculatedPL = strategyPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-            // Update the strategy's realized_pl for this calculation
-            s.realized_pl = calculatedPL;
-            return calculatedPL !== 0; // Only include if there's actual P/L
-          }
-          
-          return false;
-        })
-      : [];
-    
-    // Log for debugging
-    if (assetType === 'option') {
-      console.log(`[PerformanceMetrics] ${assetType} strategies found:`, {
-        total: allStrategies.length,
-        withRealizedPL: strategiesWithRealizedPL.length,
-        strategies: strategiesWithRealizedPL.map(s => ({
-          id: s.id,
-          status: s.status,
-          realized_pl: s.realized_pl,
-          underlying: s.underlying_symbol,
-          positions: allPositions.filter(p => p.strategy_id === s.id && p.asset_type === assetType).length
-        }))
-      });
-    }
-    
-    // Get individual positions with realized P/L for this asset type
-    // CRITICAL: Exclude ALL positions that are part of a strategy (regardless of strategy status)
-    // Multi-leg strategies should ONLY be counted at the strategy level, never at the individual position level
-    // This ensures a multi-leg strategy counts as a single win or loss based on the strategy's total P/L
-    const individualPositionsWithRealizedPL = allPositions.filter(
-      (p) => {
-        if (p.asset_type !== assetType) return false;
-        
-        const hasRealizedPL = p.status === 'closed' || 
-          (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity);
-        
-        if (!hasRealizedPL) return false;
-        
-        // If position is part of ANY strategy, exclude it - the strategy will be counted instead
-        // This prevents double-counting and ensures multi-leg strategies are treated as single trades
-        if (p.strategy_id) {
-          return false; // Always exclude positions that are part of a strategy
-        }
-        
-        // Only include positions that are NOT part of a strategy
-        return true;
-      }
-    );
+    const trades = await this.getNormalizedTrades(userId);
+    const filteredTrades = this.filterTradesByAssetType(trades, assetType);
+    const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
+    const winningTrades = realizedTrades.filter((trade) => trade.realizedPL > 0);
+    const losingTrades = realizedTrades.filter((trade) => trade.realizedPL < 0);
 
-    // Calculate realized P&L from strategies (multi-leg trades count as one)
-    const strategyRealizedPL = strategiesWithRealizedPL.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
-    
-    // Calculate realized P&L from individual positions (single-leg trades)
-    const individualRealizedPL = individualPositionsWithRealizedPL.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    
-    // Total realized P&L
-    const realizedPL = strategyRealizedPL + individualRealizedPL;
-    
-    // Calculate unrealized P&L from open positions for this asset type
-    // Use stored unrealized_pl value (should be updated by real-time price services)
-    const openPositions = allPositions.filter((p) => p.status === 'open' && p.asset_type === assetType);
-    const unrealizedPL = openPositions.reduce((sum, p) => {
-      // Use stored unrealized_pl - this should be updated by market data services
-      return sum + (p.unrealized_pl || 0);
-    }, 0);
-    
-    // Total number of trades = strategies + individual positions
-    const totalTrades = strategiesWithRealizedPL.length + individualPositionsWithRealizedPL.length;
-    
-    // Calculate average P&L per trade
+    const realizedPL = realizedTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+    const unrealizedPL = filteredTrades
+      .filter((trade) => trade.status !== 'closed')
+      .reduce((sum, trade) => sum + trade.unrealizedPL, 0);
+
+    const totalTrades = realizedTrades.length;
+    const totalGains = winningTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.realizedPL, 0));
+    const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
+    const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
+    const winRate = totalTrades > 0 ? (winningTrades.length / totalTrades) * 100 : 0;
+    const profitFactor =
+      totalLosses > 0 ? totalGains / totalLosses : totalGains > 0 ? Infinity : 0;
     const averagePLPerTrade = totalTrades > 0 ? realizedPL / totalTrades : 0;
-    
+
+    const holdingPeriods = realizedTrades
+      .map((trade) => {
+        const opened = this.getTradeOpenedDate(trade);
+        const closed = this.getTradeClosedDate(trade);
+        if (!opened || !closed) {
+          return null;
+        }
+        return Math.max(
+          1,
+          Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24))
+        );
+      })
+      .filter((value): value is number => value !== null);
+    const averageHoldingPeriodDays =
+      holdingPeriods.length > 0
+        ? holdingPeriods.reduce((sum, value) => sum + value, 0) / holdingPeriods.length
+        : 0;
+
     // Calculate initial investment (sum of deposits)
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
     const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
@@ -444,59 +455,15 @@ export class PerformanceMetricsService {
       };
     }
 
-    // Separate winning and losing strategies
-    const winningStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) > 0);
-    const losingStrategies = strategiesWithRealizedPL.filter((s) => (s.realized_pl || 0) < 0);
-    
-    // Separate winning and losing individual positions
-    const winningIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) > 0);
-    const losingIndividualPositions = individualPositionsWithRealizedPL.filter((p: Position) => (p.realized_pl || 0) < 0);
-    
-    // Combine all winning and losing trades
-    const winningTrades = [...winningStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
-                          ...winningIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
-    const losingTrades = [...losingStrategies.map(s => ({ realized_pl: s.realized_pl, opened_at: s.opened_at, closed_at: s.closed_at })), 
-                          ...losingIndividualPositions.map(p => ({ realized_pl: p.realized_pl, opened_at: p.opened_at, closed_at: p.closed_at }))];
-
-    // Calculate totals
-    const totalGains = winningTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + (t.realized_pl || 0), 0));
-
-    // Calculate averages
-    const averageGain = winningTrades.length > 0 ? totalGains / winningTrades.length : 0;
-    const averageLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
-
-    // Calculate win rate
-    const winRate = (winningTrades.length / totalTrades) * 100;
-
-    // Calculate profit factor
-    const profitFactor = totalLosses > 0 ? totalGains / totalLosses : (totalGains > 0 ? Infinity : 0);
-
-    // Calculate largest win and loss
-    const largestWin = winningTrades.length > 0 
-      ? Math.max(...winningTrades.map(t => t.realized_pl || 0))
+    const largestWin = winningTrades.length > 0
+      ? Math.max(...winningTrades.map((trade) => trade.realizedPL))
       : 0;
     const largestLoss = losingTrades.length > 0
-      ? Math.min(...losingTrades.map(t => t.realized_pl || 0))
+      ? Math.min(...losingTrades.map((trade) => trade.realizedPL))
       : 0;
 
-    // Calculate expectancy: (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
     const lossRate = (losingTrades.length / totalTrades) * 100;
     const expectancy = (winRate / 100) * averageGain - (lossRate / 100) * averageLoss;
-
-    // Calculate average holding period
-    let totalHoldingDays = 0;
-    let tradesWithDates = 0;
-    [...winningTrades, ...losingTrades].forEach((t) => {
-      if (t.opened_at && t.closed_at) {
-        const opened = new Date(t.opened_at);
-        const closed = new Date(t.closed_at);
-        const days = Math.max(1, Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24)));
-        totalHoldingDays += days;
-        tradesWithDates++;
-      }
-    });
-    const averageHoldingPeriodDays = tradesWithDates > 0 ? totalHoldingDays / tradesWithDates : 0;
 
     return {
       winRate,
@@ -505,7 +472,7 @@ export class PerformanceMetricsService {
       losingTrades: losingTrades.length,
       averageGain,
       averageLoss,
-      profitFactor: isFinite(profitFactor) ? profitFactor : 0,
+      profitFactor: Number.isFinite(profitFactor) ? profitFactor : 0,
       totalGains,
       totalLosses,
       largestWin,
@@ -528,60 +495,56 @@ export class PerformanceMetricsService {
     assetType?: AssetType,
     days?: number // Optional: filter by last N days
   ): Promise<SymbolPerformance[]> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter positions
-    let positionsWithRealizedPL = allPositions.filter(
-      (p) => (!assetType || p.asset_type === assetType) && 
-        (p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity))
+    const trades = await this.getNormalizedTrades(userId);
+    let realizedTrades = trades.filter(
+      (trade) => (!assetType || trade.assetType === assetType) && this.isRealizedTrade(trade)
     );
 
-    // Filter by date if specified
     if (days) {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      positionsWithRealizedPL = positionsWithRealizedPL.filter((p) => {
-        const closedDate = p.closed_at ? new Date(p.closed_at) : new Date(p.updated_at);
-        return closedDate >= cutoffDate;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      realizedTrades = realizedTrades.filter((trade) => {
+        const closedDate = this.getTradeClosedDate(trade);
+        return closedDate ? closedDate >= cutoff : false;
       });
     }
 
-    if (positionsWithRealizedPL.length === 0) {
+    if (realizedTrades.length === 0) {
       return [];
     }
 
     // Group by symbol
-    const symbolMap = new Map<string, Position[]>();
-    positionsWithRealizedPL.forEach((p) => {
-      const symbol = p.symbol || 'Unknown';
+    const symbolMap = new Map<string, NormalizedTrade[]>();
+    realizedTrades.forEach((trade) => {
+      const symbol = this.getTradeSymbol(trade);
       if (!symbolMap.has(symbol)) {
         symbolMap.set(symbol, []);
       }
-      symbolMap.get(symbol)!.push(p);
+      symbolMap.get(symbol)!.push(trade);
     });
 
     // Calculate metrics per symbol
     const symbolPerformance: SymbolPerformance[] = [];
-    symbolMap.forEach((positions, symbol) => {
-      const winningTrades = positions.filter(p => (p.realized_pl || 0) > 0);
-      const losingTrades = positions.filter(p => (p.realized_pl || 0) < 0);
-      const totalPL = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-      const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
+    symbolMap.forEach((symbolTrades, symbol) => {
+      const winningTrades = symbolTrades.filter((trade) => trade.realizedPL > 0);
+      const losingTrades = symbolTrades.filter((trade) => trade.realizedPL < 0);
+      const totalPL = symbolTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+      const winRate = symbolTrades.length > 0 ? (winningTrades.length / symbolTrades.length) * 100 : 0;
       const largestWin = winningTrades.length > 0
-        ? Math.max(...winningTrades.map(p => p.realized_pl || 0))
+        ? Math.max(...winningTrades.map((trade) => trade.realizedPL))
         : 0;
       const largestLoss = losingTrades.length > 0
-        ? Math.min(...losingTrades.map(p => p.realized_pl || 0))
+        ? Math.min(...losingTrades.map((trade) => trade.realizedPL))
         : 0;
 
       symbolPerformance.push({
         symbol,
-        totalTrades: positions.length,
+        totalTrades: symbolTrades.length,
         winningTrades: winningTrades.length,
         losingTrades: losingTrades.length,
         winRate,
         totalPL,
-        averagePL: positions.length > 0 ? totalPL / positions.length : 0,
+        averagePL: symbolTrades.length > 0 ? totalPL / symbolTrades.length : 0,
         largestWin,
         largestLoss,
       });
@@ -599,36 +562,36 @@ export class PerformanceMetricsService {
     assetType?: AssetType,
     months: number = 12 // Number of months to include
   ): Promise<MonthlyPerformance[]> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter positions
-    const positionsWithRealizedPL = allPositions.filter(
-      (p) => (!assetType || p.asset_type === assetType) && 
-        (p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity))
+    const trades = await this.getNormalizedTrades(userId);
+    const realizedTrades = trades.filter(
+      (trade) => (!assetType || trade.assetType === assetType) && this.isRealizedTrade(trade)
     );
 
-    if (positionsWithRealizedPL.length === 0) {
+    if (realizedTrades.length === 0) {
       return [];
     }
 
     // Group by month
-    const monthMap = new Map<string, Position[]>();
-    positionsWithRealizedPL.forEach((p) => {
-      const date = p.closed_at ? new Date(p.closed_at) : new Date(p.updated_at);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthMap = new Map<string, NormalizedTrade[]>();
+    realizedTrades.forEach((trade) => {
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!closedDate) {
+        return;
+      }
+      const monthKey = `${closedDate.getFullYear()}-${String(closedDate.getMonth() + 1).padStart(2, '0')}`;
       if (!monthMap.has(monthKey)) {
         monthMap.set(monthKey, []);
       }
-      monthMap.get(monthKey)!.push(p);
+      monthMap.get(monthKey)!.push(trade);
     });
 
     // Calculate metrics per month
     const monthlyPerformance: MonthlyPerformance[] = [];
-    monthMap.forEach((positions, monthKey) => {
-      const winningTrades = positions.filter(p => (p.realized_pl || 0) > 0);
-      const losingTrades = positions.filter(p => (p.realized_pl || 0) < 0);
-      const totalPL = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-      const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
+    monthMap.forEach((monthTrades, monthKey) => {
+      const winningTrades = monthTrades.filter((trade) => trade.realizedPL > 0);
+      const losingTrades = monthTrades.filter((trade) => trade.realizedPL < 0);
+      const totalPL = monthTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+      const winRate = monthTrades.length > 0 ? (winningTrades.length / monthTrades.length) * 100 : 0;
 
       const [year, month] = monthKey.split('-');
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -638,7 +601,7 @@ export class PerformanceMetricsService {
         month: monthKey,
         monthLabel,
         totalPL,
-        totalTrades: positions.length,
+        totalTrades: monthTrades.length,
         winningTrades: winningTrades.length,
         losingTrades: losingTrades.length,
         winRate,
@@ -658,43 +621,33 @@ export class PerformanceMetricsService {
     assetType?: AssetType,
     days?: number
   ): Promise<Array<{ date: string; cumulativePL: number; realizedPL: number; unrealizedPL: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter by asset type if specified
-    const filteredPositions = assetType 
-      ? allPositions.filter((p) => p.asset_type === assetType)
-      : allPositions;
-    
-    // Get all positions with realized P&L (closed or partially closed)
-    const positionsWithRealizedPL = filteredPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
-    );
-    
-    // Get open positions for unrealized P&L
-    const openPositions = filteredPositions.filter((p) => p.status === 'open');
-    
-    // Group by date
+    const trades = await this.getNormalizedTrades(userId);
+    const filteredTrades = this.filterTradesByAssetType(trades, assetType);
+    const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
+    const openTrades = filteredTrades.filter((trade) => trade.status !== 'closed');
+
     const dateMap = new Map<string, { realized: number; unrealized: number }>();
-    
-    // Process closed positions - use closed_at date
-    positionsWithRealizedPL.forEach((p) => {
-      const date = p.closed_at ? new Date(p.closed_at).toISOString().split('T')[0] : new Date(p.updated_at).toISOString().split('T')[0];
-      if (!dateMap.has(date)) {
-        dateMap.set(date, { realized: 0, unrealized: 0 });
+
+    realizedTrades.forEach((trade) => {
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!closedDate) {
+        return;
       }
-      dateMap.get(date)!.realized += p.realized_pl || 0;
-    });
-    
-    // Process open positions - use current date for unrealized
-    const today = new Date().toISOString().split('T')[0];
-    openPositions.forEach((p) => {
-      if (!dateMap.has(today)) {
-        dateMap.set(today, { realized: 0, unrealized: 0 });
+      const dateKey = closedDate.toISOString().split('T')[0];
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { realized: 0, unrealized: 0 });
       }
-      dateMap.get(today)!.unrealized += p.unrealized_pl || 0;
+      dateMap.get(dateKey)!.realized += trade.realizedPL;
     });
-    
-    // Convert to array and sort by date
+
+    const todayKey = new Date().toISOString().split('T')[0];
+    if (openTrades.length > 0) {
+      if (!dateMap.has(todayKey)) {
+        dateMap.set(todayKey, { realized: 0, unrealized: 0 });
+      }
+      dateMap.get(todayKey)!.unrealized += openTrades.reduce((sum, trade) => sum + trade.unrealizedPL, 0);
+    }
+
     const dailyPL = Array.from(dateMap.entries())
       .map(([date, pl]) => ({
         date,
@@ -702,8 +655,7 @@ export class PerformanceMetricsService {
         dailyUnrealized: pl.unrealized,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-    
-    // Calculate cumulative P&L
+
     let cumulativeRealized = 0;
     let cumulativeUnrealized = 0;
     const result = dailyPL.map((day) => {
@@ -716,15 +668,14 @@ export class PerformanceMetricsService {
         unrealizedPL: cumulativeUnrealized,
       };
     });
-    
-    // Filter by days if specified
+
     if (days) {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
       const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
       return result.filter((r) => r.date >= cutoffDateStr);
     }
-    
+
     return result;
   }
 
@@ -735,42 +686,38 @@ export class PerformanceMetricsService {
     userId: string,
     assetType?: AssetType
   ): Promise<Array<{ date: string; pl: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter by asset type if specified
-    const filteredPositions = assetType 
-      ? allPositions.filter((p) => p.asset_type === assetType)
-      : allPositions;
-    
-    // Get last 7 days
+    const trades = await this.getNormalizedTrades(userId);
+    const filteredTrades = this.filterTradesByAssetType(trades, assetType);
+    const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
+    const openTrades = filteredTrades.filter((trade) => trade.status !== 'closed');
+
     const dates: string[] = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       dates.push(date.toISOString().split('T')[0]);
     }
-    
-    // Calculate daily P&L
+
     const dailyPL = dates.map((date) => {
-      let dailyPL = 0;
-      
-      // Get positions closed on this date
-      const closedOnDate = filteredPositions.filter((p) => {
-        if (p.status !== 'closed') return false;
-        const closedDate = p.closed_at ? new Date(p.closed_at).toISOString().split('T')[0] : null;
-        return closedDate === date;
+      let value = 0;
+      realizedTrades.forEach((trade) => {
+        const closedDate = this.getTradeClosedDate(trade);
+        if (!closedDate) {
+          return;
+        }
+        const closedKey = closedDate.toISOString().split('T')[0];
+        if (closedKey === date) {
+          value += trade.realizedPL;
+        }
       });
-      dailyPL += closedOnDate.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-      
-      // For today, include unrealized P&L from open positions
-      if (date === dates[dates.length - 1]) {
-        const openPositions = filteredPositions.filter((p) => p.status === 'open');
-        dailyPL += openPositions.reduce((sum, p) => sum + (p.unrealized_pl || 0), 0);
+
+      if (date === dates[dates.length - 1] && openTrades.length > 0) {
+        value += openTrades.reduce((sum, trade) => sum + trade.unrealizedPL, 0);
       }
-      
-      return { date, pl: dailyPL };
+
+      return { date, pl: value };
     });
-    
+
     return dailyPL;
   }
 
@@ -781,40 +728,35 @@ export class PerformanceMetricsService {
     userId: string,
     assetType?: AssetType
   ): Promise<Array<{ dayOfWeek: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter by asset type if specified
-    const filteredPositions = assetType 
-      ? allPositions.filter((p) => p.asset_type === assetType)
-      : allPositions;
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = filteredPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const realizedTrades = this.filterTradesByAssetType(trades, assetType).filter((trade) =>
+      this.isRealizedTrade(trade)
     );
-    
-    // Group by day of week
-    const dayMap = new Map<number, { pl: number; trades: Position[] }>();
+
+    const dayMap = new Map<number, { pl: number; trades: NormalizedTrade[] }>();
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
-    positionsWithRealizedPL.forEach((p) => {
-      const date = p.closed_at ? new Date(p.closed_at) : new Date(p.updated_at);
-      const dayOfWeek = date.getDay();
+    realizedTrades.forEach((trade) => {
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!closedDate) {
+        return;
+      }
+      const dayOfWeek = closedDate.getDay();
       
       if (!dayMap.has(dayOfWeek)) {
         dayMap.set(dayOfWeek, { pl: 0, trades: [] });
       }
       
       const dayData = dayMap.get(dayOfWeek)!;
-      dayData.pl += p.realized_pl || 0;
-      dayData.trades.push(p);
+      dayData.pl += trade.realizedPL;
+      dayData.trades.push(trade);
     });
     
     // Convert to array and calculate win rates
     const result = Array.from(dayMap.entries())
       .map(([dayOfWeek, data]) => {
-        const winningTrades = data.trades.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = data.trades.filter((p) => (p.realized_pl || 0) < 0);
+        const winningTrades = data.trades.filter((trade) => trade.realizedPL > 0);
+        const losingTrades = data.trades.filter((trade) => trade.realizedPL < 0);
         const winRate = data.trades.length > 0 ? (winningTrades.length / data.trades.length) * 100 : 0;
         
         return {
@@ -902,47 +844,42 @@ export class PerformanceMetricsService {
     call: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
     put: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
   }> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only options
-    const optionPositions = allPositions.filter((p) => p.asset_type === 'option');
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = optionPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const optionTrades = trades.filter(
+      (trade) => trade.assetType === 'option' && this.isRealizedTrade(trade)
     );
-    
-    // Separate by option type
-    const callPositions = positionsWithRealizedPL.filter((p) => p.option_type === 'call');
-    const putPositions = positionsWithRealizedPL.filter((p) => p.option_type === 'put');
-    
-    // Calculate call metrics
-    const callPL = callPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const callWinningTrades = callPositions.filter((p) => (p.realized_pl || 0) > 0);
-    const callLosingTrades = callPositions.filter((p) => (p.realized_pl || 0) < 0);
-    const callWinRate = callPositions.length > 0 ? (callWinningTrades.length / callPositions.length) * 100 : 0;
-    
-    // Calculate put metrics
-    const putPL = putPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const putWinningTrades = putPositions.filter((p) => (p.realized_pl || 0) > 0);
-    const putLosingTrades = putPositions.filter((p) => (p.realized_pl || 0) < 0);
-    const putWinRate = putPositions.length > 0 ? (putWinningTrades.length / putPositions.length) * 100 : 0;
-    
+
+    const getTradeOptionType = (trade: NormalizedTrade): 'call' | 'put' | null => {
+      const optionLegs = trade.legs.filter((leg) => leg.asset_type === 'option');
+      if (optionLegs.length === 0) {
+        return null;
+      }
+      const uniqueTypes = Array.from(
+        new Set(optionLegs.map((leg) => leg.option_type).filter(Boolean) as Array<'call' | 'put'>)
+      );
+      return uniqueTypes.length === 1 ? uniqueTypes[0] : null;
+    };
+
+    const callTrades = optionTrades.filter((trade) => getTradeOptionType(trade) === 'call');
+    const putTrades = optionTrades.filter((trade) => getTradeOptionType(trade) === 'put');
+
+    const buildMetrics = (tradeSet: NormalizedTrade[]) => {
+      const pl = tradeSet.reduce((sum, trade) => sum + trade.realizedPL, 0);
+      const winning = tradeSet.filter((trade) => trade.realizedPL > 0);
+      const losing = tradeSet.filter((trade) => trade.realizedPL < 0);
+      const winRate = tradeSet.length > 0 ? (winning.length / tradeSet.length) * 100 : 0;
+      return {
+        pl,
+        winRate,
+        totalTrades: tradeSet.length,
+        winningTrades: winning.length,
+        losingTrades: losing.length,
+      };
+    };
+
     return {
-      call: {
-        pl: callPL,
-        winRate: callWinRate,
-        totalTrades: callPositions.length,
-        winningTrades: callWinningTrades.length,
-        losingTrades: callLosingTrades.length,
-      },
-      put: {
-        pl: putPL,
-        winRate: putWinRate,
-        totalTrades: putPositions.length,
-        winningTrades: putWinningTrades.length,
-        losingTrades: putLosingTrades.length,
-      },
+      call: buildMetrics(callTrades),
+      put: buildMetrics(putTrades),
     };
   }
 
@@ -955,64 +892,46 @@ export class PerformanceMetricsService {
     expired: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
     closed: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
   }> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only options
-    const optionPositions = allPositions.filter((p) => p.asset_type === 'option' && p.expiration_date);
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = optionPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const optionTrades = trades.filter(
+      (trade) => trade.assetType === 'option' && trade.expirationDate && this.isRealizedTrade(trade)
     );
-    
-    // Separate by expiration status
-    const expiredPositions: Position[] = [];
-    const closedPositions: Position[] = [];
-    
-    positionsWithRealizedPL.forEach((p) => {
-      if (!p.expiration_date) return;
-      
-      const expirationDate = new Date(p.expiration_date);
-      const closedDate = p.closed_at ? new Date(p.closed_at) : null;
-      
-      // Determine if expired: status is 'expired' OR closed_at >= expiration_date
-      const isExpired = p.status === 'expired' || 
-        (closedDate && closedDate >= expirationDate);
-      
+
+    const expiredTrades: NormalizedTrade[] = [];
+    const closedTrades: NormalizedTrade[] = [];
+
+    optionTrades.forEach((trade) => {
+      const expirationDate = this.getTradeExpirationDate(trade);
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!expirationDate || !closedDate) {
+        return;
+      }
+      const legsExpired = trade.legs.some((leg) => leg.status === 'expired');
+      const isExpired = legsExpired || closedDate >= expirationDate;
       if (isExpired) {
-        expiredPositions.push(p);
+        expiredTrades.push(trade);
       } else {
-        closedPositions.push(p);
+        closedTrades.push(trade);
       }
     });
-    
-    // Calculate expired metrics
-    const expiredPL = expiredPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const expiredWinningTrades = expiredPositions.filter((p) => (p.realized_pl || 0) > 0);
-    const expiredLosingTrades = expiredPositions.filter((p) => (p.realized_pl || 0) < 0);
-    const expiredWinRate = expiredPositions.length > 0 ? (expiredWinningTrades.length / expiredPositions.length) * 100 : 0;
-    
-    // Calculate closed metrics
-    const closedPL = closedPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-    const closedWinningTrades = closedPositions.filter((p) => (p.realized_pl || 0) > 0);
-    const closedLosingTrades = closedPositions.filter((p) => (p.realized_pl || 0) < 0);
-    const closedWinRate = closedPositions.length > 0 ? (closedWinningTrades.length / closedPositions.length) * 100 : 0;
-    
+
+    const buildMetrics = (tradeSet: NormalizedTrade[]) => {
+      const pl = tradeSet.reduce((sum, trade) => sum + trade.realizedPL, 0);
+      const winning = tradeSet.filter((trade) => trade.realizedPL > 0);
+      const losing = tradeSet.filter((trade) => trade.realizedPL < 0);
+      const winRate = tradeSet.length > 0 ? (winning.length / tradeSet.length) * 100 : 0;
+      return {
+        pl,
+        winRate,
+        totalTrades: tradeSet.length,
+        winningTrades: winning.length,
+        losingTrades: losing.length,
+      };
+    };
+
     return {
-      expired: {
-        pl: expiredPL,
-        winRate: expiredWinRate,
-        totalTrades: expiredPositions.length,
-        winningTrades: expiredWinningTrades.length,
-        losingTrades: expiredLosingTrades.length,
-      },
-      closed: {
-        pl: closedPL,
-        winRate: closedWinRate,
-        totalTrades: closedPositions.length,
-        winningTrades: closedWinningTrades.length,
-        losingTrades: closedLosingTrades.length,
-      },
+      expired: buildMetrics(expiredTrades),
+      closed: buildMetrics(closedTrades),
     };
   }
 
@@ -1022,67 +941,70 @@ export class PerformanceMetricsService {
   static async calculateDaysToExpiration(
     userId: string
   ): Promise<Array<{ dteBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only options
-    const optionPositions = allPositions.filter((p) => p.asset_type === 'option' && p.expiration_date);
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = optionPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
-    );
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+    const getUtcMidnight = (date: Date) =>
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
     
     // Group by DTE bucket
-    const bucketMap = new Map<string, Position[]>();
+    const bucketMap = new Map<string, NormalizedTrade[]>();
     
-    positionsWithRealizedPL.forEach((p) => {
-      if (!p.expiration_date || !p.opened_at) return;
+    const trades = await this.getNormalizedTrades(userId);
+    trades
+      .filter(
+        (trade) =>
+          trade.assetType === 'option' && trade.expirationDate && this.isRealizedTrade(trade)
+      )
+      .forEach((trade) => {
+        const expirationDate = this.getTradeExpirationDate(trade);
+        const openedDate = this.getTradeOpenedDate(trade);
+        if (!expirationDate || !openedDate) {
+          return;
+        }
+        const normalizedExpiration = getUtcMidnight(expirationDate);
+        const normalizedOpened = getUtcMidnight(openedDate);
+        const dayDiff = (normalizedExpiration - normalizedOpened) / MS_PER_DAY;
+        const daysToExp = Math.max(0, Math.round(dayDiff));
       
-      const expirationDate = new Date(p.expiration_date);
-      const openedDate = new Date(p.opened_at);
-      const daysToExp = Math.ceil((expirationDate.getTime() - openedDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Determine bucket
-      let bucket: string;
-      if (daysToExp === 0) {
-        bucket = '0 DTE';
-      } else if (daysToExp === 1) {
-        bucket = '1 DTE';
-      } else if (daysToExp >= 2 && daysToExp <= 3) {
-        bucket = '2-3 DTE';
-      } else if (daysToExp >= 4 && daysToExp <= 7) {
-        bucket = '4-7 DTE';
-      } else if (daysToExp >= 8 && daysToExp <= 14) {
-        bucket = '8-14 DTE';
-      } else if (daysToExp >= 15 && daysToExp <= 30) {
-        bucket = '15-30 DTE';
-      } else {
-        bucket = '30+ DTE';
-      }
-      
-      if (!bucketMap.has(bucket)) {
-        bucketMap.set(bucket, []);
-      }
-      bucketMap.get(bucket)!.push(p);
-    });
+        // Determine bucket
+        let bucket: string;
+        if (daysToExp === 0) {
+          bucket = '0 DTE';
+        } else if (daysToExp === 1) {
+          bucket = '1 DTE';
+        } else if (daysToExp >= 2 && daysToExp <= 3) {
+          bucket = '2-3 DTE';
+        } else if (daysToExp >= 4 && daysToExp <= 7) {
+          bucket = '4-7 DTE';
+        } else if (daysToExp >= 8 && daysToExp <= 14) {
+          bucket = '8-14 DTE';
+        } else if (daysToExp >= 15 && daysToExp <= 30) {
+          bucket = '15-30 DTE';
+        } else {
+          bucket = '30+ DTE';
+        }
+        
+        if (!bucketMap.has(bucket)) {
+          bucketMap.set(bucket, []);
+        }
+        bucketMap.get(bucket)!.push(trade);
+      });
     
     // Calculate metrics per bucket
-    const result = Array.from(bucketMap.entries())
-      .map(([bucket, positions]) => {
-        const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-        const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-        const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
-        
-        return {
-          dteBucket: bucket,
-          pl,
-          winRate,
-          totalTrades: positions.length,
-          winningTrades: winningTrades.length,
-          losingTrades: losingTrades.length,
-        };
-      });
+    const result = Array.from(bucketMap.entries()).map(([bucket, tradesInBucket]) => {
+      const winningTrades = tradesInBucket.filter((trade) => trade.realizedPL > 0);
+      const losingTrades = tradesInBucket.filter((trade) => trade.realizedPL < 0);
+      const pl = tradesInBucket.reduce((sum, trade) => sum + trade.realizedPL, 0);
+      const winRate = tradesInBucket.length > 0 ? (winningTrades.length / tradesInBucket.length) * 100 : 0;
+
+      return {
+        dteBucket: bucket,
+        pl,
+        winRate,
+        totalTrades: tradesInBucket.length,
+        winningTrades: winningTrades.length,
+        losingTrades: losingTrades.length,
+      };
+    });
     
     // Sort by DTE order
     const bucketOrder = ['0 DTE', '1 DTE', '2-3 DTE', '4-7 DTE', '8-14 DTE', '15-30 DTE', '30+ DTE'];
@@ -1099,51 +1021,97 @@ export class PerformanceMetricsService {
   static async calculateStrategyPerformance(
     userId: string
   ): Promise<Array<{ strategyType: string; pl: number; winRate: number; profitOnRisk: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allStrategies = await StrategyRepository.getAll(userId);
-    
-    // Filter to strategies with realized P&L (closed or partially closed)
-    const strategiesWithPL = allStrategies.filter(
-      (s) => s.status === 'closed' || (s.status === 'open' && (s.realized_pl || 0) !== 0)
-    );
-    
-    // Group by strategy type
-    const strategyMap = new Map<string, typeof allStrategies>();
-    
-    strategiesWithPL.forEach((s) => {
-      if (!strategyMap.has(s.strategy_type)) {
-        strategyMap.set(s.strategy_type, []);
+    const [allStrategies, allPositions] = await Promise.all([
+      StrategyRepository.getAll(userId),
+      PositionRepository.getAll(userId),
+    ]);
+
+    const strategyLookup = new Map(allStrategies.map((strategy) => [strategy.id, strategy]));
+    const optionPositions = allPositions.filter((position) => position.asset_type === 'option');
+
+    const positionsByStrategyId = new Map<string, Position[]>();
+    optionPositions.forEach((position) => {
+      if (!position.strategy_id) return;
+      if (!positionsByStrategyId.has(position.strategy_id)) {
+        positionsByStrategyId.set(position.strategy_id, []);
       }
-      strategyMap.get(s.strategy_type)!.push(s);
+      positionsByStrategyId.get(position.strategy_id)!.push(position);
     });
-    
-    // Calculate metrics per strategy type
-    const result = Array.from(strategyMap.entries())
-      .map(([strategyType, strategies]) => {
-        const winningStrategies = strategies.filter((s) => (s.realized_pl || 0) > 0);
-        const losingStrategies = strategies.filter((s) => (s.realized_pl || 0) < 0);
-        const totalPL = strategies.reduce((sum, s) => sum + (s.realized_pl || 0), 0);
-        const winRate = strategies.length > 0 ? (winningStrategies.length / strategies.length) * 100 : 0;
-        
-        // Calculate profit on risk: P&L / Max Risk
-        // For strategies without max_risk, use total_opening_cost as proxy
-        const totalRisk = strategies.reduce((sum, s) => {
-          const risk = s.max_risk || Math.abs(s.total_opening_cost || 0);
-          return sum + risk;
-        }, 0);
-        const profitOnRisk = totalRisk > 0 ? (totalPL / totalRisk) * 100 : 0;
-        
+
+    const CLOSED_STATUSES = new Set(['closed', 'assigned', 'expired', 'exercised']);
+    const isLegClosed = (position: Position) =>
+      CLOSED_STATUSES.has(position.status) || Math.abs(position.current_quantity || 0) === 0;
+
+    type StrategyAggregate = {
+      totalPL: number;
+      totalRisk: number;
+      totalTrades: number;
+      winningTrades: number;
+      losingTrades: number;
+    };
+
+    const aggregates = new Map<string, StrategyAggregate>();
+    const recordAggregate = (strategyType: string, pl: number, risk: number) => {
+      if (!aggregates.has(strategyType)) {
+        aggregates.set(strategyType, {
+          totalPL: 0,
+          totalRisk: 0,
+          totalTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+        });
+      }
+      const aggregate = aggregates.get(strategyType)!;
+      aggregate.totalPL += pl;
+      aggregate.totalRisk += Math.max(0, risk);
+      aggregate.totalTrades += 1;
+      if (pl > 0) {
+        aggregate.winningTrades += 1;
+      } else if (pl < 0) {
+        aggregate.losingTrades += 1;
+      }
+    };
+
+    // Aggregate real strategies by checking whether all legs are fully closed via positions data
+    positionsByStrategyId.forEach((positions, strategyId) => {
+      if (!positions.every(isLegClosed)) {
+        return;
+      }
+
+      const strategy = strategyLookup.get(strategyId);
+      const strategyType = strategy?.strategy_type ?? 'single_option';
+      const totalPL = positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
+      const totalRisk = strategy
+        ? Math.abs(strategy.max_risk ?? strategy.total_opening_cost ?? 0)
+        : positions.reduce((sum, position) => sum + Math.abs(position.total_cost_basis || 0), 0);
+
+      recordAggregate(strategyType, totalPL, totalRisk);
+    });
+
+    // Fallback: closed single option trades that never linked to a strategy
+    optionPositions
+      .filter((position) => !position.strategy_id && isLegClosed(position))
+      .forEach((position) => {
+        const pl = position.realized_pl || 0;
+        const risk = Math.abs(position.total_cost_basis || 0);
+        recordAggregate('single_option', pl, risk);
+      });
+
+    const result = Array.from(aggregates.entries())
+      .map(([strategyType, aggregate]) => {
+        const { totalTrades, totalPL, totalRisk, winningTrades, losingTrades } = aggregate;
         return {
           strategyType,
           pl: totalPL,
-          winRate,
-          profitOnRisk,
-          totalTrades: strategies.length,
-          winningTrades: winningStrategies.length,
-          losingTrades: losingStrategies.length,
+          winRate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0,
+          profitOnRisk: totalRisk > 0 ? (totalPL / totalRisk) * 100 : 0,
+          totalTrades,
+          winningTrades,
+          losingTrades,
         };
       })
-      .sort((a, b) => b.totalTrades - a.totalTrades); // Sort by trade count
-    
+      .sort((a, b) => b.totalTrades - a.totalTrades);
+
     return result;
   }
 
@@ -1154,54 +1122,47 @@ export class PerformanceMetricsService {
     userId: string,
     assetType: 'option' | 'futures'
   ): Promise<Array<{ timeBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to specified asset type
-    const filteredPositions = allPositions.filter((p) => p.asset_type === assetType);
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = filteredPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const filteredTrades = trades.filter(
+      (trade) => trade.assetType === assetType && this.isRealizedTrade(trade)
     );
-    
-    // Group by entry time (round to 5-minute increments)
-    const timeMap = new Map<string, Position[]>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      if (!p.opened_at) return;
-      
-      const openedDate = new Date(p.opened_at);
+
+    const timeMap = new Map<string, NormalizedTrade[]>();
+
+    filteredTrades.forEach((trade) => {
+      const openedDate = this.getTradeOpenedDate(trade);
+      if (!openedDate) {
+        return;
+      }
       const hours = openedDate.getHours();
       const minutes = openedDate.getMinutes();
-      // Round to nearest 5 minutes
       const roundedMinutes = Math.floor(minutes / 5) * 5;
       const timeBucket = `${String(hours).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`;
-      
+
       if (!timeMap.has(timeBucket)) {
         timeMap.set(timeBucket, []);
       }
-      timeMap.get(timeBucket)!.push(p);
+      timeMap.get(timeBucket)!.push(trade);
     });
-    
-    // Calculate metrics per time bucket
+
     const result = Array.from(timeMap.entries())
-      .map(([timeBucket, positions]) => {
-        const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-        const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-        const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
-        
+      .map(([timeBucket, bucketTrades]) => {
+        const winningTrades = bucketTrades.filter((trade) => trade.realizedPL > 0);
+        const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
+        const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+        const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
+
         return {
           timeBucket,
           pl,
           winRate,
-          totalTrades: positions.length,
+          totalTrades: bucketTrades.length,
           winningTrades: winningTrades.length,
           losingTrades: losingTrades.length,
         };
       })
-      .sort((a, b) => a.timeBucket.localeCompare(b.timeBucket)); // Sort by time
-    
+      .sort((a, b) => a.timeBucket.localeCompare(b.timeBucket));
+
     return result;
   }
 
@@ -1211,77 +1172,59 @@ export class PerformanceMetricsService {
   static async calculateEntryTimeByStrategy(
     userId: string
   ): Promise<Record<string, Array<{ timeBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only options
-    const optionPositions = allPositions.filter((p) => p.asset_type === 'option');
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = optionPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const optionTrades = trades.filter(
+      (trade) => trade.assetType === 'option' && this.isRealizedTrade(trade)
     );
-    
-    // Get all strategies to map strategy_id to strategy_type
-    const allStrategies = await StrategyRepository.getAll(userId);
-    const strategyTypeMap = new Map<string, string>();
-    allStrategies.forEach((s) => {
-      strategyTypeMap.set(s.id, s.strategy_type);
-    });
-    
-    // Group by strategy type and entry time
-    const strategyTimeMap = new Map<string, Map<string, Position[]>>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      if (!p.opened_at) return;
-      
-      // Get strategy type
-      const strategyType = p.strategy_id && strategyTypeMap.has(p.strategy_id)
-        ? strategyTypeMap.get(p.strategy_id)!
-        : 'single_option';
-      
-      // Get time bucket
-      const openedDate = new Date(p.opened_at);
+
+    const strategyTimeMap = new Map<string, Map<string, NormalizedTrade[]>>();
+
+    optionTrades.forEach((trade) => {
+      const openedDate = this.getTradeOpenedDate(trade);
+      if (!openedDate) {
+        return;
+      }
+      const strategyType = trade.strategyType || 'single_option';
       const hours = openedDate.getHours();
       const minutes = openedDate.getMinutes();
       const roundedMinutes = Math.floor(minutes / 5) * 5;
       const timeBucket = `${String(hours).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`;
-      
+
       if (!strategyTimeMap.has(strategyType)) {
         strategyTimeMap.set(strategyType, new Map());
       }
       const timeMap = strategyTimeMap.get(strategyType)!;
-      
+
       if (!timeMap.has(timeBucket)) {
         timeMap.set(timeBucket, []);
       }
-      timeMap.get(timeBucket)!.push(p);
+      timeMap.get(timeBucket)!.push(trade);
     });
-    
-    // Calculate metrics per strategy and time bucket
+
     const result: Record<string, Array<{ timeBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> = {};
-    
+
     strategyTimeMap.forEach((timeMap, strategyType) => {
       const strategyData = Array.from(timeMap.entries())
-        .map(([timeBucket, positions]) => {
-          const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-          const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-          const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-          const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
-          
+        .map(([timeBucket, bucketTrades]) => {
+          const winningTrades = bucketTrades.filter((trade) => trade.realizedPL > 0);
+          const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
+          const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+          const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
+
           return {
             timeBucket,
             pl,
             winRate,
-            totalTrades: positions.length,
+            totalTrades: bucketTrades.length,
             winningTrades: winningTrades.length,
             losingTrades: losingTrades.length,
           };
         })
         .sort((a, b) => a.timeBucket.localeCompare(b.timeBucket));
-      
+
       result[strategyType] = strategyData;
     });
-    
+
     return result;
   }
 
@@ -1415,43 +1358,35 @@ export class PerformanceMetricsService {
     userId: string,
     assetType?: AssetType
   ): Promise<Array<{ date: string; pl: number; trades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter by asset type if specified
-    const filteredPositions = assetType 
-      ? allPositions.filter((p) => p.asset_type === assetType)
-      : allPositions;
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = filteredPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const realizedTrades = this.filterTradesByAssetType(trades, assetType).filter((trade) =>
+      this.isRealizedTrade(trade)
     );
-    
-    // Group by date
-    const dateMap = new Map<string, { pl: number; trades: Position[] }>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      const date = p.closed_at ? new Date(p.closed_at) : new Date(p.updated_at);
-      const dateStr = date.toISOString().split('T')[0];
-      
-      if (!dateMap.has(dateStr)) {
-        dateMap.set(dateStr, { pl: 0, trades: [] });
+
+    const dateMap = new Map<string, { pl: number; count: number }>();
+
+    realizedTrades.forEach((trade) => {
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!closedDate) {
+        return;
       }
-      
-      const dayData = dateMap.get(dateStr)!;
-      dayData.pl += p.realized_pl || 0;
-      dayData.trades.push(p);
+      const dateKey = closedDate.toISOString().split('T')[0];
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { pl: 0, count: 0 });
+      }
+      const entry = dateMap.get(dateKey)!;
+      entry.pl += trade.realizedPL;
+      entry.count += 1;
     });
-    
-    // Convert to array
+
     const result = Array.from(dateMap.entries())
       .map(([date, data]) => ({
         date,
         pl: data.pl,
-        trades: data.trades.length,
+        trades: data.count,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-    
+
     return result;
   }
 
@@ -1497,27 +1432,21 @@ export class PerformanceMetricsService {
     userId: string,
     assetType: 'stock' | 'crypto'
   ): Promise<Array<{ period: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to specified asset type
-    const filteredPositions = allPositions.filter((p) => p.asset_type === assetType);
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = filteredPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const filteredTrades = trades.filter(
+      (trade) => trade.assetType === assetType && this.isRealizedTrade(trade)
     );
-    
-    // Group by holding period
-    const periodMap = new Map<string, Position[]>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      if (!p.opened_at || (!p.closed_at && p.status === 'open')) return;
-      
-      const openedDate = new Date(p.opened_at);
-      const closedDate = p.closed_at ? new Date(p.closed_at) : new Date(p.updated_at);
+
+    const periodMap = new Map<string, NormalizedTrade[]>();
+
+    filteredTrades.forEach((trade) => {
+      const openedDate = this.getTradeOpenedDate(trade);
+      const closedDate = this.getTradeClosedDate(trade);
+      if (!openedDate || !closedDate) {
+        return;
+      }
       const daysHeld = Math.ceil((closedDate.getTime() - openedDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Determine period bucket
+
       let period: string;
       if (daysHeld === 0) {
         period = '< 1 Day';
@@ -1530,34 +1459,33 @@ export class PerformanceMetricsService {
       } else {
         period = '3+ Months';
       }
-      
+
       if (!periodMap.has(period)) {
         periodMap.set(period, []);
       }
-      periodMap.get(period)!.push(p);
+      periodMap.get(period)!.push(trade);
     });
-    
-    // Calculate metrics per period
+
     const periodOrder = ['< 1 Day', '1-7 Days', '1-4 Weeks', '1-3 Months', '3+ Months'];
     const result = periodOrder
       .filter((period) => periodMap.has(period))
       .map((period) => {
-        const positions = periodMap.get(period)!;
-        const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-        const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-        const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
+        const bucketTrades = periodMap.get(period)!;
+        const winningTrades = bucketTrades.filter((trade) => trade.realizedPL > 0);
+        const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
+        const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+        const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
         
         return {
           period,
           pl,
           winRate,
-          totalTrades: positions.length,
+          totalTrades: bucketTrades.length,
           winningTrades: winningTrades.length,
           losingTrades: losingTrades.length,
         };
       });
-    
+
     return result;
   }
 
@@ -1567,50 +1495,40 @@ export class PerformanceMetricsService {
   static async calculateFuturesContractMonthPerformance(
     userId: string
   ): Promise<Array<{ contractMonth: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only futures
-    const futuresPositions = allPositions.filter((p) => p.asset_type === 'futures');
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = futuresPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const futuresTrades = trades.filter(
+      (trade) => trade.assetType === 'futures' && this.isRealizedTrade(trade)
     );
-    
-    // Group by contract month
-    const monthMap = new Map<string, Position[]>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      const contractMonth = p.contract_month || 'Unknown';
-      
+
+    const monthMap = new Map<string, NormalizedTrade[]>();
+
+    futuresTrades.forEach((trade) => {
+      const contractMonth =
+        trade.legs.find((leg) => leg.contract_month)?.contract_month || 'Unknown';
       if (!monthMap.has(contractMonth)) {
         monthMap.set(contractMonth, []);
       }
-      monthMap.get(contractMonth)!.push(p);
+      monthMap.get(contractMonth)!.push(trade);
     });
-    
-    // Calculate metrics per contract month
+
     const result = Array.from(monthMap.entries())
-      .map(([contractMonth, positions]) => {
-        const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-        const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-        const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
-        
+      .map(([contractMonth, bucketTrades]) => {
+        const winningTrades = bucketTrades.filter((trade) => trade.realizedPL > 0);
+        const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
+        const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+        const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
+
         return {
           contractMonth,
           pl,
           winRate,
-          totalTrades: positions.length,
+          totalTrades: bucketTrades.length,
           winningTrades: winningTrades.length,
           losingTrades: losingTrades.length,
         };
       })
-      .sort((a, b) => {
-        // Sort by contract month (try to parse date, otherwise alphabetical)
-        return a.contractMonth.localeCompare(b.contractMonth);
-      });
-    
+      .sort((a, b) => a.contractMonth.localeCompare(b.contractMonth));
+
     return result;
   }
 
@@ -1620,48 +1538,43 @@ export class PerformanceMetricsService {
   static async calculateFuturesMarginEfficiency(
     userId: string
   ): Promise<Array<{ symbol: string; pl: number; marginUsed: number; marginEfficiency: number; totalTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only futures
-    const futuresPositions = allPositions.filter((p) => p.asset_type === 'futures');
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = futuresPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const futuresTrades = trades.filter(
+      (trade) => trade.assetType === 'futures' && this.isRealizedTrade(trade)
     );
-    
-    // Group by symbol
-    const symbolMap = new Map<string, { pl: number; marginUsed: number; trades: Position[] }>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      const margin = p.margin_requirement || 0;
-      const marginUsed = margin * Math.abs(p.opening_quantity);
-      
-      if (!symbolMap.has(p.symbol)) {
-        symbolMap.set(p.symbol, { pl: 0, marginUsed: 0, trades: [] });
+
+    const symbolMap = new Map<string, { pl: number; marginUsed: number; count: number }>();
+
+    futuresTrades.forEach((trade) => {
+      const symbol = trade.symbol || 'Unknown';
+      const marginUsed = trade.legs.reduce((sum, leg) => {
+        const margin = leg.margin_requirement || 0;
+        const quantity = Math.abs(leg.opening_quantity || 0);
+        return sum + margin * quantity;
+      }, 0);
+
+      if (!symbolMap.has(symbol)) {
+        symbolMap.set(symbol, { pl: 0, marginUsed: 0, count: 0 });
       }
-      
-      const symbolData = symbolMap.get(p.symbol)!;
-      symbolData.pl += p.realized_pl || 0;
+      const symbolData = symbolMap.get(symbol)!;
+      symbolData.pl += trade.realizedPL;
       symbolData.marginUsed += marginUsed;
-      symbolData.trades.push(p);
+      symbolData.count += 1;
     });
-    
-    // Calculate margin efficiency (P&L per dollar of margin)
+
     const result = Array.from(symbolMap.entries())
       .map(([symbol, data]) => {
         const marginEfficiency = data.marginUsed > 0 ? (data.pl / data.marginUsed) * 100 : 0;
-        
         return {
           symbol,
           pl: data.pl,
           marginUsed: data.marginUsed,
           marginEfficiency,
-          totalTrades: data.trades.length,
+          totalTrades: data.count,
         };
       })
       .sort((a, b) => b.totalTrades - a.totalTrades);
-    
+
     return result;
   }
 
@@ -1671,47 +1584,39 @@ export class PerformanceMetricsService {
   static async calculateCryptoCoinPerformance(
     userId: string
   ): Promise<Array<{ coin: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const allPositions = await PositionRepository.getAll(userId);
-    
-    // Filter to only crypto
-    const cryptoPositions = allPositions.filter((p) => p.asset_type === 'crypto');
-    
-    // Get positions with realized P&L
-    const positionsWithRealizedPL = cryptoPositions.filter(
-      (p) => p.status === 'closed' || (p.status === 'open' && (p.realized_pl || 0) !== 0 && p.current_quantity < p.opening_quantity)
+    const trades = await this.getNormalizedTrades(userId);
+    const cryptoTrades = trades.filter(
+      (trade) => trade.assetType === 'crypto' && this.isRealizedTrade(trade)
     );
-    
-    // Group by symbol (coin)
-    const coinMap = new Map<string, Position[]>();
-    
-    positionsWithRealizedPL.forEach((p) => {
-      const coin = p.symbol || 'Unknown';
-      
+
+    const coinMap = new Map<string, NormalizedTrade[]>();
+
+    cryptoTrades.forEach((trade) => {
+      const coin = trade.symbol || 'Unknown';
       if (!coinMap.has(coin)) {
         coinMap.set(coin, []);
       }
-      coinMap.get(coin)!.push(p);
+      coinMap.get(coin)!.push(trade);
     });
-    
-    // Calculate metrics per coin
+
     const result = Array.from(coinMap.entries())
-      .map(([coin, positions]) => {
-        const winningTrades = positions.filter((p) => (p.realized_pl || 0) > 0);
-        const losingTrades = positions.filter((p) => (p.realized_pl || 0) < 0);
-        const pl = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
-        const winRate = positions.length > 0 ? (winningTrades.length / positions.length) * 100 : 0;
-        
+      .map(([coin, bucketTrades]) => {
+        const winningTrades = bucketTrades.filter((trade) => trade.realizedPL > 0);
+        const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
+        const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
+        const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
+
         return {
           coin,
           pl,
           winRate,
-          totalTrades: positions.length,
+          totalTrades: bucketTrades.length,
           winningTrades: winningTrades.length,
           losingTrades: losingTrades.length,
         };
       })
       .sort((a, b) => b.totalTrades - a.totalTrades);
-    
+
     return result;
   }
 }

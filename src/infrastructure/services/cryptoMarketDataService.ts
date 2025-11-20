@@ -9,11 +9,30 @@
 
 // Get Supabase URL and construct Edge Functions base URL
 import { env } from '@/shared/utils/envValidation';
+import { logger } from '@/shared/utils/logger';
+import { supabase } from '../api/supabase';
 
 const supabaseUrl = env.supabaseUrl;
-const EDGE_FUNCTIONS_BASE_URL = supabaseUrl 
+const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
+
+async function getEdgeAuthHeaders() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error('You must be signed in to view crypto data.');
+  }
+
+  return {
+    Authorization: `Bearer ${data.session.access_token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+const coinIdCache = new Map<string, string | null>();
+const inflightCoinIdRequests = new Map<string, Promise<string | null>>();
+
+const normalizeSymbol = (symbol: string) => symbol.trim().toUpperCase();
 
 export interface CryptoSearchResult {
   id: string;           // CoinGecko ID (e.g., 'bitcoin')
@@ -61,17 +80,12 @@ export async function searchCrypto(query: string): Promise<CryptoSearchResult[]>
   try {
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-search?query=${encodeURIComponent(query)}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[searchCrypto] Backend API Error:', errorText);
+      logger.error('[searchCrypto] Backend API Error', new Error(errorText));
       throw new Error(`Backend API error: ${response.status}`);
     }
 
@@ -94,7 +108,7 @@ export async function searchCrypto(query: string): Promise<CryptoSearchResult[]>
 
     return [];
   } catch (error) {
-    console.error('[searchCrypto] Error searching crypto:', error);
+    logger.error('[searchCrypto] Error searching crypto', error);
     return [];
   }
 }
@@ -112,13 +126,8 @@ export async function getCryptoQuote(coinId: string): Promise<CryptoQuote | null
   try {
     // Call Supabase Edge Function (API key is handled server-side)
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-markets?ids=${encodeURIComponent(coinId)}&vs_currency=usd&per_page=1&page=1`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -158,7 +167,7 @@ export async function getCryptoQuote(coinId: string): Promise<CryptoQuote | null
       last_updated: coin.last_updated || new Date().toISOString(),
     };
   } catch (error) {
-    console.error(`[getCryptoQuote] Error fetching quote for ${coinId}:`, error);
+    logger.error(`[getCryptoQuote] Error fetching quote for ${coinId}`, error);
     return null;
   }
 }
@@ -175,13 +184,8 @@ export async function getCryptoQuotes(coinIds: string[]): Promise<Record<string,
     // Call backend proxy endpoint (API key is handled server-side)
     const idsParam = coinIds.join(',');
     const apiUrl = `${EDGE_FUNCTIONS_BASE_URL}/coingecko-markets?ids=${encodeURIComponent(idsParam)}&vs_currency=usd&per_page=${coinIds.length}&page=1`;
-    const supabaseAnonKey = env.supabaseAnonKey;
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers = await getEdgeAuthHeaders();
+    const response = await fetch(apiUrl, { headers });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -225,7 +229,7 @@ export async function getCryptoQuotes(coinIds: string[]): Promise<Record<string,
 
     return quotes;
   } catch (error) {
-    console.error('[getCryptoQuotes] Error fetching quotes:', error);
+    logger.error('[getCryptoQuotes] Error fetching quotes', error);
     return {};
   }
 }
@@ -235,28 +239,53 @@ export async function getCryptoQuotes(coinIds: string[]): Promise<Record<string,
  * This is a helper function since CoinGecko uses IDs instead of symbols
  */
 export async function getCoinIdFromSymbol(symbol: string): Promise<string | null> {
-  try {
-    const searchResults = await searchCrypto(symbol);
-
-    // Find exact symbol match (case-insensitive)
-    const exactMatch = searchResults.find(
-      result => result.symbol.toUpperCase() === symbol.toUpperCase()
-    );
-
-    if (exactMatch) {
-      return exactMatch.id;
-    }
-
-    // If no exact match, return the first result
-    if (searchResults.length > 0) {
-      return searchResults[0].id;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('[getCoinIdFromSymbol] Error:', error);
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) {
     return null;
   }
+
+  if (coinIdCache.has(normalizedSymbol)) {
+    return coinIdCache.get(normalizedSymbol) || null;
+  }
+
+  const inflight = inflightCoinIdRequests.get(normalizedSymbol);
+  if (inflight) {
+    return inflight;
+  }
+
+  const requestPromise = (async () => {
+    try {
+      const searchResults = await searchCrypto(normalizedSymbol);
+
+      // Find exact symbol match (case-insensitive)
+      const exactMatch = searchResults.find(
+        (result) => normalizeSymbol(result.symbol) === normalizedSymbol
+      );
+
+      if (exactMatch) {
+        coinIdCache.set(normalizedSymbol, exactMatch.id);
+        return exactMatch.id;
+      }
+
+      if (searchResults.length > 0) {
+        const fallbackId = searchResults[0].id;
+        coinIdCache.set(normalizedSymbol, fallbackId);
+        return fallbackId;
+      }
+
+      coinIdCache.set(normalizedSymbol, null);
+      return null;
+    } catch (error) {
+      logger.error('[getCoinIdFromSymbol] Error', error);
+      coinIdCache.set(normalizedSymbol, null);
+      throw error;
+    } finally {
+      inflightCoinIdRequests.delete(normalizedSymbol);
+    }
+  })().catch(() => null);
+
+  inflightCoinIdRequests.set(normalizedSymbol, requestPromise);
+  return requestPromise;
 }
 
-export type { CryptoSearchResult, CryptoQuote };
+

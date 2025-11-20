@@ -281,7 +281,7 @@ const Futures: React.FC = () => {
     if (!confirmed) return;
     const originalPosition = allPositions?.find(p => p.id === position.id);
     if (originalPosition) {
-      await deletePositionMutation.mutateAsync(originalPosition.id);
+      await deletePositionMutation.mutateAsync({ id: originalPosition.id, userId });
     }
   }, [confirmation, deletePositionMutation, allPositions]);
 

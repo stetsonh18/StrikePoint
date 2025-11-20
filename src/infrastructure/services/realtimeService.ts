@@ -1,6 +1,8 @@
 import { supabase } from '../api/supabase';
 import { queryClient } from '../api/queryClient';
+import { queryKeys } from '@/infrastructure/api/queryKeys';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { QueryKey } from '@tanstack/react-query';
 
 /**
  * Realtime Service
@@ -17,7 +19,7 @@ export class RealtimeService {
   static subscribeToTable(
     table: string,
     userId: string,
-    queryKeys: string[][]
+    keysToInvalidate: QueryKey[]
   ): RealtimeChannel {
     const channelName = `${table}-${userId}`;
 
@@ -40,8 +42,8 @@ export class RealtimeService {
           console.log(`[Realtime] ${table} changed:`, payload.eventType, payload.new || payload.old);
           
           // Invalidate all related query keys
-          queryKeys.forEach((queryKey) => {
-            queryClient.invalidateQueries({ queryKey });
+          keysToInvalidate.forEach((queryKey) => {
+            queryClient.invalidateQueries({ queryKey, exact: false });
           });
         }
       )
@@ -59,75 +61,68 @@ export class RealtimeService {
 
     // Subscribe to transactions
     this.subscribeToTable('transactions', userId, [
-      ['transactions'],
-      ['transaction-statistics', userId],
-      // Also invalidate portfolio and analytics queries that depend on transactions
-      ['portfolio-value', userId],
-      ['portfolio-history', userId],
-      ['net-cash-flow', userId],
-      ['initial-investment', userId],
-      ['analytics'],
-      ['win-rate-metrics'], // Invalidate win rate metrics when transactions change
+      queryKeys.transactions.all,
+      queryKeys.transactions.statistics(userId),
+      queryKeys.portfolio.value(userId),
+      queryKeys.portfolio.history(userId),
+      queryKeys.portfolio.netCashFlow(userId),
+      queryKeys.portfolio.initialInvestment(userId),
+      queryKeys.analytics.all,
+      queryKeys.analytics.winRate(userId),
     ]);
 
     // Subscribe to positions
     this.subscribeToTable('positions', userId, [
-      ['positions'],
-      ['position-statistics', userId],
-      ['positions', 'open', userId],
-      ['positions', 'expiring', userId],
-      // Also invalidate portfolio and analytics queries that depend on positions
-      ['portfolio-value', userId],
-      ['portfolio-history', userId],
-      ['analytics'],
-      ['win-rate-metrics'], // Invalidate win rate metrics when positions change
+      queryKeys.positions.all,
+      queryKeys.positions.statistics(userId),
+      queryKeys.positions.open(userId),
+      queryKeys.positions.expiring(userId),
+      queryKeys.portfolio.value(userId),
+      queryKeys.portfolio.history(userId),
+      queryKeys.analytics.all,
+      queryKeys.analytics.winRate(userId),
     ]);
 
     // Subscribe to cash transactions
     this.subscribeToTable('cash_transactions', userId, [
-      ['cash-transactions'],
-      ['cash_transactions', userId],
-      ['cash-balance', userId],
-      // Also invalidate portfolio queries that depend on cash transactions
-      ['portfolio-value', userId],
-      ['net-cash-flow', userId],
-      ['initial-investment', userId],
+      queryKeys.cash.transactions.all,
+      queryKeys.cash.transactions.list(userId),
+      queryKeys.cash.balance(userId),
+      queryKeys.portfolio.value(userId),
+      queryKeys.portfolio.netCashFlow(userId),
+      queryKeys.portfolio.initialInvestment(userId),
     ]);
 
     // Subscribe to cash balances
     this.subscribeToTable('cash_balances', userId, [
-      ['cash-balance', userId],
-      // Also invalidate portfolio queries
-      ['portfolio-value', userId],
+      queryKeys.cash.balance(userId),
+      queryKeys.portfolio.value(userId),
     ]);
 
     // Subscribe to strategies
     this.subscribeToTable('strategies', userId, [
-      ['strategies'],
-      ['strategy-summaries', userId],
-      ['strategy-statistics', userId],
-      ['strategies', 'open', userId],
-      // Also invalidate analytics queries that depend on strategies
-      ['analytics'],
-      ['strategy-performance', userId],
-      ['win-rate-metrics'], // Invalidate win rate metrics when strategies change
+      queryKeys.strategies.all,
+      queryKeys.strategies.list(userId),
+      queryKeys.strategies.open(userId),
+      queryKeys.analytics.all,
+      queryKeys.analytics.strategyPerformance(userId),
     ]);
 
     // Subscribe to journal entries
     this.subscribeToTable('journal_entries', userId, [
-      ['journal-entries'],
-      ['journal-stats', userId],
+      queryKeys.journal.all,
+      queryKeys.journal.stats(userId),
     ]);
 
     // Subscribe to AI insights
     this.subscribeToTable('ai_insights', userId, [
-      ['ai-insights'],
-      ['ai-insights', 'statistics', userId],
+      queryKeys.aiInsights.all,
+      queryKeys.aiInsights.statistics(userId),
     ]);
 
     // Subscribe to user preferences
     this.subscribeToTable('user_preferences', userId, [
-      ['user-preferences', userId],
+      queryKeys.userPreferences.detail(userId),
     ]);
 
     console.log('[Realtime] Subscriptions set up for user:', userId);

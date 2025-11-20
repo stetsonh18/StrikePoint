@@ -1,14 +1,23 @@
-import { QueryClient } from '@tanstack/react-query';
-import { isRetryableError, logError } from '@/shared/utils/errorHandler';
+import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
+import { isRetryableError, logErrorWithContext } from '@/shared/utils/errorHandler';
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      logErrorWithContext(error, { type: 'query' });
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      logErrorWithContext(error, { type: 'mutation' });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30 * 1000, // 30 seconds - shorter for more responsive updates
       gcTime: 1000 * 60 * 10, // 10 minutes (formerly cacheTime)
       refetchOnWindowFocus: true, // Refetch when user returns to tab
       refetchOnReconnect: true,
-      refetchInterval: 5 * 60 * 1000, // Auto-refetch every 5 minutes as fallback
       // Query deduplication is enabled by default in React Query
       // Multiple components requesting the same query will share the same request
       structuralSharing: true, // Ensure queries with the same key are deduplicated
@@ -22,10 +31,6 @@ export const queryClient = new QueryClient({
         return false;
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
-      onError: (error) => {
-        // Log query errors
-        logError(error, { type: 'query' });
-      },
     },
     mutations: {
       retry: (failureCount, error) => {
@@ -36,10 +41,6 @@ export const queryClient = new QueryClient({
         return false;
       },
       retryDelay: 1000,
-      onError: (error) => {
-        // Log mutation errors
-        logError(error, { type: 'mutation' });
-      },
     },
   },
 });

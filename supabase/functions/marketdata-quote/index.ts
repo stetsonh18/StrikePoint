@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { requireAuth } from '../_shared/auth.ts';
 
 const MARKETDATA_BASE_URL = 'https://api.marketdata.app/v1';
 const MARKETDATA_API_TOKEN = Deno.env.get('MARKETDATA_API_TOKEN');
@@ -16,6 +17,11 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireAuth(req, { requireActiveSubscription: true });
+    if (auth instanceof Response) {
+      return auth;
+    }
+
     if (!MARKETDATA_API_TOKEN) {
       return new Response(
         JSON.stringify({ error: 'MarketData API token not configured' }),

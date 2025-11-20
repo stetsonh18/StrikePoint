@@ -39,11 +39,11 @@ export function useStockQuotes(
 export function useStockQuote(
   symbol: string,
   enabled: boolean = true,
-  options?: Omit<UseQueryOptions<StockQuote, Error>, 'queryKey' | 'queryFn' | 'enabled'>
+  options?: Omit<UseQueryOptions<StockQuote | null, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
   const queryKey = queryKeys.marketData.stockQuotes.detail(symbol);
 
-  return useQuery<StockQuote, Error>({
+  return useQuery<StockQuote | null, Error>({
     queryKey,
     queryFn: () => getStockQuote(symbol),
     enabled: enabled && !!symbol,

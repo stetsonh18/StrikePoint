@@ -2,6 +2,16 @@
 export type JournalEntryType = 'pre_trade' | 'post_trade' | 'lesson_learned' | 'strategy' | 'general';
 export type EmotionType = 'confident' | 'anxious' | 'excited' | 'fearful' | 'neutral' | 'frustrated' | 'greedy' | 'disciplined';
 
+export interface JournalEntryFilters {
+  startDate?: string;
+  endDate?: string;
+  entryType?: JournalEntryType | 'all';
+  emotions?: EmotionType[];
+  tags?: string[];
+  linkedSymbols?: string[];
+  isFavorite?: boolean;
+}
+
 // Database insert/update types (matching database schema)
 export interface JournalEntryInsert {
   user_id: string;

@@ -8,11 +8,25 @@ import type { OptionChainEntry, OptionsChain, OptionQuote } from '@/domain/types
 
 // Get Supabase URL and construct Edge Functions base URL
 import { env } from '@/shared/utils/envValidation';
+import { logger } from '@/shared/utils/logger';
+import { supabase } from '../api/supabase';
 
 const supabaseUrl = env.supabaseUrl;
 const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
+
+async function getEdgeAuthHeaders() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error('You must be signed in to view options data.');
+  }
+
+  return {
+    Authorization: `Bearer ${data.session.access_token}`,
+    'Content-Type': 'application/json',
+  };
+}
 
 /**
  * Get options chain for an underlying symbol
@@ -41,18 +55,13 @@ export async function getOptionsChain(
     if (side) params.append('side', side);
 
     const chainUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-options-chain?${params.toString()}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
+    const headers = await getEdgeAuthHeaders();
 
-    const response = await fetch(chainUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await fetch(chainUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[getOptionsChain] API error for ${underlyingSymbol}: ${response.status} ${response.statusText}`, errorText);
+      logger.error(`[getOptionsChain] API error for ${underlyingSymbol}: ${response.status} ${response.statusText}`, new Error(errorText));
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
@@ -60,7 +69,7 @@ export async function getOptionsChain(
 
     // Check for error in response
     if (data.error) {
-      console.error(`[getOptionsChain] Error in response for ${underlyingSymbol}:`, data.error);
+      logger.error(`[getOptionsChain] Error in response for ${underlyingSymbol}`, new Error(String(data.error)));
       throw new Error(data.error);
     }
 
@@ -74,7 +83,7 @@ export async function getOptionsChain(
       return transformEntriesToChain(underlyingSymbol, data, expiration, strike, side);
     }
   } catch (error) {
-    console.error(`[getOptionsChain] Error fetching options chain for ${underlyingSymbol}:`, error);
+    logger.error(`[getOptionsChain] Error fetching options chain for ${underlyingSymbol}`, error);
     return null;
   }
 }
@@ -83,7 +92,7 @@ export async function getOptionsChain(
  * Transform chain response to OptionsChain format (MarketData.app format)
  */
 function transformChainResponse(
-  data: any, 
+  data: any,
   underlying: string,
   expirationFilter?: string,
   strikeFilter?: number,
@@ -97,9 +106,9 @@ function transformChainResponse(
     Object.keys(data.chain).forEach((expiration) => {
       // Apply expiration filter
       if (expirationFilter && expiration !== expirationFilter) return;
-      
+
       expirations.push(expiration);
-      
+
       // Transform and filter entries
       const entries = data.chain[expiration]
         .map((entry: any) => transformEntry(entry))
@@ -110,7 +119,7 @@ function transformChainResponse(
           if (sideFilter && entry.option_type !== sideFilter) return false;
           return true;
         });
-      
+
       chain[expiration] = entries;
     });
   }
@@ -128,7 +137,7 @@ function transformChainResponse(
  * Transform entries to chain format (MarketData.app array format)
  */
 function transformEntriesToChain(
-  underlying: string, 
+  underlying: string,
   data: any,
   expirationFilter?: string,
   strikeFilter?: number,
@@ -139,7 +148,7 @@ function transformEntriesToChain(
 
   // If data is an object with entries, or if it's an array
   const entries = Array.isArray(data) ? data : (data.entries || []);
-  
+
   entries.forEach((entry: any) => {
     const expiration = entry.expiration || entry.exp || entry.exp_date || entry.expiration_date;
     if (!expiration) return;
@@ -148,13 +157,13 @@ function transformEntriesToChain(
     if (expirationFilter && expiration !== expirationFilter) return;
 
     expirationsSet.add(expiration);
-    
+
     if (!chain[expiration]) {
       chain[expiration] = [];
     }
 
     const transformedEntry = transformEntry(entry);
-    
+
     // Apply strike and side filters
     if (strikeFilter && transformedEntry.strike !== strikeFilter) return;
     if (sideFilter && transformedEntry.option_type !== sideFilter) return;
@@ -212,14 +221,9 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
 
   try {
     const quoteUrl = `${EDGE_FUNCTIONS_BASE_URL}/tradier-options-quote/${encodeURIComponent(optionSymbol)}`;
-    const supabaseAnonKey = env.supabaseAnonKey;
+    const headers = await getEdgeAuthHeaders();
 
-    const response = await fetch(quoteUrl, {
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await fetch(quoteUrl, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -229,38 +233,38 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
       } catch {
         errorData = { error: errorText };
       }
-      
-      console.error(`[getOptionQuote] API error for ${optionSymbol}: ${response.status} ${response.statusText}`, errorData);
-      
+
+      logger.error(`[getOptionQuote] API error for ${optionSymbol}: ${response.status} ${response.statusText}`, new Error(JSON.stringify(errorData)));
+
       // If it's a 404 or 500 with "not available" message, return null instead of throwing
       // This allows the UI to gracefully handle missing quotes
       if (response.status === 404 || (response.status === 500 && errorData.message?.includes('not available'))) {
-        console.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}:`, errorData.message || errorData.error);
+        logger.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}`, { message: errorData.message || errorData.error });
         return null;
       }
-      
+
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
 
     // Log the raw response for debugging
-    console.log(`[getOptionQuote] Raw response for ${optionSymbol}:`, JSON.stringify(data, null, 2));
+    logger.debug(`[getOptionQuote] Raw response for ${optionSymbol}`, { data });
 
     // Check for error in response
     if (data.error) {
-      console.error(`[getOptionQuote] Error in response for ${optionSymbol}:`, data.error, data.message);
+      logger.error(`[getOptionQuote] Error in response for ${optionSymbol}`, new Error(String(data.error)), { message: data.message });
       // If it's a 404 (not found) or indicates quote not available, return null instead of throwing
       // This allows the UI to gracefully handle missing quotes
       if (response.status === 404 || data.message?.includes('not available') || data.error === 'Option quote not available') {
-        console.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}:`, data.message);
+        logger.warn(`[getOptionQuote] Option quote not found for ${optionSymbol}`, { message: data.message });
         return null;
       }
       throw new Error(data.message || data.error);
     }
 
     // Log successful quote data
-    console.log(`[getOptionQuote] Successfully received quote for ${optionSymbol}:`, {
+    logger.debug(`[getOptionQuote] Successfully received quote for ${optionSymbol}`, {
       symbol: data.symbol,
       bid: data.bid,
       ask: data.ask,
@@ -295,7 +299,7 @@ export async function getOptionQuote(optionSymbol: string): Promise<OptionQuote 
       in_the_money: data.in_the_money,
     };
   } catch (error) {
-    console.error(`[getOptionQuote] Error fetching quote for ${optionSymbol}:`, error);
+    logger.error(`[getOptionQuote] Error fetching quote for ${optionSymbol}`, error);
     return null;
   }
 }
@@ -317,7 +321,7 @@ export async function getOptionQuotes(optionSymbols: string[]): Promise<Record<s
   });
 
   const results = await Promise.all(quotePromises);
-  
+
   const quotes: Record<string, OptionQuote> = {};
   results.forEach(({ symbol, quote }) => {
     if (quote) {

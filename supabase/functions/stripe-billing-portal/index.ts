@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { requireAuth } from '../_shared/auth.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   apiVersion: '2023-10-16',
@@ -18,14 +19,12 @@ serve(async (req) => {
   }
 
   try {
-    const { userId } = await req.json();
-
-    if (!userId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing userId' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const auth = await requireAuth(req, { requireActiveSubscription: true });
+    if (auth instanceof Response) {
+      return auth;
     }
+
+    const { user } = auth;
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -36,7 +35,7 @@ serve(async (req) => {
     const { data: preferences, error: prefError } = await supabase
       .from('user_preferences')
       .select('stripe_customer_id')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .single();
 
     if (prefError || !preferences?.stripe_customer_id) {

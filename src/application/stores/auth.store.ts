@@ -76,14 +76,6 @@ export const useAuthStore = create<AuthStore>()((set) => {
     authSubscription = subscription;
   };
 
-  // Cleanup function for when store is destroyed (if needed)
-  const cleanup = () => {
-    if (authSubscription) {
-      authSubscription.unsubscribe();
-      authSubscription = null;
-    }
-  };
-
   return {
     user: null,
     session: null,

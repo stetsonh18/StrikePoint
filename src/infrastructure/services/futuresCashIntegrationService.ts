@@ -3,6 +3,7 @@ import { CashBalanceService } from './cashBalanceService';
 import { FuturesContractSpecRepository } from '../repositories/futuresContractSpec.repository';
 import type { Transaction, CashTransactionInsert } from '@/domain/types';
 import { parseContractSymbol } from '@/domain/types/futures.types';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Futures Cash Integration Service
@@ -27,13 +28,13 @@ export class FuturesCashIntegrationService {
     // Get contract spec to determine margin requirement
     const contractSymbol = parseContractSymbol(transaction.instrument || '');
     if (!contractSymbol) {
-      console.error('Could not parse futures contract symbol:', transaction.instrument);
+      logger.error('Could not parse futures contract symbol', new Error(`Symbol: ${transaction.instrument}`));
       return;
     }
 
     const contractSpec = await FuturesContractSpecRepository.getBySymbol(contractSymbol.symbol, transaction.user_id);
     if (!contractSpec) {
-      console.error('Contract spec not found for symbol:', contractSymbol.symbol, 'user:', transaction.user_id);
+      logger.error(`Contract spec not found for symbol: ${contractSymbol.symbol}`, new Error(`User: ${transaction.user_id}`));
       return;
     }
 
@@ -83,7 +84,7 @@ export class FuturesCashIntegrationService {
     // Update cash balance
     await CashBalanceService.recalculateBalance(transaction.user_id);
 
-    console.log(`Cash transactions created for futures open: margin=$${totalMarginRequired}, fees=$${fees}`);
+    logger.info(`Cash transactions created for futures open: margin=$${totalMarginRequired}, fees=$${fees}`);
   }
 
   /**
@@ -99,7 +100,7 @@ export class FuturesCashIntegrationService {
     entryQuantity?: number
   ): Promise<void> {
     if (transaction.asset_type !== 'futures') {
-      console.warn('recordFuturesClose called for non-futures transaction:', transaction.asset_type);
+      logger.warn(`recordFuturesClose called for non-futures transaction: ${transaction.asset_type}`);
       return;
     }
 
@@ -172,7 +173,7 @@ export class FuturesCashIntegrationService {
 
       await CashTransactionRepository.create(plTransaction);
 
-      console.log(`Realized P&L for ${transaction.instrument}: $${realizedPL.toFixed(2)}`);
+      logger.info(`Realized P&L for ${transaction.instrument}: $${realizedPL.toFixed(2)}`);
     }
 
     // Deduct fees
@@ -197,7 +198,7 @@ export class FuturesCashIntegrationService {
     // Update cash balance
     await CashBalanceService.recalculateBalance(transaction.user_id);
 
-    console.log(`Cash transactions created for futures close: margin released=$${totalMarginReleased}, fees=$${fees}`);
+    logger.info(`Cash transactions created for futures close: margin released=$${totalMarginReleased}, fees=$${fees}`);
   }
 
   /**
@@ -209,7 +210,7 @@ export class FuturesCashIntegrationService {
     entryQuantity?: number
   ): Promise<void> {
     if (transaction.asset_type !== 'futures') {
-      console.warn('processFuturesTransaction called for non-futures transaction:', transaction.asset_type);
+      logger.warn(`processFuturesTransaction called for non-futures transaction: ${transaction.asset_type}`);
       return;
     }
 
@@ -226,7 +227,7 @@ export class FuturesCashIntegrationService {
 
     const quantity = transaction.quantity || 0;
 
-    console.log('Processing futures transaction:', {
+    logger.info('Processing futures transaction', {
       id: transaction.id,
       code: transactionCode,
       quantity,

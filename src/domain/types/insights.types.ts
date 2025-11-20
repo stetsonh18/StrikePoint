@@ -12,6 +12,19 @@ export type InsightType =
 
 export type InsightPriority = 'low' | 'medium' | 'high' | 'critical';
 
+export interface AIInsightFilters {
+  type?: 'risk_warning' | 'opportunity' | 'pattern' | 'performance' | 'strategy' | 'all' | ('risk_warning' | 'opportunity' | 'pattern' | 'performance' | 'strategy')[];
+  priority?: InsightPriority | InsightPriority[];
+  isRead?: boolean;
+  isDismissed?: boolean;
+  limit?: number;
+  actionable?: boolean;
+  related_symbols?: string[];
+  generated_after?: string;
+  generated_before?: string;
+  include_expired?: boolean;
+}
+
 export interface AIInsight {
   id: string;
   user_id: string;

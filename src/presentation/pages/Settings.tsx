@@ -534,7 +534,7 @@ export const Settings = () => {
                         <button
                           onClick={async () => {
                             try {
-                              const { url } = await createBillingPortalSession(userId);
+                              const { url } = await createBillingPortalSession();
                               window.location.href = url;
                             } catch (error) {
                               toast.error('Failed to open billing portal', {
@@ -752,7 +752,7 @@ export const Settings = () => {
                   onClick={async () => {
                     setIsCanceling(true);
                     try {
-                      await cancelSubscription(userId);
+                      await cancelSubscription();
                       toast.success('Subscription canceled', {
                         description: 'Your subscription will remain active until the end of the billing period.',
                       });

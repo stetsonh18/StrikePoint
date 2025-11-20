@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { requireAuth } from '../_shared/auth.ts';
 
 const TRADIER_BASE_URL = 'https://api.tradier.com/v1';
 const TRADIER_ACCESS_TOKEN = Deno.env.get('TRADIER_ACCESS_TOKEN');
@@ -16,6 +17,11 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireAuth(req, { requireActiveSubscription: true });
+    if (auth instanceof Response) {
+      return auth;
+    }
+
     if (!TRADIER_ACCESS_TOKEN) {
       return new Response(
         JSON.stringify({ error: 'Tradier access token not configured' }),

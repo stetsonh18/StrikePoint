@@ -1,7 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
-import type { PortfolioSnapshot } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 
 export type TimePeriod = '1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
 

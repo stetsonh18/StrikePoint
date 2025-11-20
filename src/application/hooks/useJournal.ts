@@ -1,11 +1,14 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { JournalRepository, type JournalEntryFilters, type JournalEntryInsert, type JournalEntryUpdate } from '@/infrastructure/repositories/journal.repository';
+import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
-import type { JournalEntry, JournalStats } from '@/domain/types';
+import { JournalRepository } from '@/infrastructure/repositories';
+import type {
+  JournalEntry,
+  JournalEntryFilters,
+  JournalEntryInsert,
+  JournalEntryUpdate,
+  JournalStats,
+} from '@/domain/types';
 
-/**
- * Fetch journal entries for a user with optional filters
- */
 export function useJournalEntries(
   userId: string,
   filters?: JournalEntryFilters,
@@ -48,14 +51,14 @@ export function useCreateJournalEntry() {
     mutationFn: (entry: JournalEntryInsert) => JournalRepository.create(entry),
     onSuccess: (data) => {
       // Invalidate all journal list queries for the user (with any filters)
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: queryKeys.journal.lists(),
-        exact: false 
+        exact: false
       });
       // Invalidate stats queries
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: queryKeys.journal.stats(data.userId),
-        exact: false 
+        exact: false
       });
     },
   });
@@ -72,14 +75,14 @@ export function useUpdateJournalEntry() {
       JournalRepository.update(id, updates),
     onSuccess: (data) => {
       // Invalidate all journal list queries for the user (with any filters)
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: queryKeys.journal.lists(),
-        exact: false 
+        exact: false
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.journal.detail(data.id) });
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: queryKeys.journal.stats(data.userId),
-        exact: false 
+        exact: false
       });
     },
   });

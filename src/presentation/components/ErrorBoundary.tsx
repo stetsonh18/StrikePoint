@@ -1,6 +1,6 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
 import * as Sentry from '@sentry/react';
-import { logError } from '@/shared/utils/errorHandler';
+import { logErrorWithContext } from '@/shared/utils/errorHandler';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error using error handler
-    logError(error, {
+    logErrorWithContext(error, {
       type: 'error-boundary',
       componentStack: errorInfo.componentStack,
     });

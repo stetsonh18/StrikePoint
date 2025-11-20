@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { requireAuth } from '../_shared/auth.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   apiVersion: '2023-10-16',
@@ -18,9 +19,15 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, priceId, discountCode } = await req.json();
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) {
+      return auth;
+    }
 
-    if (!userId || !priceId) {
+    const { user } = auth;
+    const { priceId, discountCode } = await req.json();
+
+    if (!priceId) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -33,7 +40,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get user email
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(user.id);
     if (userError || !userData?.user?.email) {
       return new Response(
         JSON.stringify({ error: 'User not found' }),
@@ -55,22 +62,19 @@ serve(async (req) => {
       ],
       mode: 'subscription',
       subscription_data: {
-        trial_period_days: 14, // 14-day free trial
+        trial_period_days: 14,
         metadata: {
-          userId,
+          userId: user.id,
           discountCode: discountCode || '',
         },
       },
       success_url: `${Deno.env.get('VITE_APP_URL') || 'http://localhost:5173'}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${Deno.env.get('VITE_APP_URL') || 'http://localhost:5173'}/checkout?canceled=true`,
       metadata: {
-        userId,
+        userId: user.id,
         discountCode: discountCode || '',
       },
-      // Enable promotion codes in Stripe Checkout for other discount codes
-      // The free4ever coupon (ID: free4ever) exists in Stripe but is handled app-side
-      // since it's 100% off forever and doesn't require payment
-      allow_promotion_codes: discountCode !== 'free4ever',
+      allow_promotion_codes: discountCode ? false : true,
     });
 
     return new Response(

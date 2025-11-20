@@ -1,5 +1,5 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import type {
   FuturesContractSpec,
   FuturesContractSpecInsert,
@@ -33,7 +33,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getAll', userId });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.getAll', userId });
       throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -75,7 +75,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getActive', userId });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.getActive', userId });
       throw new Error(`Failed to fetch active futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -114,7 +114,7 @@ export class FuturesContractSpecRepository {
 
       if (userError && userError.code !== 'PGRST116') {
         const parsed = parseError(userError);
-        logError(userError, { context: 'FuturesContractSpecRepository.getBySymbol', symbol, userId });
+        logErrorWithContext(userError, { context: 'FuturesContractSpecRepository.getBySymbol', symbol, userId });
         throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: userError });
       }
 
@@ -132,7 +132,7 @@ export class FuturesContractSpecRepository {
 
       if (defaultError && defaultError.code !== 'PGRST116') {
         const parsed = parseError(defaultError);
-        logError(defaultError, { context: 'FuturesContractSpecRepository.getBySymbol', symbol, userId });
+        logErrorWithContext(defaultError, { context: 'FuturesContractSpecRepository.getBySymbol', symbol, userId });
         throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: defaultError });
       }
 
@@ -151,7 +151,7 @@ export class FuturesContractSpecRepository {
         return null;
       }
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getBySymbol', symbol });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.getBySymbol', symbol });
       throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: error });
     }
 
@@ -174,7 +174,7 @@ export class FuturesContractSpecRepository {
         return null;
       }
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getById', id });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.getById', id });
       throw new Error(`Failed to fetch futures contract spec: ${parsed.message}`, { cause: error });
     }
 
@@ -196,11 +196,11 @@ export class FuturesContractSpecRepository {
       dbQuery = dbQuery.eq('user_id', userId);
     }
 
-    const { data, error} = await dbQuery.order('symbol', { ascending: true });
+    const { data, error } = await dbQuery.order('symbol', { ascending: true });
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.search', query, userId });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.search', query, userId });
       throw new Error(`Failed to search futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -219,7 +219,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.create', spec });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.create', spec });
       throw new Error(`Failed to create futures contract spec: ${parsed.message}`, { cause: error });
     }
 
@@ -242,7 +242,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.update', id, updates });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.update', id, updates });
       throw new Error(`Failed to update futures contract spec: ${parsed.message}`, { cause: error });
     }
 
@@ -275,7 +275,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.delete', id });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.delete', id });
       throw new Error(`Failed to delete futures contract spec: ${parsed.message}`, { cause: error });
     }
   }
@@ -303,7 +303,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.getBySymbols', symbols, userId });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.getBySymbols', symbols, userId });
       throw new Error(`Failed to fetch futures contract specs: ${parsed.message}`, { cause: error });
     }
 
@@ -322,7 +322,7 @@ export class FuturesContractSpecRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'FuturesContractSpecRepository.deleteAllForUser', userId });
+      logErrorWithContext(error, { context: 'FuturesContractSpecRepository.deleteAllForUser', userId });
       throw new Error(`Failed to delete user futures contract specs: ${parsed.message}`, { cause: error });
     }
   }

@@ -50,7 +50,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (needsSubscription === true) {
       return <Navigate to="/checkout" replace />;
     }
-    
+
     // If needsSubscription is undefined after loading, something went wrong
     // Be conservative and require checkout for security
     if (needsSubscription === undefined) {

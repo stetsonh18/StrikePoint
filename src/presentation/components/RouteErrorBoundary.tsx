@@ -1,6 +1,6 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
 import { ErrorDisplay } from './ErrorDisplay';
-import { logError } from '@/shared/utils/errorHandler';
+import { logErrorWithContext } from '@/shared/utils/errorHandler';
 
 interface RouteErrorBoundaryProps {
   children: ReactNode;
@@ -35,7 +35,7 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error using error handler
-    logError(error, {
+    logErrorWithContext(error, {
       type: 'route-error-boundary',
       componentStack: errorInfo.componentStack,
     });

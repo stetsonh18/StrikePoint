@@ -1,5 +1,5 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import type {
   CashBalance,
   CashBalanceInsert,
@@ -25,7 +25,7 @@ export class CashBalanceRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'CashBalanceRepository.create', balance });
+      logErrorWithContext(error, { context: 'CashBalanceRepository.create', balance });
       throw new Error(`Failed to create cash balance: ${parsed.message}`, { cause: error });
     }
 
@@ -47,7 +47,7 @@ export class CashBalanceRepository {
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
       const parsed = parseError(error);
-      logError(error, { context: 'CashBalanceRepository.getCurrentBalance', userId });
+      logErrorWithContext(error, { context: 'CashBalanceRepository.getCurrentBalance', userId });
       throw new Error(`Failed to fetch current balance: ${parsed.message}`, { cause: error });
     }
 
@@ -80,7 +80,7 @@ export class CashBalanceRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'CashBalanceRepository.getBalanceHistory', userId, startDate, endDate });
+      logErrorWithContext(error, { context: 'CashBalanceRepository.getBalanceHistory', userId, startDate, endDate });
       throw new Error(`Failed to fetch balance history: ${parsed.message}`, { cause: error });
     }
 
@@ -104,7 +104,7 @@ export class CashBalanceRepository {
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
       const parsed = parseError(error);
-      logError(error, { context: 'CashBalanceRepository.getBalanceByDate', userId, date });
+      logErrorWithContext(error, { context: 'CashBalanceRepository.getBalanceByDate', userId, date });
       throw new Error(`Failed to fetch balance: ${parsed.message}`, { cause: error });
     }
 
@@ -256,7 +256,7 @@ export class CashBalanceRepository {
 
       if (error) {
         const parsed = parseError(error);
-        logError(error, { context: 'CashBalanceRepository.updateBalance', userId, balance, existingId: existing.id });
+        logErrorWithContext(error, { context: 'CashBalanceRepository.updateBalance', userId, balance, existingId: existing.id });
         throw new Error(`Failed to update cash balance: ${parsed.message}`, { cause: error });
       }
 
@@ -275,7 +275,7 @@ export class CashBalanceRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'CashBalanceRepository.delete', id });
+      logErrorWithContext(error, { context: 'CashBalanceRepository.delete', id });
       throw new Error(`Failed to delete cash balance: ${parsed.message}`, { cause: error });
     }
   }

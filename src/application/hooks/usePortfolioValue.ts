@@ -83,21 +83,28 @@ export function usePortfolioValue(userId: string): PortfolioValue {
   // Fetch crypto quotes - need to convert symbols to coin IDs
   const [cryptoCoinIds, setCryptoCoinIds] = useState<string[]>([]);
   useEffect(() => {
+    let isMounted = true;
+
     const fetchCoinIds = async () => {
-      const ids: string[] = [];
-      for (const symbol of cryptoSymbols) {
-        const coinId = await getCoinIdFromSymbol(symbol);
-        if (coinId) {
-          ids.push(coinId);
+      const uniqueSymbols = Array.from(new Set(cryptoSymbols));
+      if (uniqueSymbols.length === 0) {
+        if (isMounted) {
+          setCryptoCoinIds([]);
         }
+        return;
       }
-      setCryptoCoinIds(ids);
+
+      const ids = await Promise.all(uniqueSymbols.map((symbol) => getCoinIdFromSymbol(symbol)));
+      if (isMounted) {
+        setCryptoCoinIds(ids.filter((id): id is string => Boolean(id)));
+      }
     };
-    if (cryptoSymbols.length > 0) {
-      fetchCoinIds();
-    } else {
-      setCryptoCoinIds([]);
-    }
+
+    fetchCoinIds();
+
+    return () => {
+      isMounted = false;
+    };
   }, [cryptoSymbols]);
 
   const { data: cryptoQuotes = {} } = useCryptoQuotes(cryptoCoinIds, cryptoCoinIds.length > 0);

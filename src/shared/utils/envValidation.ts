@@ -14,6 +14,9 @@ interface EnvConfig {
   sentryDsn?: string;
   sentryEnableDev?: boolean;
   appVersion?: string;
+  stripePublishableKey?: string;
+  stripeRegularPriceId?: string;
+  stripeEarlyAdopterPriceId?: string;
 }
 
 interface ValidationResult {
@@ -68,6 +71,9 @@ export function validateEnvironmentVariables(): ValidationResult {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
   const sentryEnableDev = import.meta.env.VITE_SENTRY_ENABLE_DEV;
   const appVersion = import.meta.env.VITE_APP_VERSION;
+  const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+  const stripeRegularPriceId = import.meta.env.VITE_STRIPE_REGULAR_PRICE_ID;
+  const stripeEarlyAdopterPriceId = import.meta.env.VITE_STRIPE_EARLY_ADOPTER_PRICE_ID;
   
   // Validate required variables
   if (!supabaseUrl) {
@@ -108,6 +114,21 @@ export function validateEnvironmentVariables(): ValidationResult {
       'Consider setting it up for better error monitoring.'
     );
   }
+
+  // Stripe configuration (required when subscriptions are enabled)
+  if (!stripePublishableKey) {
+    errors.push(
+      'VITE_STRIPE_PUBLISHABLE_KEY is required for the checkout experience. ' +
+      'Create one in Stripe and add it to your environment variables.'
+    );
+  }
+
+  if (!stripeRegularPriceId && !stripeEarlyAdopterPriceId) {
+    errors.push(
+      'At least one of VITE_STRIPE_REGULAR_PRICE_ID or VITE_STRIPE_EARLY_ADOPTER_PRICE_ID must be set. ' +
+      'Without a configured price ID the subscription flow cannot start.'
+    );
+  }
   
   // Build config object if valid
   let config: EnvConfig | null = null;
@@ -118,6 +139,9 @@ export function validateEnvironmentVariables(): ValidationResult {
       sentryDsn: sentryDsn || undefined,
       sentryEnableDev: sentryEnableDev === 'true',
       appVersion: appVersion || undefined,
+      stripePublishableKey: stripePublishableKey || undefined,
+      stripeRegularPriceId: stripeRegularPriceId || undefined,
+      stripeEarlyAdopterPriceId: stripeEarlyAdopterPriceId || undefined,
     };
   }
   
@@ -179,6 +203,15 @@ export const env = {
   },
   get appVersion() {
     return import.meta.env.VITE_APP_VERSION;
+  },
+  get stripePublishableKey() {
+    return import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+  },
+  get stripeRegularPriceId() {
+    return import.meta.env.VITE_STRIPE_REGULAR_PRICE_ID;
+  },
+  get stripeEarlyAdopterPriceId() {
+    return import.meta.env.VITE_STRIPE_EARLY_ADOPTER_PRICE_ID;
   },
   
   // System

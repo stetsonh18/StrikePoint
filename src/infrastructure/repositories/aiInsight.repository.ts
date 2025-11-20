@@ -1,6 +1,6 @@
 import { supabase } from '../api/supabase';
 import { logger } from '@/shared/utils/logger';
-import type { AIInsight } from '@/domain/types';
+import type { AIInsight, AIInsightFilters } from '@/domain/types';
 
 export interface AIInsightInsert {
   user_id: string;
@@ -32,17 +32,7 @@ export interface AIInsightUpdate {
   dismissed_at?: string;
 }
 
-export interface AIInsightFilters {
-  type?: AIInsight['type'] | AIInsight['type'][];
-  priority?: AIInsight['priority'] | AIInsight['priority'][];
-  is_read?: boolean;
-  is_dismissed?: boolean;
-  actionable?: boolean;
-  related_symbols?: string[];
-  generated_after?: string;
-  generated_before?: string;
-  include_expired?: boolean;
-}
+
 
 export interface AIInsightStatistics {
   total: number;
@@ -289,7 +279,7 @@ export class AIInsightRepository {
   static async getStatistics(
     userId: string
   ): Promise<AIInsightStatistics> {
-    const { data, error} = await supabase
+    const { data, error } = await supabase
       .from('ai_insights')
       .select('type, priority, is_read, actionable')
       .eq('user_id', userId)

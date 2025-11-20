@@ -1,5 +1,5 @@
 import { supabase } from '../api/supabase';
-import { parseError, logError } from '@/shared/utils/errorHandler';
+import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import type { TransactionCode } from '@/domain/types';
 
 /**
@@ -19,7 +19,7 @@ export class TransactionCodeRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionCodeRepository.getAll' });
+      logErrorWithContext(error, { context: 'TransactionCodeRepository.getAll' });
       throw new Error(`Failed to fetch transaction codes: ${parsed.message}`, { cause: error });
     }
 
@@ -38,7 +38,7 @@ export class TransactionCodeRepository {
 
     if (error) {
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionCodeRepository.getByCategory', category });
+      logErrorWithContext(error, { context: 'TransactionCodeRepository.getByCategory', category });
       throw new Error(`Failed to fetch transaction codes: ${parsed.message}`, { cause: error });
     }
 
@@ -60,7 +60,7 @@ export class TransactionCodeRepository {
         return null; // Not found
       }
       const parsed = parseError(error);
-      logError(error, { context: 'TransactionCodeRepository.getByCode', transCode });
+      logErrorWithContext(error, { context: 'TransactionCodeRepository.getByCode', transCode });
       throw new Error(`Failed to fetch transaction code: ${parsed.message}`, { cause: error });
     }
 

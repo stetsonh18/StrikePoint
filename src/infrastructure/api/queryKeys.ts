@@ -20,12 +20,12 @@ export const queryKeys = {
   positions: {
     all: ['positions'] as const,
     lists: () => [...queryKeys.positions.all, 'list'] as const,
-    list: (userId: string, filters?: PositionFilters) => 
+    list: (userId: string, filters?: PositionFilters) =>
       [...queryKeys.positions.lists(), userId, filters] as const,
     details: () => [...queryKeys.positions.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.positions.details(), id] as const,
     open: (userId: string) => [...queryKeys.positions.all, 'open', userId] as const,
-    expiring: (userId: string, daysAhead?: number) => 
+    expiring: (userId: string, daysAhead?: number) =>
       [...queryKeys.positions.all, 'expiring', userId, daysAhead] as const,
     statistics: (userId: string, startDate?: string, endDate?: string) =>
       ['position-statistics', userId, startDate, endDate] as const,
@@ -68,7 +68,7 @@ export const queryKeys = {
       [...queryKeys.journal.lists(), userId, filters] as const,
     details: () => [...queryKeys.journal.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.journal.details(), id] as const,
-    stats: (userId: string, startDate?: string, endDate?: string) => 
+    stats: (userId: string, startDate?: string, endDate?: string) =>
       ['journal-stats', userId, startDate, endDate] as const,
   },
 
@@ -143,13 +143,14 @@ export const queryKeys = {
    */
   analytics: {
     all: ['analytics'] as const,
-    winRate: (userId: string, assetType?: AssetType) => 
+    winRate: (userId: string, assetType?: AssetType) =>
       ['win-rate-metrics', userId, assetType] as const,
-    dailyPerformance: (userId: string) => ['daily-performance', userId] as const,
-    weeklyPerformance: (userId: string) => ['weekly-performance', userId] as const,
+    dailyPerformance: (userId: string, portfolioValue?: number) => ['daily-performance', userId, portfolioValue] as const,
+    weeklyPerformance: (userId: string, portfolioValue?: number) =>
+      ['weekly-performance', userId, portfolioValue] as const,
     monthlyPerformance: (userId: string, assetType?: AssetType, months?: number) =>
       ['monthly-performance', userId, assetType, months] as const,
-    monthlyDashboard: (userId: string, portfolioValue?: number) => 
+    monthlyDashboard: (userId: string, portfolioValue?: number) =>
       ['monthly-performance-dashboard', userId, portfolioValue] as const,
     symbolPerformance: (userId: string, assetType?: AssetType, days?: number) =>
       ['symbol-performance', userId, assetType, days] as const,

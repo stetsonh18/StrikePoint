@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { PerformanceMetricsService } from '@/infrastructure/services/performanceMetricsService';
-import type { AssetType } from '@/domain/types/asset.types';
 
 export interface EntryTimePerformanceData {
   timeBucket: string;
