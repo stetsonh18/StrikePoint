@@ -6,7 +6,14 @@
  * query invalidation easier and more maintainable.
  */
 
-import type { PositionFilters, TransactionFilters, StrategyFilters, JournalEntryFilters, AIInsightFilters } from '@/domain/types';
+import type {
+  PositionFilters,
+  TransactionFilters,
+  StrategyFilters,
+  JournalEntryFilters,
+  AIInsightFilters,
+  StrategyPlanFilters,
+} from '@/domain/types';
 import type { AssetType } from '@/domain/types/asset.types';
 
 /**
@@ -83,6 +90,17 @@ export const queryKeys = {
     details: () => [...queryKeys.aiInsights.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.aiInsights.details(), id] as const,
     statistics: (userId: string) => [...queryKeys.aiInsights.all, 'statistics', userId] as const,
+  },
+
+  /**
+   * Strategy plan query keys
+   */
+  strategyPlans: {
+    all: ['strategy-plans'] as const,
+    list: (userId: string, filters?: StrategyPlanFilters) =>
+      [...queryKeys.strategyPlans.all, 'list', userId, filters] as const,
+    detail: (planId: string) => [...queryKeys.strategyPlans.all, 'detail', planId] as const,
+    alignmentHistory: (planId: string) => [...queryKeys.strategyPlans.all, 'alignment-history', planId] as const,
   },
 
   /**

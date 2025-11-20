@@ -10,6 +10,7 @@ import {
   BookOpen,
   Brain,
   Newspaper,
+  Target,
 } from 'lucide-react';
 
 export interface NavigationItem {
@@ -63,6 +64,11 @@ export const NAVIGATION_ITEMS: NavigationItem[] = [
     name: 'AI Insights',
     path: '/insights',
     icon: Brain,
+  },
+  {
+    name: 'Strategy',
+    path: '/strategy',
+    icon: Target,
   },
   {
     name: 'News',

@@ -12,3 +12,4 @@ export * from './insights.types';
 export * from './database.types';
 export * from './futures.types';
 export * from './options.types';
+export * from './strategyPlan.types';

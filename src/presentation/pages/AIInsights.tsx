@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Brain,
   TrendingUp,
@@ -18,10 +19,13 @@ import type { AIInsight, InsightType, InsightPriority } from '@/domain/types';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useAIInsights, useMarkInsightAsRead, useDismissInsight } from '@/application/hooks/useAIInsights';
+import { useStrategyPlans } from '@/application/hooks/useStrategyPlans';
 import { AIInsightGenerationService } from '@/infrastructure/services/aiInsightGenerationService';
 
 const AIInsights: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const { data: primaryStrategyData } = useStrategyPlans(user?.id, { is_primary: true });
+  const primaryStrategy = primaryStrategyData?.[0];
   const [filterPriority, setFilterPriority] = useState<InsightPriority | 'all'>('all');
   const [filterType, setFilterType] = useState<InsightType | 'all'>('all');
   const [showDismissed, setShowDismissed] = useState(false);
@@ -182,6 +186,34 @@ const AIInsights: React.FC = () => {
         </div>
       )}
 
+      {primaryStrategy && (
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-5 border border-slate-700 flex flex-wrap items-center gap-4">
+          <div className="flex-1">
+            <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Primary strategy</p>
+            <h3 className="text-2xl font-semibold mt-1">{primaryStrategy.plan_name}</h3>
+            <p className="text-sm text-slate-300 mt-1">
+              AI Insights monitors these focus areas to keep you honest:
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {(primaryStrategy.alignment_focus ?? ['discipline']).map((focus) => (
+                <span
+                  key={focus}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-white/10 border border-white/20"
+                >
+                  {focus}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Link
+            to="/strategy"
+            className="px-4 py-2 rounded-2xl border border-white/30 text-sm font-semibold hover:bg-white/10 transition"
+          >
+            Open Strategy Hub
+          </Link>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard
@@ -280,7 +312,9 @@ const AIInsights: React.FC = () => {
             </button>
           </div>
         ) : (
-          sortedInsights.map((insight) => (
+          sortedInsights.map((insight) => {
+            const shouldHighlightStrategy = primaryStrategy && insight.type === 'strategy';
+            return (
             <div
               key={insight.id}
               className={`bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-6 hover:border-emerald-500/30 transition-all shadow-sm dark:shadow-none ${
@@ -308,6 +342,18 @@ const AIInsights: React.FC = () => {
                         </span>
                       )}
                     </div>
+                    {shouldHighlightStrategy && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {(primaryStrategy.alignment_focus ?? []).map((focus) => (
+                          <span
+                            key={`${insight.id}-${focus}`}
+                            className="px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 rounded-full"
+                          >
+                            Focus: {focus}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
                       {insight.description}
                     </p>
@@ -378,7 +424,8 @@ const AIInsights: React.FC = () => {
                 </div>
               )}
             </div>
-          ))
+          );
+        })
         )}
       </div>
     </div>

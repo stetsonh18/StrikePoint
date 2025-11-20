@@ -31,6 +31,7 @@ const Journal = createRouteWithErrorBoundary(() => import('./presentation/pages/
 const AIInsights = createRouteWithErrorBoundary(() => import('./presentation/pages/AIInsights'));
 const News = createRouteWithErrorBoundary(() => import('./presentation/pages/News'));
 const Checkout = createRouteWithErrorBoundary(() => import('./presentation/pages/Checkout').then(module => ({ default: module.Checkout })));
+const Strategy = createRouteWithErrorBoundary(() => import('./presentation/pages/Strategy').then(module => ({ default: module.Strategy })));
 
 function App() {
   useTheme();
@@ -79,6 +80,7 @@ function App() {
                 <Route path="futures" element={<Futures />} />
                 <Route path="journal" element={<Journal />} />
                 <Route path="insights" element={<AIInsights />} />
+                <Route path="strategy" element={<Strategy />} />
                 <Route path="news" element={<News />} />
                 <Route path="settings" element={<Settings />} />
               </Route>

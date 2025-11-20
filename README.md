@@ -13,6 +13,7 @@ A comprehensive trading journal application built with React, TypeScript, and Su
 - 🔍 **Options Chain** - View and analyze options chains
 - 📰 **Market News** - Stay updated with market news
 - 🤖 **AI Insights** - Get AI-powered trading insights
+- 🧭 **Strategy Hub** - Craft AI-assisted playbooks per asset type and monitor alignment
 
 ## Tech Stack
 
