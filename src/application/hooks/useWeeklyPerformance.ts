@@ -1,6 +1,7 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
-import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
+import { PositionRepository } from '@/infrastructure/repositories/position.repository';
+import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import { getDateRangeForDays } from './utils/dateRange';
 
@@ -14,8 +15,7 @@ export interface WeeklyPerformance {
 const DAYS_IN_WEEK = 7;
 
 /**
- * Hook to calculate performance for the last 7 days using snapshot comparison.
- * Compares current portfolio value to snapshot from 7 days ago (includes fees).
+ * Hook to calculate performance for the last 7 days (realized + unrealized, includes fees)
  */
 export function useWeeklyPerformance(
   userId: string,
@@ -27,31 +27,25 @@ export function useWeeklyPerformance(
   return useQuery<WeeklyPerformance, Error>({
     queryKey,
     queryFn: async () => {
-      // Get snapshot from 7 days ago
-      const { start } = getDateRangeForDays(DAYS_IN_WEEK);
-      const weekAgoDate = new Date(start).toISOString().split('T')[0];
-      const weekAgoSnapshot = await PortfolioSnapshotRepository.getByDate(userId, weekAgoDate);
+      const { start, end } = getDateRangeForDays(DAYS_IN_WEEK);
 
-      let weeklyPL: number;
-      let weeklyPLPercent: number;
+      // Get realized P&L from positions closed in last 7 days
+      const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
+      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
-      if (weekAgoSnapshot) {
-        // Calculate weekly P&L as change from 7 days ago snapshot to current value (includes fees)
-        weeklyPL = portfolioValue - weekAgoSnapshot.portfolio_value;
-        weeklyPLPercent = weekAgoSnapshot.portfolio_value !== 0
-          ? (weeklyPL / Math.abs(weekAgoSnapshot.portfolio_value)) * 100
-          : 0;
-      } else {
-        // Fallback: use current unrealized only if no snapshot exists
-        weeklyPL = unrealizedPL;
-        weeklyPLPercent = portfolioValue !== 0 ? (weeklyPL / Math.abs(portfolioValue)) * 100 : 0;
-      }
+      // Get fees from all transactions in last 7 days
+      const transactions = await TransactionRepository.getAll(userId, { start_date: start, end_date: end });
+      const totalFees = transactions.reduce((sum, tx) => sum + Number(tx.fees || 0), 0);
+
+      // Weekly P&L = realized + unrealized - fees
+      const weeklyPL = realizedPL + unrealizedPL - totalFees;
+      const weeklyPLPercent = portfolioValue !== 0 ? (weeklyPL / Math.abs(portfolioValue)) * 100 : 0;
 
       return {
         weeklyPL,
         weeklyPLPercent,
-        realizedPL: weeklyPL, // Total change (includes fees)
-        unrealizedPL: 0, // No breakdown when using snapshot comparison
+        realizedPL,
+        unrealizedPL,
       };
     },
     enabled: !!userId,
