@@ -1,7 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
 import { PositionRepository } from '@/infrastructure/repositories/position.repository';
-import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import { getDateRangeForDays } from './utils/dateRange';
 
@@ -15,11 +14,8 @@ export interface DailyPerformance {
 const DAYS_IN_DAY = 1;
 
 /**
- * Hook to calculate today's performance using real-time portfolio value vs yesterday's snapshot.
- * This correctly accounts for:
- * - Realized P&L from positions closed today
- * - Changes in unrealized P&L from price movements on open positions
- * - Uses real-time current portfolio value compared to yesterday's snapshot baseline
+ * Hook to calculate today's performance (realized + unrealized, gross P&L).
+ * Matches the calculation method used in Dashboard cards and Analytics pages.
  */
 export function useDailyPerformance(
   userId: string,
@@ -31,42 +27,21 @@ export function useDailyPerformance(
   return useQuery<DailyPerformance, Error>({
     queryKey,
     queryFn: async () => {
-      // Get today's realized P&L (from positions closed today)
       const { start, end } = getDateRangeForDays(DAYS_IN_DAY);
+
+      // Get realized P&L from positions closed today
       const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
       const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
-      // Get yesterday's portfolio snapshot as baseline
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayDate = yesterday.toISOString().split('T')[0];
-      const yesterdaySnapshot = await PortfolioSnapshotRepository.getByDate(userId, yesterdayDate);
+      // Daily P&L = realized + unrealized (gross, no fee deduction)
+      const dailyPL = realizedPL + unrealizedPL;
+      const dailyPLPercent = portfolioValue !== 0 ? (dailyPL / Math.abs(portfolioValue)) * 100 : 0;
 
-      let dailyPL: number;
-      let dailyPLPercent: number;
-
-      if (yesterdaySnapshot) {
-        // Calculate daily P&L as change from yesterday's snapshot to current real-time value
-        // This captures: realized P&L + change in unrealized P&L + deposits/withdrawals + fees
-        dailyPL = portfolioValue - yesterdaySnapshot.portfolio_value;
-        dailyPLPercent = yesterdaySnapshot.portfolio_value !== 0
-          ? (dailyPL / Math.abs(yesterdaySnapshot.portfolio_value)) * 100
-          : 0;
-      } else {
-        // Fallback: If no yesterday snapshot exists, use current realized + unrealized
-        // This won't be accurate but ensures dashboard shows something
-        dailyPL = realizedPL + unrealizedPL;
-        dailyPLPercent = portfolioValue !== 0 ? (dailyPL / Math.abs(portfolioValue)) * 100 : 0;
-      }
-
-      // For display breakdown: when using snapshot comparison, the entire change should be
-      // shown as realized (includes closed position P&L + fees). Unrealized change is zero
-      // because we're comparing total portfolio value, not trying to split out components.
       return {
         dailyPL,
         dailyPLPercent,
-        realizedPL: dailyPL, // Total change in portfolio value (includes fees)
-        unrealizedPL: 0, // No unrealized component when using snapshot comparison
+        realizedPL,
+        unrealizedPL,
       };
     },
     enabled: !!userId,

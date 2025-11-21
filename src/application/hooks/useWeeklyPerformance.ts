@@ -1,7 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
 import { PositionRepository } from '@/infrastructure/repositories/position.repository';
-import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import { getDateRangeForDays } from './utils/dateRange';
 
@@ -15,7 +14,7 @@ export interface WeeklyPerformance {
 const DAYS_IN_WEEK = 7;
 
 /**
- * Hook to calculate performance for the last 7 days (realized + unrealized, includes fees)
+ * Hook to calculate performance for the last 7 days (realized + unrealized, gross P&L)
  */
 export function useWeeklyPerformance(
   userId: string,
@@ -31,23 +30,16 @@ export function useWeeklyPerformance(
 
       // Get realized P&L from positions closed in last 7 days
       const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-      const grossRealizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
+      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
-      // Get fees from all transactions in last 7 days
-      const transactions = await TransactionRepository.getAll(userId, { start_date: start, end_date: end });
-      const totalFees = transactions.reduce((sum, tx) => sum + Number(tx.fees || 0), 0);
-
-      // Net realized P&L = gross realized - fees
-      const netRealizedPL = grossRealizedPL - totalFees;
-
-      // Weekly P&L = net realized + unrealized
-      const weeklyPL = netRealizedPL + unrealizedPL;
+      // Weekly P&L = realized + unrealized (gross, no fee deduction)
+      const weeklyPL = realizedPL + unrealizedPL;
       const weeklyPLPercent = portfolioValue !== 0 ? (weeklyPL / Math.abs(portfolioValue)) * 100 : 0;
 
       return {
         weeklyPL,
         weeklyPLPercent,
-        realizedPL: netRealizedPL, // Show net realized (after fees)
+        realizedPL,
         unrealizedPL,
       };
     },
