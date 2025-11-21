@@ -95,6 +95,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   const [notes, setNotes] = useState('');
   const [isWorthlessClose, setIsWorthlessClose] = useState(false);
   const savedLegPricesRef = useRef<Array<{ price: number; priceInput?: string }> | null>(null);
+  const [strategyOpeningCost, setStrategyOpeningCost] = useState<number | null>(null);
   const [transactionTime, setTransactionTime] = useState(() => {
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, '0');
@@ -125,6 +126,34 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
 
   // Legs state - initialize from initialPositions if provided
   const [legs, setLegs] = useState<OptionLegFormData[]>(initialLegs);
+
+  // Fetch strategy opening cost when in closing mode
+  useEffect(() => {
+    const fetchStrategyOpeningCost = async () => {
+      if (isClosing && initialPositions && initialPositions.length > 0) {
+        try {
+          // Get the strategy ID from the first position
+          const allPositions = await PositionRepository.getAll(userId, { status: 'open' });
+          const firstPosition = allPositions.find(p => p.id === initialPositions[0].id);
+
+          if (firstPosition?.strategy_id) {
+            const strategy = await StrategyRepository.getById(firstPosition.strategy_id);
+            if (strategy) {
+              setStrategyOpeningCost(strategy.total_opening_cost ?? null);
+              logger.debug('[OptionsMultiLegForm] Fetched strategy opening cost', {
+                strategyId: strategy.id,
+                openingCost: strategy.total_opening_cost,
+              });
+            }
+          }
+        } catch (error) {
+          logger.error('[OptionsMultiLegForm] Error fetching strategy opening cost', error);
+        }
+      }
+    };
+
+    fetchStrategyOpeningCost();
+  }, [isClosing, initialPositions, userId]);
 
   useEffect(() => {
     if (!isClosing) {
@@ -266,12 +295,35 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
     // Calculate net debit/credit
     legs.forEach((leg) => {
       const legCost = leg.quantity * leg.price * 100; // Options are per share, multiply by 100
-      if (leg.side === 'long') {
-        netDebit -= legCost; // Debit for long
+
+      if (isClosing) {
+        // When CLOSING:
+        // - SHORT position → BTC (Buy to Close) → You PAY (debit, negative)
+        // - LONG position → STC (Sell to Close) → You RECEIVE (credit, positive)
+        if (leg.side === 'short') {
+          netDebit -= legCost; // Debit for closing short (buying back)
+        } else {
+          netDebit += legCost; // Credit for closing long (selling)
+        }
       } else {
-        netDebit += legCost; // Credit for short
+        // When OPENING:
+        // - LONG position → BTO (Buy to Open) → You PAY (debit, negative)
+        // - SHORT position → STO (Sell to Open) → You RECEIVE (credit, positive)
+        if (leg.side === 'long') {
+          netDebit -= legCost; // Debit for long
+        } else {
+          netDebit += legCost; // Credit for short
+        }
       }
     });
+
+    // If closing and we have the opening cost, calculate total P&L
+    // Total P&L = Opening Cost + Closing Cost (closing cost is already signed)
+    // Example: Opened for +$66 credit, closing for -$10 debit = $66 + (-$10) = $56 profit
+    // Example: Opened for -$100 debit, closing for +$80 credit = -$100 + $80 = -$20 loss
+    if (isClosing && strategyOpeningCost !== null) {
+      netDebit = strategyOpeningCost + netDebit;
+    }
 
     // Strategy detection logic
     if (legs.length === 2) {
@@ -361,7 +413,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
       confidence,
       netDebit,
     };
-  }, [legs]);
+  }, [legs, isClosing, strategyOpeningCost]);
 
 
 
