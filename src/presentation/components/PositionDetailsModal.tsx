@@ -43,10 +43,10 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
     }
   };
 
-  if (!position && !strategyGroup) return null;
-
-  const isMultiLeg = strategyGroup && strategyGroup.length > 1;
-  const positionsToShow = strategyGroup || (position ? [position] : []);
+  // Compute positions to show - must be done before hooks
+  const positionsToShow = useMemo(() => {
+    return strategyGroup || (position ? [position] : []);
+  }, [strategyGroup, position]);
 
   // Build Tradier option symbols for all positions in the modal
   const optionSymbols = useMemo(() => {
@@ -90,6 +90,10 @@ export const PositionDetailsModal: React.FC<PositionDetailsModalProps> = ({
       });
     }
   }, [optionSymbols, optionQuotes, quotesLoading, quotesError, quotesErrorObj]);
+
+  if (!position && !strategyGroup) return null;
+
+  const isMultiLeg = strategyGroup && strategyGroup.length > 1;
 
   return (
     <div

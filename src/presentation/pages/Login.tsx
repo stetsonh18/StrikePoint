@@ -29,8 +29,9 @@ export function Login() {
     try {
       await signIn(email, password);
       navigate('/');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to sign in';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -45,8 +46,9 @@ export function Login() {
       await resetPassword(resetEmail);
       setResetSuccess(true);
       toast.success('Password reset email sent! Check your inbox.');
-    } catch (err: any) {
-      setResetError(err.message || 'Failed to send password reset email');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send password reset email';
+      setResetError(errorMessage);
       toast.error('Failed to send password reset email');
     } finally {
       setResetLoading(false);

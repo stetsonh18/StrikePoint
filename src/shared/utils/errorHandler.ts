@@ -218,9 +218,7 @@ export function isRetryableError(error: unknown): boolean {
 /**
  * Log error (can be extended to send to error tracking service)
  */
-export function logErrorWithContext(...args: any[]): void {
-  const error = args[0];
-  const context = args[1];
+export function logErrorWithContext(error: unknown, context?: Record<string, unknown>): void {
   const parsed = parseError(error);
   const errorObj = error instanceof Error ? error : new Error(parsed.message);
 

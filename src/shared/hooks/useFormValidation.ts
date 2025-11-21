@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo } from 'react';
 
-export interface ValidationRule<T = any> {
-  validate: (value: T, formData?: Record<string, any>) => boolean | string;
+export interface ValidationRule<T = unknown> {
+  validate: (value: T, formData?: Record<string, unknown>) => boolean | string;
   message?: string;
 }
 
-export interface FieldValidation<T = any> {
+export interface FieldValidation<T = unknown> {
   rules: ValidationRule<T>[];
   required?: boolean;
 }
@@ -21,7 +21,7 @@ export interface ValidationErrors {
 /**
  * Hook for form validation with real-time feedback
  */
-export function useFormValidation<T extends Record<string, any>>(
+export function useFormValidation<T extends Record<string, unknown>>(
   config: FormValidationConfig,
   initialData?: Partial<T>
 ) {
@@ -31,7 +31,7 @@ export function useFormValidation<T extends Record<string, any>>(
 
   // Validate a single field
   const validateField = useCallback(
-    (fieldName: string, value: any): string | null => {
+    (fieldName: string, value: unknown): string | null => {
       const fieldConfig = config[fieldName];
       if (!fieldConfig) return null;
 
@@ -72,7 +72,7 @@ export function useFormValidation<T extends Record<string, any>>(
 
   // Update field value and validate if touched
   const setFieldValue = useCallback(
-    (fieldName: string, value: any) => {
+    (fieldName: string, value: unknown) => {
       setFormData((prev) => ({ ...prev, [fieldName]: value }));
 
       // Clear error if field is touched
@@ -239,7 +239,7 @@ export const validationRules = {
     message: message || 'Must be a valid date',
   }),
 
-  custom: (validator: (value: any, formData?: Record<string, any>) => boolean | string, message?: string): ValidationRule => ({
+  custom: (validator: (value: unknown, formData?: Record<string, unknown>) => boolean | string, message?: string): ValidationRule => ({
     validate: validator,
     message,
   }),

@@ -294,9 +294,10 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Error saving journal entry', err);
-      setError(err.message || 'Failed to save journal entry');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save journal entry';
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -475,7 +476,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                     className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
                     disabled={isSubmitting}
                   >
-                    {positions.map((position: any) => (
+                    {positions.map((position: Position) => (
                       <option key={position.id} value={position.id}>
                         {position.symbol} - {position.asset_type} ({position.side})
                       </option>
@@ -500,7 +501,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                     className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
                     disabled={isSubmitting}
                   >
-                    {transactions.slice(0, 100).map((transaction: any) => (
+                    {transactions.slice(0, 100).map((transaction: Transaction) => (
                       <option key={transaction.id} value={transaction.id}>
                         {transaction.description} - {transaction.activity_date}
                       </option>

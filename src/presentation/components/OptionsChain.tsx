@@ -149,7 +149,12 @@ export const OptionsChain: React.FC<OptionsChainProps> = ({
           <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Type</label>
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === 'all' || value === 'call' || value === 'put') {
+                setFilterType(value);
+              }
+            }}
             className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
           >
             <option value="all">All</option>

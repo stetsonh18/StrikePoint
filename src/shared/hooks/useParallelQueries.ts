@@ -21,7 +21,7 @@ import type { UseQueryOptions } from '@tanstack/react-query';
  * const [positionsQuery, transactionsQuery] = queries;
  * ```
  */
-export function useParallelQueries<T extends readonly UseQueryOptions<any, any, any, any>[]>(
+export function useParallelQueries<T extends readonly UseQueryOptions<unknown, Error, unknown, readonly unknown[]>[]>(
   queries: T
 ) {
   return useQueries({

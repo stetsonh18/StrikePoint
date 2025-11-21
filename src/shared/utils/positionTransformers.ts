@@ -6,6 +6,7 @@ import type {
   FuturesContract,
   StockTransaction,
   OptionTransaction,
+  OptionTransactionType,
   CryptoTransaction,
   FuturesTransaction,
 } from '@/domain/types';
@@ -314,13 +315,28 @@ export function toOptionTransaction(transaction: Transaction): OptionTransaction
     ? `${transaction.underlying_symbol} $${transaction.strike_price} ${transaction.option_type === 'call' ? 'Call' : 'Put'} ${formatExpirationDate(transaction.expiration_date)}`
     : transaction.description;
 
+  // Map transaction_code to OptionTransactionType
+  const mapTransactionCode = (code: string): OptionTransactionType => {
+    const upperCode = code.toUpperCase();
+    if (upperCode === 'BTO' || upperCode === 'BUY TO OPEN') return 'BTO';
+    if (upperCode === 'STO' || upperCode === 'SELL TO OPEN') return 'STO';
+    if (upperCode === 'BTC' || upperCode === 'BUY TO CLOSE') return 'BTC';
+    if (upperCode === 'STC' || upperCode === 'SELL TO CLOSE') return 'STC';
+    if (upperCode === 'OEXP' || upperCode === 'OPTION EXPIRATION') return 'OEXP';
+    if (upperCode === 'OASGN' || upperCode === 'OPTION ASSIGNMENT') return 'OASGN';
+    if (upperCode === 'OEXCS' || upperCode === 'OPTION EXERCISE') return 'OEXCS';
+    if (upperCode === 'OCC' || upperCode === 'OPTION CASH COMPONENT') return 'OCC';
+    // Default fallback
+    return 'BTO';
+  };
+
   return {
     id: transaction.id,
     userId: transaction.user_id,
     underlyingSymbol: transaction.underlying_symbol || '',
     optionSymbol,
     description,
-    transactionType: transaction.transaction_code as any,
+    transactionType: mapTransactionCode(transaction.transaction_code),
     optionType: transaction.option_type,
     strikePrice: transaction.strike_price,
     expirationDate: transaction.expiration_date,

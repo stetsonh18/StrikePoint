@@ -135,7 +135,7 @@ export const Sidebar = () => {
       </nav>
 
       <div className={`relative p-4 border-t border-slate-200 dark:border-slate-800/50 ${isCollapsed ? 'px-3' : ''}`}>
-        <div className={`bg-gradient-to-br from-emerald-500/10 to-transparent rounded-xl p-4 border border-emerald-500/20 ${isCollapsed ? 'p-2' : ''}`}>
+        <div className={`bg-gradient-to-br from-emerald-500/10 to-transparent rounded-xl border border-emerald-500/20 ${isCollapsed ? 'p-2 flex items-center justify-center' : 'p-4'}`}>
           {!isCollapsed ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-emerald-400">Win Rate</p>
@@ -153,7 +153,7 @@ export const Sidebar = () => {
               )}
             </div>
           ) : (
-            <div className="text-center">
+            <div className="flex items-center justify-center w-full">
               <p className="text-xs font-bold text-emerald-400">
                 {totalTrades > 0 ? `${winRate}%` : '—'}
               </p>
