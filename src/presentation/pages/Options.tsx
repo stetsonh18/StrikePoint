@@ -1628,6 +1628,7 @@ const Options: React.FC = () => {
             <TransactionForm
               assetType="option"
               userId={userId}
+              editingTransaction={editingTransaction || undefined}
               onClose={() => {
                 setShowTransactionForm(false);
                 setEditingPosition(null);

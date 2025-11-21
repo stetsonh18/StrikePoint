@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
-import type { AssetType, OptionChainEntry } from '@/domain/types';
+import type { AssetType, OptionChainEntry, Transaction } from '@/domain/types';
 import { TransactionService } from '@/infrastructure/services/transactionService';
+import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
 import { useTransactionCodeCategories, useTransactionCodesByCategory } from '@/application/hooks/useTransactionCodes';
 import { CashBalanceService } from '@/infrastructure/services/cashBalanceService';
@@ -27,6 +28,8 @@ interface TransactionFormProps {
     expirationDate?: string;
     optionTransactionCode?: 'BTO' | 'STO' | 'BTC' | 'STC';
   };
+  // Transaction to edit (if provided, form will be in edit mode)
+  editingTransaction?: Transaction;
 }
 
 export const TransactionForm: React.FC<TransactionFormProps> = ({
@@ -35,6 +38,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onClose,
   onSuccess,
   initialValues,
+  editingTransaction,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +135,114 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       setCashTransactionCode('');
     }
   }, [cashTransactionCategory]);
+
+  // Populate form fields when editing a transaction
+  useEffect(() => {
+    if (editingTransaction) {
+      // Set dates
+      if (editingTransaction.activity_date) {
+        setTransactionDate(editingTransaction.activity_date);
+      }
+
+      // Extract entry time from notes if present (format: "ENTRY_TIME:HH:MM")
+      if (editingTransaction.notes) {
+        const entryTimeMatch = editingTransaction.notes.match(/ENTRY_TIME:(\d{2}):(\d{2})/);
+        if (entryTimeMatch) {
+          const [, hours, minutes] = entryTimeMatch;
+          setTransactionTime(`${hours}:${minutes}`);
+        }
+        // Remove entry time from notes for display
+        const notesWithoutTime = editingTransaction.notes.replace(/\n?ENTRY_TIME:\d{2}:\d{2}\n?/g, '').trim();
+        setNotes(notesWithoutTime || '');
+      }
+
+      // Set description
+      if (editingTransaction.description) {
+        setDescription(editingTransaction.description);
+      }
+
+      // Set fees
+      if (editingTransaction.fees !== null && editingTransaction.fees !== undefined) {
+        setFees(editingTransaction.fees.toString());
+      }
+
+      // Populate based on asset type
+      if (editingTransaction.asset_type === 'option') {
+        if (editingTransaction.underlying_symbol) {
+          setUnderlyingSymbol(editingTransaction.underlying_symbol);
+        }
+        if (editingTransaction.option_type) {
+          setOptionType(editingTransaction.option_type);
+        }
+        if (editingTransaction.strike_price !== null && editingTransaction.strike_price !== undefined) {
+          setStrikePrice(editingTransaction.strike_price.toString());
+        }
+        if (editingTransaction.expiration_date) {
+          setExpirationDate(editingTransaction.expiration_date);
+        }
+        if (editingTransaction.transaction_code) {
+          const code = editingTransaction.transaction_code.toUpperCase();
+          if (['BTO', 'STO', 'BTC', 'STC'].includes(code)) {
+            setOptionTransactionCode(code as 'BTO' | 'STO' | 'BTC' | 'STC');
+          }
+        }
+        if (editingTransaction.quantity !== null && editingTransaction.quantity !== undefined) {
+          setQuantity(editingTransaction.quantity.toString());
+        }
+        if (editingTransaction.price !== null && editingTransaction.price !== undefined) {
+          setPrice(editingTransaction.price.toString());
+        }
+      } else if (editingTransaction.asset_type === 'stock' || editingTransaction.asset_type === 'crypto') {
+        if (editingTransaction.underlying_symbol) {
+          setSymbol(editingTransaction.underlying_symbol);
+        }
+        if (editingTransaction.transaction_code) {
+          const code = editingTransaction.transaction_code;
+          if (code === 'Buy' || code === 'Sell') {
+            setTransactionCode(code);
+          }
+        }
+        if (editingTransaction.quantity !== null && editingTransaction.quantity !== undefined) {
+          setQuantity(editingTransaction.quantity.toString());
+        }
+        if (editingTransaction.price !== null && editingTransaction.price !== undefined) {
+          setPrice(editingTransaction.price.toString());
+        }
+      } else if (editingTransaction.asset_type === 'futures') {
+        if (editingTransaction.underlying_symbol) {
+          setSymbol(editingTransaction.underlying_symbol);
+        }
+        if (editingTransaction.transaction_code) {
+          const code = editingTransaction.transaction_code;
+          if (code === 'Buy' || code === 'Sell') {
+            setTransactionCode(code);
+          }
+        }
+        if (editingTransaction.quantity !== null && editingTransaction.quantity !== undefined) {
+          setQuantity(editingTransaction.quantity.toString());
+        }
+        if (editingTransaction.price !== null && editingTransaction.price !== undefined) {
+          setPrice(editingTransaction.price.toString());
+        }
+        // Parse contract month from instrument if available
+        if (editingTransaction.instrument) {
+          const monthMatch = editingTransaction.instrument.match(/\b([A-Z]{3}\d{2,4})\b/);
+          if (monthMatch) {
+            setContractMonth(monthMatch[1]);
+          }
+        }
+      } else if (editingTransaction.asset_type === 'cash') {
+        // For cash transactions, we'd need to fetch the cash transaction
+        // This is a simplified version - you may need to enhance this
+        if (editingTransaction.transaction_code) {
+          setCashTransactionCode(editingTransaction.transaction_code);
+        }
+        if (editingTransaction.amount !== null && editingTransaction.amount !== undefined) {
+          setAmount(Math.abs(editingTransaction.amount).toString());
+        }
+      }
+    }
+  }, [editingTransaction]);
 
   // Futures fields
   const [contractMonth, setContractMonth] = useState('');
@@ -316,11 +428,19 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           return; // Early return for cash transactions
       }
 
-      await TransactionService.createManualTransaction(transactionData);
+      // If editing, update the transaction; otherwise create a new one
+      if (editingTransaction) {
+        // Remove fields that shouldn't be updated
+        const { user_id, import_id, created_at, updated_at, ...updateData } = transactionData;
+        await TransactionRepository.update(editingTransaction.id, updateData);
+      } else {
+        await TransactionService.createManualTransaction(transactionData);
+      }
+      
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create transaction');
+      setError(err instanceof Error ? err.message : (editingTransaction ? 'Failed to update transaction' : 'Failed to create transaction'));
     } finally {
       setIsSubmitting(false);
     }
@@ -368,7 +488,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       >
         <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 md:p-6 flex items-center justify-between">
           <h2 id="transaction-form-title" className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Add {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
+            {editingTransaction ? 'Edit' : 'Add'} {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
           </h2>
           <button
             onClick={onClose}
@@ -946,7 +1066,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               disabled={isSubmitting}
               className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Creating...' : 'Create Transaction'}
+              {isSubmitting ? (editingTransaction ? 'Updating...' : 'Creating...') : (editingTransaction ? 'Update Transaction' : 'Create Transaction')}
             </button>
           </div>
         </form>

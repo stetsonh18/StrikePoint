@@ -2,6 +2,7 @@ import { supabase } from '../api/supabase';
 import { logger } from '@/shared/utils/logger';
 import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import { validateData, TransactionInsertSchema, TransactionUpdateSchema } from '@/shared/utils/validationSchemas';
+import { CashTransactionRepository } from './cashTransaction.repository';
 import type {
   Transaction,
   TransactionInsert,
@@ -316,8 +317,20 @@ export class TransactionRepository {
         logger.warn('Error fetching strategy transactions for cascade delete', { error: strategyError, strategyId: transaction.strategy_id });
         // Continue with single transaction delete if fetch fails
       } else if (strategyTransactions && strategyTransactions.length > 0) {
-        // Delete all transactions in the strategy (cash transactions will cascade via FK)
+        // Delete all transactions in the strategy
         const transactionIds = strategyTransactions.map(t => t.id);
+
+        // Explicitly delete associated cash transactions before deleting transactions
+        try {
+          await CashTransactionRepository.deleteByTransactionIds(transactionIds);
+        } catch (cashDeleteError) {
+          logger.warn('Error deleting cash transactions for strategy', {
+            error: cashDeleteError,
+            strategyId: transaction.strategy_id,
+            transactionIds,
+          });
+          // Continue with transaction deletion even if cash transaction deletion fails
+        }
 
         // Process each transaction to clean up positions and journal entries
         for (const txId of transactionIds) {
@@ -370,7 +383,18 @@ export class TransactionRepository {
     // For single transaction deletion, clean up references
     await this.cleanupTransactionReferences(id, transaction.user_id);
 
-    // Delete the transaction (cash transactions will cascade delete via FK)
+    // Explicitly delete associated cash transactions before deleting the transaction
+    try {
+      await CashTransactionRepository.deleteByTransactionIds([id]);
+    } catch (cashDeleteError) {
+      logger.warn('Error deleting cash transactions for transaction', {
+        error: cashDeleteError,
+        transactionId: id,
+      });
+      // Continue with transaction deletion even if cash transaction deletion fails
+    }
+
+    // Delete the transaction
     const { error } = await supabase.from('transactions').delete().eq('id', id);
 
     if (error) {
