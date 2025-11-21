@@ -1,11 +1,154 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'; // Default to cost-effective model
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+// Type definitions for database rows
+interface PositionRow {
+  id: string;
+  user_id: string;
+  strategy_id: string | null;
+  symbol: string;
+  asset_type: 'stock' | 'option' | 'crypto' | 'futures' | 'cash';
+  option_type: 'call' | 'put' | null;
+  strike_price: number | null;
+  expiration_date: string | null;
+  contract_month: string | null;
+  multiplier: number | null;
+  tick_size: number | null;
+  tick_value: number | null;
+  margin_requirement: number | null;
+  side: 'long' | 'short';
+  opening_quantity: number;
+  current_quantity: number;
+  average_opening_price: number;
+  total_cost_basis: number;
+  total_closing_amount: number;
+  realized_pl: number;
+  unrealized_pl: number;
+  status: 'open' | 'closed' | 'assigned' | 'exercised' | 'expired';
+  opening_transaction_ids: string[];
+  closing_transaction_ids: string[];
+  opened_at: string;
+  closed_at: string | null;
+  notes: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface TransactionRow {
+  id: string;
+  user_id: string;
+  import_id: string | null;
+  activity_date: string;
+  process_date: string;
+  settle_date: string;
+  instrument: string | null;
+  description: string;
+  transaction_code: string;
+  asset_type: 'stock' | 'option' | 'crypto' | 'futures' | 'cash';
+  option_type: 'call' | 'put' | null;
+  strike_price: number | null;
+  expiration_date: string | null;
+  underlying_symbol: string | null;
+  quantity: number | null;
+  price: number | null;
+  amount: number;
+  fees: number;
+  is_opening: boolean | null;
+  is_long: boolean | null;
+  position_id: string | null;
+  strategy_id: string | null;
+  notes: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface CashTransactionRow {
+  id: string;
+  user_id: string;
+  transaction_code: string;
+  amount: number;
+  description: string | null;
+  notes: string | null;
+  activity_date: string;
+  process_date: string;
+  settle_date: string;
+  symbol: string | null;
+  transaction_id: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+// OpenAI API types
+interface OpenAIRequestMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface OpenAIRequestBody {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  messages: OpenAIRequestMessage[];
+  response_format?: { type: 'json_object' };
+}
+
+interface OpenAIErrorResponse {
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
+  message?: string;
+}
+
+interface OpenAIChoice {
+  message?: {
+    content?: string;
+    role?: string;
+  };
+  finish_reason?: string;
+  index?: number;
+}
+
+interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
+interface OpenAIResponse {
+  id?: string;
+  object?: string;
+  created?: number;
+  model?: string;
+  choices?: OpenAIChoice[];
+  usage?: OpenAIUsage;
+}
+
+interface AssetTypeMetrics {
+  count: number;
+  marketValue: number;
+  unrealizedPL: number;
+}
+
+interface SymbolCount {
+  symbol: string;
+  count: number;
+}
+
+interface ConcentrationEntry {
+  symbol: string;
+  percentage: number;
+}
 
 // Validate environment variables
 function validateEnvironmentVariables(): { valid: boolean; error?: string } {
@@ -66,7 +209,7 @@ async function generateInsightsWithOpenAI(
 
   // Note: gpt-4o-mini and gpt-4o support response_format json_object
   // If this fails, OpenAI will return an error which we'll handle
-  const requestBody: any = {
+  const requestBody: OpenAIRequestBody = {
     model: OPENAI_MODEL,
     max_tokens: 4096,
     temperature: 0.7,
@@ -139,9 +282,9 @@ async function generateInsightsWithOpenAI(
       statusText: response.statusText,
       body: responseText,
     });
-    let errorDetails: any;
+    let errorDetails: OpenAIErrorResponse | null = null;
     try {
-      errorDetails = JSON.parse(responseText);
+      errorDetails = JSON.parse(responseText) as OpenAIErrorResponse;
       console.error('[Generate Insights] Parsed error details:', errorDetails);
     } catch (parseError) {
       console.error('[Generate Insights] Could not parse error response as JSON', parseError);
@@ -150,9 +293,9 @@ async function generateInsightsWithOpenAI(
     throw new Error(`OpenAI API error (${response.status}): ${errorMessage}`);
   }
 
-  let data: any;
+  let data: OpenAIResponse;
   try {
-    data = JSON.parse(responseText);
+    data = JSON.parse(responseText) as OpenAIResponse;
     console.log('[Generate Insights] Parsed OpenAI response structure:', {
       hasChoices: !!data.choices,
       choicesLength: data.choices?.length || 0,
@@ -200,9 +343,9 @@ async function generateInsightsWithOpenAI(
     jsonContent = jsonContent.replace(/^```\s*/, '').replace(/```\s*$/, '');
   }
 
-  let parsed: any;
+  let parsed: { insights?: InsightResponse[] } | InsightResponse[] | InsightResponse;
   try {
-    parsed = JSON.parse(jsonContent);
+    parsed = JSON.parse(jsonContent) as { insights?: InsightResponse[] } | InsightResponse[] | InsightResponse;
     console.log('[Generate Insights] Successfully parsed JSON:', {
       hasInsights: !!parsed.insights,
       insightsIsArray: Array.isArray(parsed.insights),
@@ -253,7 +396,7 @@ async function generateInsightsWithOpenAI(
 /**
  * Aggregate user data for AI analysis
  */
-async function aggregateUserData(userId: string, supabase: any) {
+async function aggregateUserData(userId: string, supabase: SupabaseClient) {
   console.log(`[Generate Insights] Starting data aggregation for user ${userId}`);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgoDate = thirtyDaysAgo.toISOString().split('T')[0]; // Convert to YYYY-MM-DD format
@@ -281,29 +424,29 @@ async function aggregateUserData(userId: string, supabase: any) {
 
   console.log(`[Generate Insights] Fetched ${positionsResult.data?.length || 0} positions, ${transactionsResult.data?.length || 0} transactions, ${cashTransactionsResult.data?.length || 0} cash transactions`);
 
-  const positions = positionsResult.data || [];
-  const transactions = transactionsResult.data || [];
-  const cashTransactions = cashTransactionsResult.data || [];
+  const positions = (positionsResult.data || []) as PositionRow[];
+  const transactions = (transactionsResult.data || []) as TransactionRow[];
+  const cashTransactions = (cashTransactionsResult.data || []) as CashTransactionRow[];
 
   // Separate open and closed positions
-  const openPositions = positions.filter((p: any) => p.status === 'open');
-  const closedPositions = positions.filter((p: any) => p.status === 'closed');
+  const openPositions = positions.filter((p) => p.status === 'open');
+  const closedPositions = positions.filter((p) => p.status === 'closed');
 
   // Calculate metrics
-  const totalUnrealizedPL = openPositions.reduce((sum: number, p: any) => sum + (p.unrealized_pl || 0), 0);
-  const totalRealizedPL = closedPositions.reduce((sum: number, p: any) => sum + (p.realized_pl || 0), 0);
+  const totalUnrealizedPL = openPositions.reduce((sum, p) => sum + (p.unrealized_pl || 0), 0);
+  const totalRealizedPL = closedPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
 
   const netCashFlow = cashTransactions
-    .filter((tx: any) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code))
-    .reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+    .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code))
+    .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
   const totalFees = cashTransactions
-    .filter((tx: any) => tx.transaction_code === 'FEE')
-    .reduce((sum: number, tx: any) => sum + Math.abs(tx.amount || 0), 0);
+    .filter((tx) => tx.transaction_code === 'FEE')
+    .reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
 
   // Calculate market value by asset type
-  const byAssetType: Record<string, any> = {};
-  openPositions.forEach((p: any) => {
+  const byAssetType: Record<string, AssetTypeMetrics> = {};
+  openPositions.forEach((p) => {
     const assetType = p.asset_type || 'unknown';
     if (!byAssetType[assetType]) {
       byAssetType[assetType] = { count: 0, marketValue: 0, unrealizedPL: 0 };
@@ -318,24 +461,24 @@ async function aggregateUserData(userId: string, supabase: any) {
     byAssetType[assetType].unrealizedPL += unrealizedPL;
   });
 
-  const totalMarketValue = Object.values(byAssetType).reduce((sum: number, a: any) => sum + a.marketValue, 0);
+  const totalMarketValue = Object.values(byAssetType).reduce((sum, a) => sum + a.marketValue, 0);
 
   // Count positions by type
-  const stockCount = openPositions.filter((p: any) => p.asset_type === 'stock').length;
-  const optionCount = openPositions.filter((p: any) => p.asset_type === 'option').length;
-  const cryptoCount = openPositions.filter((p: any) => p.asset_type === 'crypto').length;
-  const futuresCount = openPositions.filter((p: any) => p.asset_type === 'futures').length;
+  const stockCount = openPositions.filter((p) => p.asset_type === 'stock').length;
+  const optionCount = openPositions.filter((p) => p.asset_type === 'option').length;
+  const cryptoCount = openPositions.filter((p) => p.asset_type === 'crypto').length;
+  const futuresCount = openPositions.filter((p) => p.asset_type === 'futures').length;
 
   // Find expiring options
   const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const expiringOptions = openPositions.filter((p: any) => {
+  const expiringOptions = openPositions.filter((p) => {
     if (p.asset_type !== 'option' || !p.expiration_date) return false;
     const expDate = new Date(p.expiration_date);
     return expDate >= new Date() && expDate <= sevenDaysFromNow;
   });
 
   // Find large unrealized losses
-  const largeUnrealizedLosses = openPositions.filter((p: any) => {
+  const largeUnrealizedLosses = openPositions.filter((p) => {
     const unrealizedPL = p.unrealized_pl || 0;
     const costBasis = Math.abs(p.total_cost_basis || 0);
     const percentLoss = costBasis > 0 ? (unrealizedPL / costBasis) * 100 : 0;
@@ -344,7 +487,7 @@ async function aggregateUserData(userId: string, supabase: any) {
 
   // Calculate concentration
   const positionsBySymbol: Record<string, number> = {};
-  openPositions.forEach((p: any) => {
+  openPositions.forEach((p) => {
     if (p.symbol) {
       const costBasis = Math.abs(p.total_cost_basis || 0);
       const unrealizedPL = p.unrealized_pl || 0;
@@ -353,34 +496,34 @@ async function aggregateUserData(userId: string, supabase: any) {
     }
   });
 
-  const concentration = Object.entries(positionsBySymbol)
+  const concentration: ConcentrationEntry[] = Object.entries(positionsBySymbol)
     .map(([symbol, value]) => ({
       symbol,
-      percentage: totalMarketValue > 0 ? ((value as number) / totalMarketValue) * 100 : 0,
+      percentage: totalMarketValue > 0 ? (value / totalMarketValue) * 100 : 0,
     }))
     .sort((a, b) => b.percentage - a.percentage)
     .slice(0, 5);
 
   // Most traded symbols
   const symbolCounts: Record<string, number> = {};
-  transactions.forEach((t: any) => {
+  transactions.forEach((t) => {
     const symbol = t.underlying_symbol || t.instrument;
     if (symbol) {
       symbolCounts[symbol] = (symbolCounts[symbol] || 0) + 1;
     }
   });
 
-  const mostTradedSymbols = Object.entries(symbolCounts)
+  const mostTradedSymbols: SymbolCount[] = Object.entries(symbolCounts)
     .map(([symbol, count]) => ({ symbol, count }))
-    .sort((a, b) => (b.count as number) - (a.count as number))
+    .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
   // Win rate
-  const recentClosedPositions = closedPositions.filter((p: any) => {
+  const recentClosedPositions = closedPositions.filter((p) => {
     if (!p.closed_at) return false;
     return new Date(p.closed_at) >= thirtyDaysAgo;
   });
-  const winningTrades = recentClosedPositions.filter((p: any) => (p.realized_pl || 0) > 0).length;
+  const winningTrades = recentClosedPositions.filter((p) => (p.realized_pl || 0) > 0).length;
   const winRate = recentClosedPositions.length > 0 ? (winningTrades / recentClosedPositions.length) * 100 : 0;
 
   // Build summary
@@ -402,7 +545,7 @@ async function aggregateUserData(userId: string, supabase: any) {
 - Futures: ${futuresCount} positions
 
 ### By Asset Type
-${Object.entries(byAssetType).map(([type, data]: [string, any]) =>
+${Object.entries(byAssetType).map(([type, data]) =>
   `- ${type}: ${data.count} positions, Market Value: $${data.marketValue.toFixed(2)}, P&L: $${data.unrealizedPL.toFixed(2)}`
 ).join('\n')}
 
@@ -412,11 +555,11 @@ ${Object.entries(byAssetType).map(([type, data]: [string, any]) =>
 - Recent Transactions: ${transactions.length}
 
 ### Most Traded Symbols
-${mostTradedSymbols.map((s: any) => `- ${s.symbol}: ${s.count} trades`).join('\n')}
+${mostTradedSymbols.map((s) => `- ${s.symbol}: ${s.count} trades`).join('\n')}
 
 ## Risk Metrics
 - Concentration (Top Holdings):
-${concentration.map((c: any) => `  - ${c.symbol}: ${c.percentage.toFixed(1)}%`).join('\n')}
+${concentration.map((c) => `  - ${c.symbol}: ${c.percentage.toFixed(1)}%`).join('\n')}
 - Expiring Options (Next 7 Days): ${expiringOptions.length}
 - Large Unrealized Losses: ${largeUnrealizedLosses.length}
 `.trim();
@@ -566,7 +709,7 @@ Deno.serve(async (req) => {
       // Extract detailed error information
       let errorMessage = 'Unknown error';
       let errorType = 'openai_api';
-      let errorDetails: any = null;
+      let errorDetails: { name?: string; stack?: string } | null = null;
       
       if (openaiError instanceof Error) {
         errorMessage = openaiError.message;

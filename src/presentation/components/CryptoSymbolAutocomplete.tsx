@@ -61,7 +61,7 @@ export const CryptoSymbolAutocomplete: React.FC<CryptoSymbolAutocompleteProps> =
     if (value && !hasUserInteracted) {
       setIsOpen(false);
     }
-  }, [value]);
+  }, [value, hasUserInteracted]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

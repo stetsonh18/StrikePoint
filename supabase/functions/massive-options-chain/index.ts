@@ -4,6 +4,65 @@ import { requireAuth } from '../_shared/auth.ts';
 const MASSIVE_BASE_URL = 'https://api.massive.com';
 const MASSIVE_API_KEY = Deno.env.get('MASSIVE_API_KEY');
 
+// Massive.io API types
+interface MassiveOptionDetails {
+  ticker?: string;
+  expiration_date?: string;
+  strike_price?: number;
+  contract_type?: 'call' | 'put';
+}
+
+interface MassiveOptionDay {
+  close?: number;
+  volume?: number;
+}
+
+interface MassiveOptionQuote {
+  bid?: number;
+  ask?: number;
+}
+
+interface MassiveOptionGreeks {
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+}
+
+interface MassiveOptionContract {
+  details?: MassiveOptionDetails;
+  day?: MassiveOptionDay;
+  last_quote?: MassiveOptionQuote;
+  open_interest?: number;
+  implied_volatility?: number;
+  greeks?: MassiveOptionGreeks;
+}
+
+interface MassiveOptionsResponse {
+  status?: string;
+  results?: MassiveOptionContract[];
+  next_url?: string;
+  underlying_price?: number;
+}
+
+interface OptionChainEntry {
+  symbol: string;
+  underlying: string;
+  expiration: string;
+  strike: number;
+  option_type: 'call' | 'put';
+  bid: number;
+  ask: number;
+  last: number;
+  volume: number;
+  open_interest: number;
+  implied_volatility?: number;
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -87,17 +146,17 @@ Deno.serve(async (req) => {
       throw new Error(`Massive API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as MassiveOptionsResponse;
 
     // Transform Massive.io response format
     // Massive returns: { status, results: [...], next_url }
     const results = data.results || [];
 
     // Group by expiration
-    const chain: Record<string, any[]> = {};
+    const chain: Record<string, OptionChainEntry[]> = {};
     const expirationsSet = new Set<string>();
 
-    results.forEach((contract: any) => {
+    results.forEach((contract) => {
       const exp = contract.details?.expiration_date;
       if (!exp) return;
 
@@ -108,12 +167,12 @@ Deno.serve(async (req) => {
       }
 
       // Transform to our format
-      const entry = {
+      const entry: OptionChainEntry = {
         symbol: contract.details?.ticker || '',
         underlying: underlyingSymbol,
         expiration: exp,
         strike: contract.details?.strike_price || 0,
-        option_type: contract.details?.contract_type || 'call',
+        option_type: (contract.details?.contract_type || 'call') as 'call' | 'put',
         bid: contract.day?.close || contract.last_quote?.bid || 0,
         ask: contract.last_quote?.ask || 0,
         last: contract.day?.close || 0,

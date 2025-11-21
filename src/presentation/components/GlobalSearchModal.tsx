@@ -59,6 +59,17 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     setSelectedIndex(0);
   }, [results.length]);
 
+  // Define handleSelectResult before handleKeyDown since it's used in the dependency array
+  const handleSelectResult = useCallback(
+    (result: SearchResult) => {
+      saveSearchHistory(query);
+      navigate(result.route);
+      onClose();
+      setQuery('');
+    },
+    [query, navigate, onClose]
+  );
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -85,17 +96,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
         return;
       }
     },
-    [results, selectedIndex, onClose]
-  );
-
-  const handleSelectResult = useCallback(
-    (result: SearchResult) => {
-      saveSearchHistory(query);
-      navigate(result.route);
-      onClose();
-      setQuery('');
-    },
-    [query, navigate, onClose]
+    [results, selectedIndex, onClose, handleSelectResult]
   );
 
   const handleSelectHistory = useCallback(

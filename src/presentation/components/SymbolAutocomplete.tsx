@@ -73,7 +73,7 @@ export const SymbolAutocomplete: React.FC<SymbolAutocompleteProps> = ({
     if (value && !hasUserInteracted) {
       setIsOpen(false);
     }
-  }, [value]);
+  }, [value, hasUserInteracted]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

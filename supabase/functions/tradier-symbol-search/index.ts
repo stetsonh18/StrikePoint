@@ -4,6 +4,28 @@ import { requireAuth } from '../_shared/auth.ts';
 const TRADIER_BASE_URL = 'https://api.tradier.com/v1';
 const TRADIER_ACCESS_TOKEN = Deno.env.get('TRADIER_ACCESS_TOKEN');
 
+// Tradier API types
+interface TradierSecurity {
+  symbol?: string;
+  description?: string;
+  type?: string;
+  exchange?: string;
+}
+
+interface TradierSecuritiesResponse {
+  securities?: {
+    security?: TradierSecurity | TradierSecurity[];
+  };
+}
+
+interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+  type: string;
+  exchange: string;
+  description: string;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -70,7 +92,7 @@ Deno.serve(async (req) => {
       throw new Error(`Tradier API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as TradierSecuritiesResponse;
 
     // Tradier returns: { securities: { security: [...] } } or { securities: { security: {...} } }
     const securities = data.securities?.security;
@@ -87,10 +109,10 @@ Deno.serve(async (req) => {
     }
 
     // Normalize to array format
-    const securitiesArray = Array.isArray(securities) ? securities : [securities];
+    const securitiesArray: TradierSecurity[] = Array.isArray(securities) ? securities : [securities];
 
     // Transform to our format
-    const results = securitiesArray.map((sec: any) => ({
+    const results: SymbolSearchResult[] = securitiesArray.map((sec) => ({
       symbol: sec.symbol || '',
       name: sec.description || sec.symbol || '',
       type: sec.type || 'stock',

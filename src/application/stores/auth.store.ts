@@ -199,12 +199,34 @@ export const useAuthStore = create<AuthStore>()((set) => {
         RealtimeService.cleanupSubscriptions(currentUser.id);
       }
       
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      // Try to sign out from server, but handle errors gracefully
+      // A 403 error can occur if the session is already invalid/expired on the server
+      // In that case, we still want to clear local state
+      try {
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
+        if (error) {
+          // Log the error but don't throw - we'll still clear local state
+          // 403 errors are common when session is already invalid on server
+          if (error.status === 403 || error.message?.includes('Forbidden')) {
+            logger.warn('Sign out returned 403 - session may already be invalid on server', error);
+          } else {
+            logger.error('Error during sign out', error);
+          }
+        }
+      } catch (error) {
+        // Catch any unexpected errors during sign out
+        logger.error('Unexpected error during sign out', error);
+      }
 
+      // Always clear local state, even if server sign out failed
+      // This ensures users can sign out even if their session is invalid
+      // Supabase will handle clearing its own storage automatically
+      
       // Clear Sentry user context
       clearSentryUser();
 
+      // Update local state - this will trigger the auth state change listener
+      // which will also help clean up any remaining session data
       set({
         user: null,
         session: null,

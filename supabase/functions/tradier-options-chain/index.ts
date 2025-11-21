@@ -4,6 +4,72 @@ import { requireAuth } from '../_shared/auth.ts';
 const TRADIER_BASE_URL = 'https://api.tradier.com/v1';
 const TRADIER_ACCESS_TOKEN = Deno.env.get('TRADIER_ACCESS_TOKEN');
 
+// Tradier API types
+interface TradierOptionGreeks {
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+  smv_vol?: number;
+}
+
+interface TradierOption {
+  symbol?: string;
+  expiration_date?: string;
+  strike?: number;
+  option_type?: 'call' | 'put';
+  bid?: number;
+  ask?: number;
+  last?: number;
+  volume?: number;
+  open_interest?: number;
+  greeks?: TradierOptionGreeks;
+}
+
+interface TradierOptionsResponse {
+  options?: {
+    option?: TradierOption | TradierOption[];
+  };
+}
+
+interface TradierExpirationsResponse {
+  expirations?: {
+    date?: string | string[];
+  };
+}
+
+interface TradierQuote {
+  last?: number;
+  bid?: number;
+  ask?: number;
+}
+
+interface TradierQuotesResponse {
+  quotes?: {
+    quote?: TradierQuote | TradierQuote[];
+  };
+}
+
+interface OptionChainEntry {
+  symbol: string;
+  underlying: string;
+  expiration: string;
+  strike: number;
+  option_type: 'call' | 'put';
+  bid: number;
+  ask: number;
+  last: number;
+  volume: number;
+  open_interest: number;
+  implied_volatility?: number;
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -97,7 +163,7 @@ Deno.serve(async (req) => {
         });
 
         if (expResponse.ok) {
-          const expData = await expResponse.json();
+          const expData = await expResponse.json() as TradierExpirationsResponse;
           const expirations = expData.expirations?.date || [];
           allExpirations = Array.isArray(expirations) ? expirations : [expirations];
           
@@ -124,7 +190,7 @@ Deno.serve(async (req) => {
     }
 
     // Step 2: Get options chain for all expirations (or just the specified one)
-    let allOptions: any[] = [];
+    let allOptions: TradierOption[] = [];
 
     // Fetch chains in parallel batches to avoid rate limits
     // For daily expirations, we'll fetch in batches of 10
@@ -145,9 +211,10 @@ Deno.serve(async (req) => {
           });
 
           if (response.ok) {
-            const data = await response.json();
+            const data = await response.json() as TradierOptionsResponse;
             // Tradier returns: { options: { option: [...] } }
-            const options = Array.isArray(data.options?.option) ? data.options.option : (data.options?.option ? [data.options.option] : []);
+            const optionData = data.options?.option;
+            const options: TradierOption[] = Array.isArray(optionData) ? optionData : (optionData ? [optionData] : []);
             return options;
           } else {
             console.warn(`[Tradier Options Chain] Failed to fetch chain for expiration ${expDate}: ${response.status}`);
@@ -175,10 +242,10 @@ Deno.serve(async (req) => {
     }
 
     // Transform and filter
-    const chain: Record<string, any[]> = {};
+    const chain: Record<string, OptionChainEntry[]> = {};
     const expirationsSet = new Set<string>();
 
-    allOptions.forEach((option: any) => {
+    allOptions.forEach((option) => {
       // Apply filters
       if (strike && option.strike !== parseFloat(strike)) return;
       if (side && option.option_type !== side) return;
@@ -193,12 +260,12 @@ Deno.serve(async (req) => {
       }
 
       // Transform to our format
-      const entry = {
+      const entry: OptionChainEntry = {
         symbol: option.symbol || '',
         underlying: underlyingSymbol,
         expiration: exp,
         strike: option.strike || 0,
-        option_type: option.option_type || 'call',
+        option_type: (option.option_type || 'call') as 'call' | 'put',
         bid: option.bid || 0,
         ask: option.ask || 0,
         last: option.last || 0,
@@ -231,8 +298,9 @@ Deno.serve(async (req) => {
         }
       });
       if (quoteResponse.ok) {
-        const quoteData = await quoteResponse.json();
-        const quote = Array.isArray(quoteData.quotes?.quote) ? quoteData.quotes.quote[0] : quoteData.quotes?.quote;
+        const quoteData = await quoteResponse.json() as TradierQuotesResponse;
+        const quoteDataValue = quoteData.quotes?.quote;
+        const quote: TradierQuote | undefined = Array.isArray(quoteDataValue) ? quoteDataValue[0] : quoteDataValue;
         underlyingPrice = quote?.last || 0;
       }
     } catch (e) {

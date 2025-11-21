@@ -33,18 +33,12 @@ test.describe('News Feed', () => {
     // Wait a bit for any async requests
     await page.waitForTimeout(3000);
     
-    // Check if news articles are loaded
-    const newsArticles = page.locator('[class*="bg-gradient-to-br"][class*="rounded-2xl"]').filter({ hasText: /article|news|headline/i });
-    const articleCount = await newsArticles.count();
-    
     // Log errors if any
     if (errors.length > 0) {
       console.log('CORS Errors found:', errors);
     }
     
-    // Check that either articles are loaded OR we see an appropriate error message (not CORS)
-    const hasArticles = articleCount > 0;
-    const hasErrorDisplay = await page.locator('text=/failed to load|error|no news/i').count() > 0;
+    // Check for CORS errors
     const hasCorsError = errors.some(e => e.includes('CORS'));
     
     // The test passes if:
