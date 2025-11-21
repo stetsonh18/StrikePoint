@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
-import { PositionRepository } from '@/infrastructure/repositories/position.repository';
+import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import { getDateRangeForDays } from './utils/dateRange';
 
@@ -14,7 +14,8 @@ export interface MonthlyPerformance {
 const DAYS_IN_MONTH = 30;
 
 /**
- * Hook to calculate performance for the last 30 days (realized + current unrealized)
+ * Hook to calculate performance for the last 30 days using snapshot comparison.
+ * Compares current portfolio value to snapshot from 30 days ago (includes fees).
  */
 export function useMonthlyPerformanceDashboard(
   userId: string,
@@ -26,18 +27,31 @@ export function useMonthlyPerformanceDashboard(
   return useQuery<MonthlyPerformance, Error>({
     queryKey,
     queryFn: async () => {
-      const { start, end } = getDateRangeForDays(DAYS_IN_MONTH);
-      const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
+      // Get snapshot from 30 days ago
+      const { start } = getDateRangeForDays(DAYS_IN_MONTH);
+      const monthAgoDate = new Date(start).toISOString().split('T')[0];
+      const monthAgoSnapshot = await PortfolioSnapshotRepository.getByDate(userId, monthAgoDate);
 
-      const monthlyPL = realizedPL + unrealizedPL;
-      const monthlyPLPercent = portfolioValue !== 0 ? (monthlyPL / Math.abs(portfolioValue)) * 100 : 0;
+      let monthlyPL: number;
+      let monthlyPLPercent: number;
+
+      if (monthAgoSnapshot) {
+        // Calculate monthly P&L as change from 30 days ago snapshot to current value (includes fees)
+        monthlyPL = portfolioValue - monthAgoSnapshot.portfolio_value;
+        monthlyPLPercent = monthAgoSnapshot.portfolio_value !== 0
+          ? (monthlyPL / Math.abs(monthAgoSnapshot.portfolio_value)) * 100
+          : 0;
+      } else {
+        // Fallback: use current unrealized only if no snapshot exists
+        monthlyPL = unrealizedPL;
+        monthlyPLPercent = portfolioValue !== 0 ? (monthlyPL / Math.abs(portfolioValue)) * 100 : 0;
+      }
 
       return {
         monthlyPL,
         monthlyPLPercent,
-        realizedPL,
-        unrealizedPL,
+        realizedPL: monthlyPL, // Total change (includes fees)
+        unrealizedPL: 0, // No breakdown when using snapshot comparison
       };
     },
     enabled: !!userId,
