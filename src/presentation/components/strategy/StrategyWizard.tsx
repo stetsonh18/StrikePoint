@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { StrategyAssetType, StrategyPlanGenerationPayload } from '@/domain/types';
 import { cn } from '@/shared/utils/cn';
+import { Dropdown } from '@/presentation/components/Dropdown';
+import { Sparkles } from 'lucide-react';
 
 const assetOptions: { label: string; value: StrategyAssetType }[] = [
   { label: 'Stocks', value: 'stock' },
@@ -45,9 +47,10 @@ const fallbackQuestions: Array<{ id: string; label: string; placeholder: string;
 interface StrategyWizardProps {
   isGenerating?: boolean;
   onGenerate: (payload: StrategyPlanGenerationPayload) => void;
+  onClose?: () => void;
 }
 
-export const StrategyWizard = ({ isGenerating, onGenerate }: StrategyWizardProps) => {
+export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWizardProps) => {
   const [assetType, setAssetType] = useState<StrategyAssetType>('stock');
   const [strategyStyle, setStrategyStyle] = useState('swing');
   const [planName, setPlanName] = useState('');
@@ -99,17 +102,40 @@ export const StrategyWizard = ({ isGenerating, onGenerate }: StrategyWizardProps
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 rounded-3xl p-6 border border-slate-800 shadow-lg shadow-slate-900/40">
-      <div className="flex items-start justify-between gap-4 mb-6">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Strategy Lab</p>
-            <h2 className="text-3xl font-semibold text-white mt-2">Design your plan of attack</h2>
-            <p className="text-slate-400 mt-1">Answer a few adaptive prompts and let AI assemble a guardrailed strategy for this asset.</p>
-          </div>
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-            AI Powered
-          </span>
+    <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 rounded-3xl p-6 border border-slate-800 shadow-lg shadow-slate-900/40 relative group">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
+        >
+          <span className="sr-only">Close</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      )}
+      <div className="flex items-start justify-between gap-4 mb-6 pr-8">
+        <div>
+          <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Strategy Lab</p>
+          <h2 className="text-3xl font-semibold text-white mt-2">Design your plan of attack</h2>
+          <p className="text-slate-400 mt-1">Answer a few adaptive prompts and let AI assemble a guardrailed strategy for this asset.</p>
         </div>
+        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+          AI Powered
+        </span>
+      </div>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -144,7 +170,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate }: StrategyWizardProps
                   className={cn(
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition',
                     strategyStyle === style
-                      ? 'bg-white/10 border-white/40 text-white'
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-glow-sm'
                       : 'border-slate-700 text-slate-300 hover:border-slate-500'
                   )}
                 >
@@ -186,15 +212,16 @@ export const StrategyWizard = ({ isGenerating, onGenerate }: StrategyWizardProps
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Risk tolerance</label>
-            <select
+            <Dropdown
               className="mt-2 w-full rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               value={riskTolerance}
-              onChange={(event) => setRiskTolerance(event.target.value)}
-            >
-              <option value="conservative">Conservative</option>
-              <option value="moderate">Moderate</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
+              onChange={setRiskTolerance}
+              options={[
+                { value: 'conservative', label: 'Conservative' },
+                { value: 'moderate', label: 'Moderate' },
+                { value: 'aggressive', label: 'Aggressive' },
+              ]}
+            />
           </div>
         </div>
 
@@ -281,7 +308,14 @@ export const StrategyWizard = ({ isGenerating, onGenerate }: StrategyWizardProps
           disabled={isGenerating}
           className="w-full mt-4 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:from-emerald-400 hover:to-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {isGenerating ? 'Generating strategy...' : 'Generate AI Strategy'}
+          {isGenerating ? (
+            <span className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 animate-spin" />
+              Analyzing portfolio & generating strategy...
+            </span>
+          ) : (
+            'Generate AI Strategy'
+          )}
         </button>
       </div>
     </div>

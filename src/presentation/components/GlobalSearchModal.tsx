@@ -59,7 +59,10 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     setSelectedIndex(0);
   }, [results.length]);
 
-  // Define handleSelectResult before handleKeyDown since it's used in the dependency array
+  // Store the select handler in a ref to avoid dependency issues
+  const handleSelectResultRef = useRef<(result: SearchResult) => void>();
+  
+  // Handle selecting a result
   const handleSelectResult = useCallback(
     (result: SearchResult) => {
       saveSearchHistory(query);
@@ -69,6 +72,11 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     },
     [query, navigate, onClose]
   );
+
+  // Update the ref whenever handleSelectResult changes
+  useEffect(() => {
+    handleSelectResultRef.current = handleSelectResult;
+  }, [handleSelectResult]);
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
@@ -92,11 +100,12 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
 
       if (e.key === 'Enter' && results[selectedIndex]) {
         e.preventDefault();
-        handleSelectResult(results[selectedIndex]);
+        // Use the ref to call the latest version of handleSelectResult
+        handleSelectResultRef.current?.(results[selectedIndex]);
         return;
       }
     },
-    [results, selectedIndex, onClose, handleSelectResult]
+    [results, selectedIndex, onClose]
   );
 
   const handleSelectHistory = useCallback(

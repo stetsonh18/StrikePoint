@@ -5,6 +5,7 @@ import {
   useStrategyPlans,
   useGenerateStrategyPlan,
   useSetPrimaryStrategyPlan,
+  useUpdateStrategyPlan,
   useDeleteStrategyPlan,
   useEvaluateStrategyAlignment,
   useStrategyAlignmentHistory,
@@ -15,6 +16,8 @@ import { StrategyWizard } from '@/presentation/components/strategy/StrategyWizar
 import { StrategyPlanDetail } from '@/presentation/components/strategy/StrategyPlanDetail';
 import { StrategyPlanList } from '@/presentation/components/strategy/StrategyPlanList';
 import { cn } from '@/shared/utils/cn';
+import { usePortfolioValue } from '@/application/hooks/usePortfolioValue';
+import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
 
 type AssetFilter = 'all' | StrategyAssetType;
 
@@ -34,14 +37,19 @@ export const Strategy = () => {
   const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
   const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>();
 
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+
   const planFilters = useMemo(() => {
     if (assetFilter === 'all') return undefined;
     return { asset_type: assetFilter };
   }, [assetFilter]);
 
   const { data: plans = [], isLoading: plansLoading } = useStrategyPlans(userId, planFilters);
+  const { portfolioValue, netCashFlow } = usePortfolioValue(userId || '');
+  const { data: winRateData } = useWinRateMetrics(userId || '');
 
   const generateMutation = useGenerateStrategyPlan();
+  const updateMutation = useUpdateStrategyPlan();
   const setPrimaryMutation = useSetPrimaryStrategyPlan(userId);
   const deleteMutation = useDeleteStrategyPlan(userId);
   const evaluateMutation = useEvaluateStrategyAlignment();
@@ -50,8 +58,11 @@ export const Strategy = () => {
   useEffect(() => {
     if (!plans.length) {
       setSelectedPlanId(undefined);
+      // If no plans exist, open the wizard by default so they can create one
+      setIsWizardOpen(true);
       return;
     }
+    // If plans exist, default wizard to closed unless explicitly opened
     if (!selectedPlanId || !plans.find((plan) => plan.id === selectedPlanId)) {
       const primaryPlan = plans.find((plan) => plan.is_primary);
       setSelectedPlanId(primaryPlan?.id ?? plans[0].id);
@@ -69,15 +80,38 @@ export const Strategy = () => {
   }, [plans, assetFilter]);
 
   const handleGenerate = (payload: StrategyPlanGenerationPayload) => {
-    generateMutation.mutate(payload, {
+    // Inject portfolio context
+    const enrichedPayload: StrategyPlanGenerationPayload = {
+      ...payload,
+      portfolioContext: {
+        totalBalance: portfolioValue,
+        cashBalance: netCashFlow, // Approximation for now, ideally use cash balance hook if available
+        buyingPower: netCashFlow, // Simplified
+        activePositionsCount: 0, // TODO: Get from usePositions if needed
+        recentWinRate: winRateData?.winRate,
+      },
+    };
+
+    generateMutation.mutate(enrichedPayload, {
       onSuccess: (data) => {
         success('Strategy created', { description: 'AI assembled a fresh playbook.' });
         setSelectedPlanId(data.plan.id);
+        setIsWizardOpen(false);
       },
       onError: (err: Error) => {
         error('Unable to generate strategy', { description: err.message });
       },
     });
+  };
+
+  const handleUpdateStatus = (plan: TradingStrategyPlan, status: 'active' | 'draft' | 'archived') => {
+    updateMutation.mutate(
+      { id: plan.id, updates: { status } },
+      {
+        onSuccess: () => success('Strategy updated', { description: `Status changed to ${status}` }),
+        onError: (err: Error) => error('Unable to update strategy', { description: err.message }),
+      }
+    );
   };
 
   const handleSetPrimary = (plan: TradingStrategyPlan) => {
@@ -151,6 +185,17 @@ export const Strategy = () => {
               {option.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setIsWizardOpen(true)}
+            className={cn(
+              'ml-2 px-3 py-1.5 text-xs font-semibold rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors',
+              isWizardOpen && 'opacity-50 cursor-not-allowed'
+            )}
+            disabled={isWizardOpen}
+          >
+            + New Strategy
+          </button>
         </div>
       </div>
 
@@ -187,16 +232,23 @@ export const Strategy = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <div className="xl:col-span-4">
-          <StrategyWizard isGenerating={generateMutation.isPending} onGenerate={handleGenerate} />
-        </div>
-        <div className="xl:col-span-5">
+        {isWizardOpen && (
+          <div className="xl:col-span-4">
+            <StrategyWizard
+              isGenerating={generateMutation.isPending}
+              onGenerate={handleGenerate}
+              onClose={() => setIsWizardOpen(false)}
+            />
+          </div>
+        )}
+        <div className={cn('xl:col-span-5', !isWizardOpen && 'xl:col-span-9')}>
           <StrategyPlanDetail
             plan={selectedPlan}
             isLoading={plansLoading}
             onEvaluateAlignment={handleEvaluateAlignment}
             evaluating={evaluateMutation.isPending}
             onSetPrimary={selectedPlan ? () => handleSetPrimary(selectedPlan) : undefined}
+            onUpdateStatus={selectedPlan ? (status) => handleUpdateStatus(selectedPlan, status) : undefined}
             alignmentHistory={alignmentHistoryQuery.data}
           />
         </div>
@@ -216,4 +268,3 @@ export const Strategy = () => {
 };
 
 export default Strategy;
-

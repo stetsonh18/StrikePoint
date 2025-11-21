@@ -20,6 +20,7 @@ import { useAuthStore } from '@/application/stores/auth.store';
 import { useAIInsights, useMarkInsightAsRead, useDismissInsight } from '@/application/hooks/useAIInsights';
 import { useStrategyPlans } from '@/application/hooks/useStrategyPlans';
 import { AIInsightGenerationService } from '@/infrastructure/services/aiInsightGenerationService';
+import { Select } from '@/presentation/components/Select';
 
 const mapFilterTypeToApiType = (type: InsightType | 'all'): AIInsightFilters['type'] | undefined => {
   if (type === 'all') {
@@ -53,6 +54,23 @@ const mapInsightTypeToDisplay = (type: AIInsight['type']): InsightType => {
       return type;
   }
 };
+
+const PRIORITY_OPTIONS = [
+  { value: 'all', label: 'All Priorities' },
+  { value: 'critical', label: 'Critical' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+];
+
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All Types' },
+  { value: 'risk_warning', label: 'Risk Warnings' },
+  { value: 'opportunity', label: 'Opportunities' },
+  { value: 'pattern_recognition', label: 'Patterns' },
+  { value: 'performance_analysis', label: 'Performance' },
+  { value: 'strategy_suggestion', label: 'Strategies' },
+];
 
 const AIInsights: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -274,30 +292,19 @@ const AIInsights: React.FC = () => {
             </span>
           </div>
 
-          <select
+          <Select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value as InsightPriority | 'all')}
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-          >
-            <option value="all">All Priorities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
+            options={PRIORITY_OPTIONS}
+            controlSize="sm"
+          />
 
-          <select
+          <Select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as InsightType | 'all')}
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-          >
-            <option value="all">All Types</option>
-            <option value="risk_warning">Risk Warnings</option>
-            <option value="opportunity">Opportunities</option>
-            <option value="pattern_recognition">Patterns</option>
-            <option value="performance_analysis">Performance</option>
-            <option value="strategy_suggestion">Strategies</option>
-          </select>
+            options={TYPE_OPTIONS}
+            controlSize="sm"
+          />
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input

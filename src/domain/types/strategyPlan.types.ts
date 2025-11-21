@@ -95,6 +95,13 @@ export interface StrategyPlanGenerationPayload {
   riskTolerance?: string;
   makePrimary?: boolean;
   questions?: StrategyPlanQuestion[];
+  portfolioContext?: {
+    totalBalance: number;
+    cashBalance: number;
+    buyingPower: number;
+    activePositionsCount: number;
+    recentWinRate?: number;
+  };
   [key: string]: unknown;
 }
 

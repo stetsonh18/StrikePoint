@@ -221,7 +221,7 @@ export const useAuthStore = create<AuthStore>()((set) => {
       // Always clear local state, even if server sign out failed
       // This ensures users can sign out even if their session is invalid
       // Supabase will handle clearing its own storage automatically
-      
+
       // Clear Sentry user context
       clearSentryUser();
 
