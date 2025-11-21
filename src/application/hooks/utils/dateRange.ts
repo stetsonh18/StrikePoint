@@ -1,13 +1,20 @@
 export function getDateRangeForDays(lengthInDays: number): { start: string; end: string } {
   const sanitizedLength = Math.max(1, Math.floor(lengthInDays));
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
+  const now = new Date();
+
+  // Work in UTC to avoid timezone issues
+  const end = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    23, 59, 59, 999
+  ));
 
   const start = new Date(end);
   if (sanitizedLength > 1) {
-    start.setDate(start.getDate() - (sanitizedLength - 1));
+    start.setUTCDate(start.getUTCDate() - (sanitizedLength - 1));
   }
-  start.setHours(0, 0, 0, 0);
+  start.setUTCHours(0, 0, 0, 0);
 
   return {
     start: start.toISOString(),
