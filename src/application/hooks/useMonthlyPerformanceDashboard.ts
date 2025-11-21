@@ -31,20 +31,23 @@ export function useMonthlyPerformanceDashboard(
 
       // Get realized P&L from positions closed in last 30 days
       const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
+      const grossRealizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
       // Get fees from all transactions in last 30 days
       const transactions = await TransactionRepository.getAll(userId, { start_date: start, end_date: end });
       const totalFees = transactions.reduce((sum, tx) => sum + Number(tx.fees || 0), 0);
 
-      // Monthly P&L = realized + unrealized - fees
-      const monthlyPL = realizedPL + unrealizedPL - totalFees;
+      // Net realized P&L = gross realized - fees
+      const netRealizedPL = grossRealizedPL - totalFees;
+
+      // Monthly P&L = net realized + unrealized
+      const monthlyPL = netRealizedPL + unrealizedPL;
       const monthlyPLPercent = portfolioValue !== 0 ? (monthlyPL / Math.abs(portfolioValue)) * 100 : 0;
 
       return {
         monthlyPL,
         monthlyPLPercent,
-        realizedPL,
+        realizedPL: netRealizedPL, // Show net realized (after fees)
         unrealizedPL,
       };
     },

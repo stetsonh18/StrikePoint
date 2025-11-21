@@ -31,20 +31,23 @@ export function useWeeklyPerformance(
 
       // Get realized P&L from positions closed in last 7 days
       const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
+      const grossRealizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
       // Get fees from all transactions in last 7 days
       const transactions = await TransactionRepository.getAll(userId, { start_date: start, end_date: end });
       const totalFees = transactions.reduce((sum, tx) => sum + Number(tx.fees || 0), 0);
 
-      // Weekly P&L = realized + unrealized - fees
-      const weeklyPL = realizedPL + unrealizedPL - totalFees;
+      // Net realized P&L = gross realized - fees
+      const netRealizedPL = grossRealizedPL - totalFees;
+
+      // Weekly P&L = net realized + unrealized
+      const weeklyPL = netRealizedPL + unrealizedPL;
       const weeklyPLPercent = portfolioValue !== 0 ? (weeklyPL / Math.abs(portfolioValue)) * 100 : 0;
 
       return {
         weeklyPL,
         weeklyPLPercent,
-        realizedPL,
+        realizedPL: netRealizedPL, // Show net realized (after fees)
         unrealizedPL,
       };
     },
