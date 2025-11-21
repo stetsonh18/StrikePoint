@@ -116,7 +116,7 @@ export const Dashboard = () => {
   }, [allPositions]);
 
   const totalOpenPositions = normalizedOpenPositions || positionStats?.open || 0;
-  
+
   // Calculate realized P&L percentage
   // Snapshot generation mutation
   const generateSnapshotMutation = useMutation({
@@ -132,7 +132,7 @@ export const Dashboard = () => {
       });
     },
   });
-  
+
   // Use net cash flow for cash balance display
   const cashBalance = netCashFlow || 0;
 
@@ -186,7 +186,7 @@ export const Dashboard = () => {
 
   // Fetch quotes for positions
   const { data: stockQuotes = {} } = useStockQuotes(stockSymbols, stockSymbols.length > 0);
-  
+
   // For crypto, we need to convert symbols to coin IDs
   const [cryptoCoinIds, setCryptoCoinIds] = useState<string[]>([]);
   useEffect(() => {
@@ -269,9 +269,9 @@ export const Dashboard = () => {
   const assetBreakdown = useMemo(() => {
     return {
       stocks: { count: normalizedAssetCounts.stocks, value: assetMetrics.stocks.marketValue },
-      options: { count: normalizedAssetCounts.options, value: assetMetrics.options.unrealizedPL },
+      options: { count: normalizedAssetCounts.options, value: assetMetrics.options.marketValue },
       crypto: { count: normalizedAssetCounts.crypto, value: assetMetrics.crypto.marketValue },
-      futures: { count: normalizedAssetCounts.futures, value: assetMetrics.futures.unrealizedPL },
+      futures: { count: normalizedAssetCounts.futures, value: assetMetrics.futures.marketValue },
       cash: { count: 1, value: cashBalance },
     };
   }, [assetMetrics, cashBalance, normalizedAssetCounts]);
@@ -345,46 +345,47 @@ export const Dashboard = () => {
 
   // Calculate asset allocation for pie chart - use assetBreakdown values
   const assetAllocation = useMemo(() => {
-    const allocation: Array<{ name: string; value: number; percent: number }> = [];
-    const total = assetBreakdown.stocks.value + assetBreakdown.options.value + 
-                  assetBreakdown.crypto.value + assetBreakdown.futures.value + 
-                  assetBreakdown.cash.value;
+    const allocation: Array<{ name: string; value: number }> = [];
+
+    // Use absolute values for allocation to handle short positions (Gross Exposure)
+    const stocksValue = Math.abs(assetBreakdown.stocks.value);
+    const optionsValue = Math.abs(assetBreakdown.options.value);
+    const cryptoValue = Math.abs(assetBreakdown.crypto.value);
+    const futuresValue = Math.abs(assetBreakdown.futures.value);
+    const cashValue = Math.abs(assetBreakdown.cash.value);
+
+    const total = stocksValue + optionsValue + cryptoValue + futuresValue + cashValue;
 
     if (total === 0) return [];
 
-    if (assetBreakdown.stocks.value > 0) {
+    if (stocksValue > 0) {
       allocation.push({
         name: 'Stock',
-        value: Number(assetBreakdown.stocks.value.toFixed(2)),
-        percent: Number(((assetBreakdown.stocks.value / total) * 100).toFixed(1)),
+        value: Number(stocksValue.toFixed(2)),
       });
     }
-    if (assetBreakdown.options.value > 0) {
+    if (optionsValue > 0) {
       allocation.push({
         name: 'Option',
-        value: Number(assetBreakdown.options.value.toFixed(2)),
-        percent: Number(((assetBreakdown.options.value / total) * 100).toFixed(1)),
+        value: Number(optionsValue.toFixed(2)),
       });
     }
-    if (assetBreakdown.crypto.value > 0) {
+    if (cryptoValue > 0) {
       allocation.push({
         name: 'Crypto',
-        value: Number(assetBreakdown.crypto.value.toFixed(2)),
-        percent: Number(((assetBreakdown.crypto.value / total) * 100).toFixed(1)),
+        value: Number(cryptoValue.toFixed(2)),
       });
     }
-    if (assetBreakdown.futures.value > 0) {
+    if (futuresValue > 0) {
       allocation.push({
         name: 'Futures',
-        value: Number(assetBreakdown.futures.value.toFixed(2)),
-        percent: Number(((assetBreakdown.futures.value / total) * 100).toFixed(1)),
+        value: Number(futuresValue.toFixed(2)),
       });
     }
-    if (assetBreakdown.cash.value > 0) {
+    if (cashValue > 0) {
       allocation.push({
         name: 'Cash',
-        value: Number(assetBreakdown.cash.value.toFixed(2)),
-        percent: Number(((assetBreakdown.cash.value / total) * 100).toFixed(1)),
+        value: Number(cashValue.toFixed(2)),
       });
     }
 
@@ -792,7 +793,7 @@ export const Dashboard = () => {
           )}
           {!isNewsExpanded && marketNews.length > 0 && (
             <div className="text-center py-8">
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mb-2">{marketNews.length} articles available</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-2">{marketNews.length} articles available</p>
               <p className="text-slate-500 dark:text-slate-500 text-xs">Click expand to view</p>
             </div>
           )}
