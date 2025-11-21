@@ -2,6 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { DayOfWeekPerformance } from '@/application/hooks/useDayOfWeekPerformance';
 import { formatCurrency } from '@/shared/utils/formatUtils';
+import { useTheme } from '@/shared/theme/useTheme';
 
 interface DayOfWeekChartProps {
   data: DayOfWeekPerformance[];
@@ -10,6 +11,8 @@ interface DayOfWeekChartProps {
 }
 
 export const DayOfWeekChart = ({ data, isLoading, showWinRate = false }: DayOfWeekChartProps) => {
+  const { theme } = useTheme();
+
   if (isLoading) {
     return (
       <div className="h-64 flex items-center justify-center">
@@ -59,6 +62,29 @@ export const DayOfWeekChart = ({ data, isLoading, showWinRate = false }: DayOfWe
     return null;
   };
 
+  const legendTextColor = theme === 'dark' ? '#e2e8f0' : '#475569';
+  const renderLegend = () => (
+    <div className="flex flex-wrap gap-4 text-xs" style={{ color: legendTextColor }}>
+      {showWinRate ? (
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-3 w-3 rounded-sm bg-[#10b981]" />
+          <span>Win Rate</span>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded-sm bg-[#10b981]" />
+            <span>Profit</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded-sm bg-[#ef4444]" />
+            <span>Loss</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <ResponsiveContainer width="100%" height={250} minHeight={200}>
       <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
@@ -74,7 +100,12 @@ export const DayOfWeekChart = ({ data, isLoading, showWinRate = false }: DayOfWe
           style={{ fontSize: '12px' }}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend />
+        <Legend
+          verticalAlign="bottom"
+          align="left"
+          content={renderLegend}
+          wrapperStyle={{ paddingTop: 12 }}
+        />
         <Bar
           dataKey={showWinRate ? 'winRate' : 'pl'}
           name={showWinRate ? 'Win Rate' : 'P&L'}

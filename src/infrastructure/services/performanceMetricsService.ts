@@ -834,15 +834,86 @@ export class PerformanceMetricsService {
       this.isRealizedTrade(trade)
     );
 
+    const closingTransactionIdSet = new Set<string>();
+    realizedTrades.forEach((trade) => {
+      trade.legs.forEach((leg) => {
+        (leg.closing_transaction_ids || []).forEach((id) => {
+          if (id) {
+            closingTransactionIdSet.add(id);
+          }
+        });
+      });
+    });
+    const closingTransactionDates =
+      closingTransactionIdSet.size > 0
+        ? await TransactionRepository.getActivityDates(Array.from(closingTransactionIdSet))
+        : {};
+
+    const normalizeDateKey = (value: string | Date | null | undefined): string | null => {
+      if (!value) {
+        return null;
+      }
+
+      const toDateOnlyString = (input: string) => {
+        if (!input) return null;
+        const [datePart] = input.split(/[T\s]/);
+        return datePart || null;
+      };
+
+      if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) {
+          return null;
+        }
+        return value.toISOString().split('T')[0];
+      }
+
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+
+      if (typeof value === 'string') {
+        return toDateOnlyString(value);
+      }
+
+      return null;
+    };
+
+    const getTradeDateKey = (trade: NormalizedTrade): string | null => {
+      const legClosingDates = trade.legs
+        .flatMap((leg) => leg.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((date): date is string => Boolean(date));
+
+      if (legClosingDates.length > 0) {
+        const latestLegDate = this.getLatestDate(legClosingDates);
+        return normalizeDateKey(latestLegDate);
+      }
+
+      const closedDate = this.getTradeClosedDate(trade);
+      return closedDate ? normalizeDateKey(closedDate) : null;
+    };
+
+    const getDayIndexFromDateKey = (dateKey: string): number | null => {
+      const date = new Date(`${dateKey}T00:00:00Z`);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      return date.getUTCDay();
+    };
+
     const dayMap = new Map<number, { pl: number; trades: NormalizedTrade[] }>();
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     realizedTrades.forEach((trade) => {
-      const closedDate = this.getTradeClosedDate(trade);
-      if (!closedDate) {
+      const dateKey = getTradeDateKey(trade);
+      if (!dateKey) {
         return;
       }
-      const dayOfWeek = closedDate.getDay();
+      const dayOfWeek = getDayIndexFromDateKey(dateKey);
+      if (dayOfWeek === null) {
+        return;
+      }
       
       if (!dayMap.has(dayOfWeek)) {
         dayMap.set(dayOfWeek, { pl: 0, trades: [] });
