@@ -453,7 +453,7 @@ Deno.serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
         },
       }
     );
@@ -473,7 +473,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -495,7 +495,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -519,7 +519,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -547,7 +547,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -606,7 +606,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -698,7 +698,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
           },
         }
       );
@@ -716,7 +716,7 @@ Deno.serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
         },
       }
     );
@@ -737,7 +737,7 @@ Deno.serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, baggage, sentry-trace',
         },
       }
     );
