@@ -55,11 +55,19 @@ export interface JournalEntryUpdate {
  * Journal Entry Repository
  * Handles all database operations for journal_entries table
  */
+type JournalEntryRow = Omit<JournalEntryInsert, 'linked_position_ids' | 'linked_transaction_ids'> & {
+  id: string;
+  linked_position_ids?: string[] | null;
+  linked_transaction_ids?: string[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export class JournalRepository {
   /**
    * Map database row to JournalEntry domain type
    */
-  private static mapRowToEntry(row: any): JournalEntry {
+  private static mapRowToEntry(row: JournalEntryRow): JournalEntry {
     // Combine position and transaction IDs into linkedTradeIds for domain model
     const linkedTradeIds = [
       ...(row.linked_position_ids || []),

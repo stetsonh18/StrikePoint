@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { TransactionService } from '@/infrastructure/services/transactionService';
-import type { StockPosition } from '@/domain/types';
+import type { StockPosition, TransactionInsert } from '@/domain/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
@@ -79,13 +79,12 @@ export const SellPositionForm: React.FC<SellPositionFormProps> = ({
 
       const transactionData = {
         user_id: userId,
-        import_id: null,
         activity_date: useDate,
         process_date: useProcessDate,
         settle_date: useSettleDate,
         description: description || `Sold ${quantityNum} shares of ${position.symbol}`,
         notes: notes || null,
-        tags: [],
+        tags: [] as string[],
         fees: parseFloat(fees) || 0,
         asset_type: 'stock' as const,
         transaction_code: 'Sell',
@@ -96,7 +95,12 @@ export const SellPositionForm: React.FC<SellPositionFormProps> = ({
         amount: priceNum * quantityNum, // Positive for sell (credit)
         is_opening: null,
         is_long: false, // Sell is not long
-      };
+        option_type: null,
+        strike_price: null,
+        expiration_date: null,
+        position_id: position.id,
+        strategy_id: null,
+      } satisfies Omit<TransactionInsert, 'import_id'>;
 
       await TransactionService.createManualTransaction(transactionData);
 
@@ -160,7 +164,7 @@ export const SellPositionForm: React.FC<SellPositionFormProps> = ({
           <div>
             <h2 id="sell-position-title" className="text-2xl font-bold text-slate-100">Sell Position</h2>
             <p id="sell-position-description" className="text-sm text-slate-400 mt-1">
-              {position.symbol} • {position.current_quantity} shares available
+              {position.symbol} • {position.quantity} shares available
             </p>
           </div>
           <button

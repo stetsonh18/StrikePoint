@@ -144,12 +144,14 @@ export class AIInsightRepository {
         }
       }
 
-      if (filters.is_read !== undefined) {
-        query = query.eq('is_read', filters.is_read);
+      const isReadFilter = filters.isRead ?? filters.is_read;
+      if (isReadFilter !== undefined) {
+        query = query.eq('is_read', isReadFilter);
       }
 
-      if (filters.is_dismissed !== undefined) {
-        query = query.eq('is_dismissed', filters.is_dismissed);
+      const isDismissedFilter = filters.isDismissed ?? filters.is_dismissed;
+      if (isDismissedFilter !== undefined) {
+        query = query.eq('is_dismissed', isDismissedFilter);
       }
 
       if (filters.actionable !== undefined) {

@@ -234,7 +234,7 @@ const News: React.FC = () => {
                 { value: 'crypto', label: 'Crypto' },
                 { value: 'company', label: 'Company' },
               ]}
-              size="sm"
+              controlSize="sm"
             />
 
             <Select
@@ -244,7 +244,7 @@ const News: React.FC = () => {
                 { value: 'newest', label: 'Newest First' },
                 { value: 'oldest', label: 'Oldest First' },
               ]}
-              size="sm"
+              controlSize="sm"
               title="Sort order"
             />
           </div>

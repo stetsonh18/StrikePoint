@@ -1,8 +1,8 @@
 import { PortfolioSnapshotRepository, type CreatePortfolioSnapshotDto } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { PositionRepository } from '@/infrastructure/repositories/position.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
-import { getStockQuotes } from '@/infrastructure/services/marketDataService';
-import { getCryptoQuotes } from '@/infrastructure/services/cryptoMarketDataService';
+import { getStockQuotes, type StockQuote } from '@/infrastructure/services/marketDataService';
+import { getCryptoQuotes, type CryptoQuote } from '@/infrastructure/services/cryptoMarketDataService';
 import { getOptionQuotes, getOptionsChain } from '@/infrastructure/services/optionsMarketDataService';
 import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import type { Position, OptionQuote, OptionsChain } from '@/domain/types';
@@ -118,16 +118,33 @@ export class PortfolioSnapshotService {
 
       // Fetch quotes and options chains in parallel
       // Use Promise.allSettled for chains to avoid failing if one chain fetch fails
+      const stockQuotesPromise: Promise<Record<string, StockQuote>> =
+        stockSymbols.length > 0
+          ? getStockQuotes(stockSymbols).catch(() => ({} as Record<string, StockQuote>))
+          : Promise.resolve<Record<string, StockQuote>>({});
+
+      const cryptoQuotesPromise: Promise<Record<string, CryptoQuote>> =
+        cryptoCoinIds.length > 0
+          ? getCryptoQuotes(cryptoCoinIds).catch(() => ({} as Record<string, CryptoQuote>))
+          : Promise.resolve<Record<string, CryptoQuote>>({});
+
+      const optionQuotesPromise: Promise<Record<string, OptionQuote>> =
+        optionSymbols.length > 0
+          ? getOptionQuotes(optionSymbols).catch(() => ({} as Record<string, OptionQuote>))
+          : Promise.resolve<Record<string, OptionQuote>>({});
+
+      const optionsChainPromises = optionUnderlyingSymbols.map((symbol) =>
+        getOptionsChain(symbol).catch((error) => {
+          console.error(`[PortfolioSnapshotService] Error fetching options chain for ${symbol}:`, error);
+          return null;
+        })
+      );
+
       const [stockQuotes, cryptoQuotesData, optionQuotes, ...chainResults] = await Promise.all([
-        stockSymbols.length > 0 ? getStockQuotes(stockSymbols).catch(() => ({})) : Promise.resolve({}),
-        cryptoCoinIds.length > 0 ? getCryptoQuotes(cryptoCoinIds).catch(() => ({})) : Promise.resolve({}),
-        optionSymbols.length > 0 ? getOptionQuotes(optionSymbols).catch(() => ({})) : Promise.resolve({}),
-        ...optionUnderlyingSymbols.map((symbol) => 
-          getOptionsChain(symbol).catch((error) => {
-            console.error(`[PortfolioSnapshotService] Error fetching options chain for ${symbol}:`, error);
-            return null;
-          })
-        ),
+        stockQuotesPromise,
+        cryptoQuotesPromise,
+        optionQuotesPromise,
+        ...optionsChainPromises,
       ]);
 
       // Build chainsByUnderlying map for fallback
@@ -140,8 +157,8 @@ export class PortfolioSnapshotService {
       });
       
       // Create a symbol-to-quote mapping for crypto
-      const cryptoQuotes: Record<string, any> = {};
-      Object.values(cryptoQuotesData).forEach((quote: any) => {
+      const cryptoQuotes: Record<string, CryptoQuote> = {};
+      Object.values(cryptoQuotesData).forEach((quote) => {
         if (quote.symbol) {
           cryptoQuotes[quote.symbol.toUpperCase()] = quote;
         }

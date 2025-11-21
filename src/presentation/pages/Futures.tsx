@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Plus, Download, Search, Calendar, DollarSign, Activity, Shield, Edit, Trash2 } from 'lucide-react';
+import { TrendingUp, Plus, Download, Search, Calendar, DollarSign, Activity, Shield, Edit, Trash2 } from 'lucide-react';
 import type { FuturesContract, FuturesTransaction, Position, Transaction } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { usePositions, useDeletePosition } from '@/application/hooks/usePositions';
-import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
+import { useTransactions, useDeleteTransaction } from '@/application/hooks/useTransactions';
 import { toFuturesContract, toFuturesTransaction } from '@/shared/utils/positionTransformers';
 import { parseContractSymbol, FUTURES_MONTH_CODES } from '@/domain/types/futures.types';
 import { FuturesTransactionForm } from '@/presentation/components/FuturesTransactionForm';
@@ -13,12 +13,10 @@ import { MarketStatusIndicator } from '@/presentation/components/MarketStatusInd
 import { useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '@/presentation/components/SkeletonLoader';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
-import { useToast } from '@/shared/hooks/useToast';
 import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
-import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
@@ -37,10 +35,8 @@ const Futures: React.FC = () => {
   const [positionSort, setPositionSort] = useState<SortConfig<FuturesContract> | null>(null);
   const [transactionSort, setTransactionSort] = useState<SortConfig<FuturesTransaction> | null>(null);
   
-  const toast = useToast();
   const confirmation = useConfirmation();
   const deletePositionMutation = useDeletePosition();
-  const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch contract specs for finding contract IDs
@@ -838,7 +834,7 @@ const Futures: React.FC = () => {
                         ${tx.price.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-900 dark:text-slate-100">
-                        ${tx.fees.toFixed(2)}
+                        ${(tx.fees ?? 0).toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <span
@@ -931,11 +927,11 @@ const Futures: React.FC = () => {
       {/* Confirmation Dialog */}
       <ConfirmationDialog
         isOpen={confirmation.isOpen}
-        title={confirmation.title}
-        message={confirmation.message}
-        confirmLabel={confirmation.confirmLabel}
-        cancelLabel={confirmation.cancelLabel}
-        variant={confirmation.variant}
+        title={confirmation.options.title}
+        message={confirmation.options.message}
+        confirmLabel={confirmation.options.confirmLabel}
+        cancelLabel={confirmation.options.cancelLabel}
+        variant={confirmation.options.variant}
         onConfirm={confirmation.handleConfirm}
         onCancel={confirmation.handleCancel}
       />

@@ -9,7 +9,7 @@ export interface SelectOption {
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   options: SelectOption[];
   placeholder?: string;
-  size?: 'sm' | 'md' | 'lg';
+  controlSize?: 'sm' | 'md' | 'lg';
   fullWidth?: boolean;
 }
 
@@ -31,7 +31,7 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 export const Select: React.FC<SelectProps> = ({
   options,
   placeholder,
-  size = 'md',
+  controlSize = 'md',
   fullWidth = false,
   className = '',
   ...props
@@ -57,7 +57,7 @@ export const Select: React.FC<SelectProps> = ({
     [&>option]:text-slate-900 dark:[&>option]:text-slate-300
     disabled:opacity-50 
     disabled:cursor-not-allowed
-    ${sizeClasses[size]}
+    ${sizeClasses[controlSize]}
     ${fullWidth ? 'w-full' : ''}
     ${className}
   `.trim().replace(/\s+/g, ' ');

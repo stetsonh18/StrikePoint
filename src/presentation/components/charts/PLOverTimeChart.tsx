@@ -1,5 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import type { TooltipProps } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
+type ChartTooltipPayload = NonNullable<TooltipContentProps<number, string>['payload']>[number];
 import type { PLOverTimeData } from '@/application/hooks/usePLOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 import { ChartSkeleton } from '@/presentation/components/SkeletonLoader';
@@ -29,13 +30,16 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
   };
 
   // Custom tooltip with proper typing
-  const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload as PLOverTimeData;
+      const dataPoint = payload[0]?.payload as PLOverTimeData | undefined;
+      if (!dataPoint) {
+        return null;
+      }
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(data.date)}</p>
-          {payload.map((entry, index) => (
+          <p className="text-slate-400 text-sm mb-2">{formatDate(dataPoint.date)}</p>
+          {payload.map((entry: ChartTooltipPayload, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {`${entry.name}: ${formatCurrency(entry.value as number)}`}
             </p>
@@ -61,7 +65,7 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-        <Tooltip content={<CustomTooltip />} />
+      <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Legend />
         <Line
           type="monotone"

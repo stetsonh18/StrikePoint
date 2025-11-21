@@ -25,8 +25,13 @@ export const Last7DaysPLChart = ({ data, isLoading }: Last7DaysPLChartProps) => 
   }
 
   // Format date for display
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map((value) => parseInt(value, 10));
+    return new Date(year, (month || 1) - 1, day || 1);
+  };
+
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 

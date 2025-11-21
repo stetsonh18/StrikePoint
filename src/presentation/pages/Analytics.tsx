@@ -60,12 +60,17 @@ const TAB_TO_ASSET_TYPE: Record<AnalyticsTab, AssetType | undefined> = {
   futures: 'futures',
 };
 
-const TIME_PERIOD_LABELS: Record<TimePeriod, string> = {
-  7: 'Last 7 Days',
-  30: 'Last 30 Days',
-  90: 'Last 90 Days',
-  365: 'Last Year',
-  null: 'All Time',
+const TIME_PERIOD_OPTIONS: Array<{ value: TimePeriod; label: string }> = [
+  { value: 7, label: 'Last 7 Days' },
+  { value: 30, label: 'Last 30 Days' },
+  { value: 90, label: 'Last 90 Days' },
+  { value: 365, label: 'Last Year' },
+  { value: null, label: 'All Time' },
+];
+
+const getTimePeriodLabel = (period: TimePeriod): string => {
+  const match = TIME_PERIOD_OPTIONS.find((option) => option.value === period);
+  return match?.label ?? 'All Time';
 };
 
 export const Analytics = () => {
@@ -332,22 +337,22 @@ export const Analytics = () => {
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-xl font-medium transition-all touch-target w-full sm:w-auto"
           >
             <Calendar className="w-4 h-4" />
-            {TIME_PERIOD_LABELS[timePeriod]}
+            {getTimePeriodLabel(timePeriod)}
             <ChevronDown className={`w-4 h-4 transition-transform ${showTimePeriodMenu ? 'rotate-180' : ''}`} />
           </button>
           {showTimePeriodMenu && (
             <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden">
-              {Object.entries(TIME_PERIOD_LABELS).map(([key, label]) => {
-                const period = key === 'null' ? null : Number(key) as TimePeriod;
+              {TIME_PERIOD_OPTIONS.map(({ value, label }) => {
+                const key = value === null ? 'all-time' : String(value);
                 return (
                   <button
                     key={key}
                     onClick={() => {
-                      setTimePeriod(period);
+                      setTimePeriod(value);
                       setShowTimePeriodMenu(false);
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                      timePeriod === period
+                      timePeriod === value
                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                     }`}

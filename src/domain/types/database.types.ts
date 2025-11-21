@@ -167,12 +167,12 @@ export interface Strategy {
  * Strategy leg structure (stored in JSONB)
  */
 export interface StrategyLeg {
-  strike: number;
-  expiration: string; // Date (YYYY-MM-DD)
-  option_type: OptionType;
+  strike: number | null;
+  expiration: string | null; // Date (YYYY-MM-DD)
+  option_type: OptionType | null;
   side: TransactionSide;
   quantity: number;
-  opening_price: number;
+  opening_price: number | null;
   position_id?: string; // Link to position table
 }
 

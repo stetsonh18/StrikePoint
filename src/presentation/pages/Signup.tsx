@@ -24,7 +24,7 @@ export function Signup() {
     setIsLoading(true);
 
     try {
-      const { data } = await signUp(email, password, fullName);
+      const data = await signUp(email, password, fullName);
       
       // Check early adopter status and show message
       if (data?.user) {

@@ -8,6 +8,18 @@
 import * as Sentry from '@sentry/react';
 import { env } from '@/shared/utils/envValidation';
 
+type GtagFunction = (...args: [string, ...unknown[]]) => void;
+type PlausibleFunction = (eventName: string, options?: { url?: string; props?: Record<string, unknown> }) => void;
+
+type AnalyticsWindow = Window & {
+  gtag?: GtagFunction;
+  plausible?: PlausibleFunction;
+};
+
+function getAnalyticsWindow(): AnalyticsWindow {
+  return window as AnalyticsWindow;
+}
+
 type AnalyticsProvider = 'sentry' | 'ga4' | 'plausible' | 'custom';
 
 interface AnalyticsEvent {
@@ -29,7 +41,12 @@ interface AnalyticsConfig {
  * Load Google Analytics 4 script
  */
 function loadGoogleAnalytics(measurementId: string) {
-  if (typeof window === 'undefined' || (window as any).gtag) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const analyticsWindow = getAnalyticsWindow();
+  if (analyticsWindow.gtag) {
     return; // Already loaded
   }
   
@@ -56,7 +73,12 @@ function loadGoogleAnalytics(measurementId: string) {
  * Load Plausible script
  */
 function loadPlausible(domain: string) {
-  if (typeof window === 'undefined' || (window as any).plausible) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const analyticsWindow = getAnalyticsWindow();
+  if (analyticsWindow.plausible) {
     return; // Already loaded
   }
   
@@ -251,8 +273,8 @@ function sendToSentry(event: AnalyticsEvent) {
   }
   
   // Track as custom event
-  Sentry.metrics.increment('analytics.event', 1, {
-    tags: {
+  Sentry.metrics.count('analytics.event', 1, {
+    attributes: {
       event_name: event.name,
       category: event.category,
     },
@@ -273,11 +295,15 @@ function sendToSentry(event: AnalyticsEvent) {
  * Send to Google Analytics 4
  */
 function sendToGoogleAnalytics(event: AnalyticsEvent) {
-  if (typeof window === 'undefined' || !(window as any).gtag) {
+  if (typeof window === 'undefined') {
     return;
   }
-  
-  const gtag = (window as any).gtag;
+
+  const analyticsWindow = getAnalyticsWindow();
+  const gtag = analyticsWindow.gtag;
+  if (!gtag) {
+    return;
+  }
   
   if (event.name === 'page_view') {
     gtag('event', 'page_view', {
@@ -298,14 +324,19 @@ function sendToGoogleAnalytics(event: AnalyticsEvent) {
  * Send to Plausible
  */
 function sendToPlausible(event: AnalyticsEvent) {
-  if (typeof window === 'undefined' || !(window as any).plausible) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const analyticsWindow = getAnalyticsWindow();
+  const plausible = analyticsWindow.plausible;
+  if (!plausible) {
     return;
   }
   
-  const plausible = (window as any).plausible;
-  
   if (event.name === 'page_view') {
-    plausible('pageview', { url: event.properties?.path });
+    const pageUrl = typeof event.properties?.path === 'string' ? event.properties.path : undefined;
+    plausible('pageview', pageUrl ? { url: pageUrl } : undefined);
   } else {
     plausible(event.name, {
       props: {
@@ -359,8 +390,11 @@ export function setUserProperties(properties: Record<string, unknown>) {
   Sentry.setContext('user_properties', properties);
   
   // Set in Google Analytics
-  if (typeof window !== 'undefined' && (window as any).gtag) {
-    (window as any).gtag('set', 'user_properties', properties);
+  if (typeof window !== 'undefined') {
+    const gtag = getAnalyticsWindow().gtag;
+    if (gtag) {
+      gtag('set', 'user_properties', properties);
+    }
   }
 }
 
@@ -376,10 +410,13 @@ export function identifyUser(userId: string, traits?: Record<string, unknown>) {
   }
   
   // Identify in Google Analytics
-  if (typeof window !== 'undefined' && (window as any).gtag) {
-    (window as any).gtag('config', 'user_id', userId);
-    if (traits) {
-      (window as any).gtag('set', 'user_properties', traits);
+  if (typeof window !== 'undefined') {
+    const gtag = getAnalyticsWindow().gtag;
+    if (gtag) {
+      gtag('config', 'user_id', userId);
+      if (traits) {
+        gtag('set', 'user_properties', traits);
+      }
     }
   }
 }

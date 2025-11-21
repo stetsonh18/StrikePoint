@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 
 interface RealtimeIndicatorProps {
-  queryKey: string | string[];
+  queryKey: QueryKey;
   lastUpdated?: Date;
   onRefresh?: () => void;
   showRefreshButton?: boolean;
@@ -24,17 +24,25 @@ export function RealtimeIndicator({
   // Check query status
   useEffect(() => {
     const queryState = queryClient.getQueryState(queryKey);
-    if (queryState) {
-      if (queryState.isFetching) {
-        setStatus('updating');
-      } else if (queryState.isError) {
-        setStatus('error');
-      } else if (queryState.dataUpdatedAt > 0) {
-        setStatus('success');
-        // Reset to idle after 2 seconds
-        const timer = setTimeout(() => setStatus('idle'), 2000);
-        return () => clearTimeout(timer);
-      }
+    if (!queryState) {
+      return;
+    }
+
+    if (queryState.fetchStatus === 'fetching') {
+      setStatus('updating');
+      return;
+    }
+
+    if (queryState.status === 'error') {
+      setStatus('error');
+      return;
+    }
+
+    if (queryState.dataUpdatedAt > 0) {
+      setStatus('success');
+      // Reset to idle after 2 seconds
+      const timer = setTimeout(() => setStatus('idle'), 2000);
+      return () => clearTimeout(timer);
     }
   }, [queryClient, queryKey]);
 

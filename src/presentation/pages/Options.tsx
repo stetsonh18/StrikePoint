@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers, Edit, Trash2 } from 'lucide-react';
-import type { OptionContract, OptionTransaction, OptionChainEntry, Position, Transaction, Strategy } from '@/domain/types';
+import { TrendingUp, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers, Edit, Trash2 } from 'lucide-react';
+import type { OptionContract, OptionTransaction, Position, Transaction, Strategy } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
-import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
+import { usePositions, useDeletePosition } from '@/application/hooks/usePositions';
+import { useTransactions, useDeleteTransaction } from '@/application/hooks/useTransactions';
 import { useOptionsChain } from '@/application/hooks/useOptionsChain';
 import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
 import { useStrategies } from '@/application/hooks/useStrategies';
@@ -23,7 +23,6 @@ import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
-import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { logger } from '@/shared/utils/logger';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 import { StrategyManagementService } from '@/infrastructure/services/strategyManagementService';
@@ -67,7 +66,7 @@ function computeStrategyMetrics(
   }
 
   const firstOriginal = positionLookup.get(strategyGroup[0].id);
-  const strategyId = firstOriginal?.strategy_id;
+  const strategyId = firstOriginal?.strategy_id ?? undefined;
   const strategy = strategyId ? strategyLookup.get(strategyId) : undefined;
 
   let totalContracts = 0;
@@ -81,7 +80,7 @@ function computeStrategyMetrics(
 
   const legQuantities = strategyGroup.map((pos) => Math.abs(pos.quantity));
 
-  strategyGroup.forEach((pos, index) => {
+  strategyGroup.forEach((pos) => {
     totalContracts += Math.abs(pos.quantity);
     const legMarketValue = pos.marketValue || 0;
     totalMarketValue += legMarketValue;
@@ -156,9 +155,7 @@ const Options: React.FC = () => {
   
   const toast = useToast();
   const confirmation = useConfirmation();
-  const updatePositionMutation = useUpdatePosition();
   const deletePositionMutation = useDeletePosition();
-  const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch option positions (open only for display)
@@ -207,8 +204,11 @@ const Options: React.FC = () => {
     if (!allPositions) return [];
     const symbols: string[] = [];
     allPositions
-      .filter((p) => p.asset_type === 'option' && p.status === 'open' && p.symbol && p.expiration_date && p.strike_price && p.option_type)
+      .filter((p) => p.asset_type === 'option' && p.status === 'open')
       .forEach((p) => {
+        if (!p.symbol || !p.expiration_date || !p.strike_price || !p.option_type) {
+          return;
+        }
         try {
           const tradierSymbol = buildTradierOptionSymbol(
             p.symbol,
@@ -1119,7 +1119,7 @@ const Options: React.FC = () => {
               {chainSymbol ? (
                 <OptionsChain
                   underlyingSymbol={chainSymbol}
-                  onSelectOption={(entry: OptionChainEntry) => {
+                  onSelectOption={() => {
                     // Pre-fill transaction form with selected option
                     setChainSymbol('');
                     setActiveTab('positions');

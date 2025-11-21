@@ -37,7 +37,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
   });
 
   const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set(['H', 'M', 'U', 'Z']));
-  const [errors, setErrors] = useState<Record<ErrorKey, string>>({});
+  const [errors, setErrors] = useState<Partial<Record<ErrorKey, string>>>({});
 
   useEffect(() => {
     if (contract) {
@@ -60,7 +60,7 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
   }, [contract]);
 
   const validateForm = (): boolean => {
-    const newErrors: Record<ErrorKey, string> = {};
+    const newErrors: Partial<Record<ErrorKey, string>> = {};
 
     if (!formData.symbol.trim()) {
       newErrors.symbol = 'Symbol is required';
@@ -136,12 +136,13 @@ export const ContractSpecForm: React.FC<ContractSpecFormProps> = ({ contract, us
     setFormData((prev) => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     setErrors((prev) => {
-      if (!prev[field]) {
+      const errorKey = field as ErrorKey;
+      if (!prev[errorKey]) {
         return prev;
       }
-      const newErrors = { ...prev };
-      delete newErrors[field];
-      return newErrors;
+      const updatedErrors = { ...prev };
+      delete updatedErrors[errorKey];
+      return updatedErrors;
     });
   };
 

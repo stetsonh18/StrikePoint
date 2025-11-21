@@ -15,11 +15,44 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react';
-import type { InsightType, InsightPriority } from '@/domain/types';
+import type { InsightType, InsightPriority, AIInsightFilters, AIInsight } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useAIInsights, useMarkInsightAsRead, useDismissInsight } from '@/application/hooks/useAIInsights';
 import { useStrategyPlans } from '@/application/hooks/useStrategyPlans';
 import { AIInsightGenerationService } from '@/infrastructure/services/aiInsightGenerationService';
+
+const mapFilterTypeToApiType = (type: InsightType | 'all'): AIInsightFilters['type'] | undefined => {
+  if (type === 'all') {
+    return undefined;
+  }
+
+  switch (type) {
+    case 'pattern_recognition':
+      return 'pattern';
+    case 'performance_analysis':
+      return 'performance';
+    case 'strategy_suggestion':
+      return 'strategy';
+    case 'risk_warning':
+    case 'opportunity':
+      return type;
+    default:
+      return undefined;
+  }
+};
+
+const mapInsightTypeToDisplay = (type: AIInsight['type']): InsightType => {
+  switch (type) {
+    case 'pattern':
+      return 'pattern_recognition';
+    case 'performance':
+      return 'performance_analysis';
+    case 'strategy':
+      return 'strategy_suggestion';
+    default:
+      return type;
+  }
+};
 
 const AIInsights: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -33,8 +66,8 @@ const AIInsights: React.FC = () => {
 
   // Fetch insights from database
   const { data: insights = [], isLoading, refetch } = useAIInsights(user?.id || '', {
-    is_dismissed: showDismissed ? undefined : false,
-    type: filterType !== 'all' ? (filterType === 'pattern_recognition' ? 'pattern' : filterType === 'performance_analysis' ? 'performance' : filterType === 'strategy_suggestion' ? 'strategy' : filterType) as any : undefined,
+    isDismissed: showDismissed ? undefined : false,
+    type: mapFilterTypeToApiType(filterType),
     priority: filterPriority !== 'all' ? filterPriority : undefined,
   });
 
@@ -313,7 +346,7 @@ const AIInsights: React.FC = () => {
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-start gap-3 flex-1">
                   <div className="p-2 bg-slate-100 dark:bg-slate-800/50 rounded-xl">
-                    {getTypeIcon(insight.type === 'pattern' ? 'pattern_recognition' : insight.type === 'performance' ? 'performance_analysis' : insight.type === 'strategy' ? 'strategy_suggestion' : insight.type as any)}
+                    {getTypeIcon(mapInsightTypeToDisplay(insight.type))}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">

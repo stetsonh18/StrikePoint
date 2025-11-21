@@ -1,6 +1,6 @@
 import { PositionRepository, StrategyRepository } from '../repositories';
 import { logger } from '@/shared/utils/logger';
-import type { Position, StrategyInsert, Strategy, StrategyType } from '@/domain/types';
+import type { Position, StrategyInsert, Strategy, StrategyType, StrategyLeg } from '@/domain/types';
 
 /**
  * Strategy Detection Service
@@ -425,6 +425,16 @@ export class StrategyDetectionService {
     const sorted = positions.sort((a, b) => (a.strike_price || 0) - (b.strike_price || 0));
     const [p1, p2, p3, p4] = sorted;
 
+    const allHaveStrikes = [p1, p2, p3, p4].every((p) => typeof p.strike_price === 'number');
+    if (!allHaveStrikes) {
+      return null;
+    }
+
+    const p1Strike = p1.strike_price as number;
+    const p2Strike = p2.strike_price as number;
+    const p3Strike = p3.strike_price as number;
+    const p4Strike = p4.strike_price as number;
+
     // Check for iron butterfly pattern
     // Pattern 1: Long put, Short put, Short call, Long call (all at middle strike for short legs)
     if (
@@ -432,13 +442,13 @@ export class StrategyDetectionService {
       p1.side === 'long' &&
       p2.option_type === 'put' &&
       p2.side === 'short' &&
-      p2.strike_price === p3.strike_price && // Middle strike
+      p2Strike === p3Strike && // Middle strike
       p3.option_type === 'call' &&
       p3.side === 'short' &&
       p4.option_type === 'call' &&
       p4.side === 'long' &&
-      p1.strike_price < p2.strike_price &&
-      p4.strike_price > p3.strike_price
+      p1Strike < p2Strike &&
+      p4Strike > p3Strike
     ) {
       await this.createStrategy(userId, 'iron_butterfly', symbol, positions, 'neutral');
       return { strategiesCreated: 1, positionsGrouped: 4 };
@@ -595,13 +605,14 @@ export class StrategyDetectionService {
     positions: Position[],
     direction: 'bullish' | 'bearish' | 'neutral' | null
   ): Promise<Strategy> {
-    const legs = positions.map((p) => ({
+    const legs: StrategyLeg[] = positions.map((p) => ({
       strike: p.strike_price,
       expiration: p.expiration_date,
-      optionType: p.option_type,
+      option_type: p.option_type,
       side: p.side,
       quantity: p.opening_quantity,
-      openingPrice: p.average_opening_price,
+      opening_price: p.average_opening_price,
+      position_id: p.id,
     }));
 
     const totalOpeningCost = positions.reduce((sum, p) => sum + p.total_cost_basis, 0);
@@ -621,8 +632,9 @@ export class StrategyDetectionService {
       strategy_type: strategyType,
       underlying_symbol: symbol,
       direction,
+      entry_time: null,
       leg_count: positions.length,
-      legs: legs as any,
+      legs,
       opened_at: earliestOpen,
       expiration_date: primaryExpiration,
       total_opening_cost: totalOpeningCost,
@@ -638,7 +650,6 @@ export class StrategyDetectionService {
       is_adjustment: false,
       original_strategy_id: null,
       adjusted_from_strategy_id: null,
-      closed_at: null,
     };
 
     const strategy = await StrategyRepository.create(strategyInsert);
@@ -661,14 +672,15 @@ export class StrategyDetectionService {
     position: Position,
     strategyType: StrategyType
   ): Promise<Strategy> {
-    const legs = [
+    const legs: StrategyLeg[] = [
       {
         strike: position.strike_price,
         expiration: position.expiration_date,
-        optionType: position.option_type,
+        option_type: position.option_type,
         side: position.side,
         quantity: position.opening_quantity,
-        openingPrice: position.average_opening_price,
+        opening_price: position.average_opening_price,
+        position_id: position.id,
       },
     ];
 
@@ -677,8 +689,9 @@ export class StrategyDetectionService {
       strategy_type: strategyType,
       underlying_symbol: position.symbol,
       direction: null,
+      entry_time: null,
       leg_count: 1,
-      legs: legs as any,
+      legs,
       opened_at: position.opened_at,
       expiration_date: position.expiration_date,
       total_opening_cost: position.total_cost_basis,
@@ -694,7 +707,6 @@ export class StrategyDetectionService {
       is_adjustment: false,
       original_strategy_id: null,
       adjusted_from_strategy_id: null,
-      closed_at: null,
     };
 
     const strategy = await StrategyRepository.create(strategyInsert);

@@ -48,8 +48,8 @@ export const Dashboard = () => {
     unrealizedPL: portfolioUnrealizedPL,
     assetMetrics,
     isLoading: portfolioLoading,
-    error: portfolioError,
   } = usePortfolioValue(userId);
+  const portfolioError: Error | undefined = undefined;
   const { articles: marketNews = [], isLoading: newsLoading } = useMarketNews('general', undefined, true);
   const { data: winRateMetrics } = useWinRateMetrics(userId);
   const { data: dailyPerformance } = useDailyPerformance(userId);
@@ -240,8 +240,7 @@ export const Dashboard = () => {
       });
 
       // Normalize multi-leg strategies
-      strategiesMap.forEach((strategyPositions) => {
-        const legCount = strategyPositions.length;
+      strategiesMap.forEach(() => {
         // For multi-leg strategies, count as 1 position (normalized)
         totalCount += 1;
       });
@@ -844,9 +843,9 @@ export const Dashboard = () => {
                 <TransactionItem
                   key={tx.id}
                   id={tx.id}
-                  underlying_symbol={tx.underlying_symbol}
-                  instrument={tx.instrument}
-                  transaction_code={tx.transaction_code}
+                  underlying_symbol={tx.underlying_symbol ?? undefined}
+                  instrument={tx.instrument ?? tx.underlying_symbol ?? ''}
+                  transaction_code={tx.transaction_code ?? ''}
                   amount={tx.amount}
                   activity_date={tx.activity_date}
                   formatCurrency={formatCurrency}
@@ -881,12 +880,12 @@ export const Dashboard = () => {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name} ${percent.toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {assetAllocation.map((entry, index) => (
+                    {assetAllocation.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>

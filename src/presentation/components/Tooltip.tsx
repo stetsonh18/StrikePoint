@@ -4,7 +4,7 @@ import { cn } from '@/shared/utils/cn';
 
 interface TooltipProps {
   content: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   position?: 'top' | 'bottom' | 'left' | 'right';
   className?: string;
   showIcon?: boolean;
@@ -30,6 +30,12 @@ export function Tooltip({ content, children, position = 'top', className, showIc
     right: 'right-full top-1/2 -translate-y-1/2 border-r-slate-800 border-t-transparent border-b-transparent border-l-transparent',
   };
 
+  const trigger = showIcon || !children ? (
+    <Info className="w-4 h-4 text-slate-400 hover:text-slate-300 cursor-help" />
+  ) : (
+    children
+  );
+
   return (
     <div
       className={cn('relative inline-block', className)}
@@ -38,11 +44,7 @@ export function Tooltip({ content, children, position = 'top', className, showIc
       onFocus={() => setIsVisible(true)}
       onBlur={() => setIsVisible(false)}
     >
-      {showIcon ? (
-        <Info className="w-4 h-4 text-slate-400 hover:text-slate-300 cursor-help" />
-      ) : (
-        children
-      )}
+      {trigger}
       {isVisible && (
         <div
           className={cn(

@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Plus, Download, Search, DollarSign, Activity, Edit, Trash2 } from 'lucide-react';
 import type { StockPosition, StockTransaction, Transaction, Position } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
-import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
+import { usePositions, useDeletePosition } from '@/application/hooks/usePositions';
+import { useTransactions, useDeleteTransaction } from '@/application/hooks/useTransactions';
 import { useStockQuotes } from '@/application/hooks/useStockQuotes';
 import { toStockPosition, toStockTransaction } from '@/shared/utils/positionTransformers';
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
@@ -13,13 +13,10 @@ import { SellPositionForm } from '@/presentation/components/SellPositionForm';
 import { MarketStatusIndicator } from '@/presentation/components/MarketStatusIndicator';
 import { useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '@/presentation/components/SkeletonLoader';
-import { useToast } from '@/shared/hooks/useToast';
 import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
-import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
-import { StockPositionRow } from '@/presentation/components/tables/StockPositionRow';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
 const Stocks: React.FC = () => {
@@ -33,15 +30,12 @@ const Stocks: React.FC = () => {
   const [showSellForm, setShowSellForm] = useState(false);
   const [selectedPositionForSell, setSelectedPositionForSell] = useState<StockPosition | null>(null);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [, setEditingTransaction] = useState<Transaction | null>(null);
   const [positionSort, setPositionSort] = useState<SortConfig<StockPosition> | null>(null);
   const [transactionSort, setTransactionSort] = useState<SortConfig<StockTransaction> | null>(null);
   
-  const toast = useToast();
   const confirmation = useConfirmation();
-  const updatePositionMutation = useUpdatePosition();
   const deletePositionMutation = useDeletePosition();
-  const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch stock positions (open only for display)

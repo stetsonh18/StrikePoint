@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Plus, Download, Search, DollarSign, Activity, Edit, Trash2 } from 'lucide-react';
 import type { CryptoPosition, CryptoTransaction, Position, Transaction } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
-import { usePositions, useUpdatePosition, useDeletePosition } from '@/application/hooks/usePositions';
-import { useTransactions, useUpdateTransaction, useDeleteTransaction } from '@/application/hooks/useTransactions';
+import { usePositions, useDeletePosition } from '@/application/hooks/usePositions';
+import { useTransactions, useDeleteTransaction } from '@/application/hooks/useTransactions';
 import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
 import { getCoinIdFromSymbol } from '@/infrastructure/services/cryptoMarketDataService';
 import { toCryptoPosition, toCryptoTransaction } from '@/shared/utils/positionTransformers';
@@ -14,12 +14,10 @@ import { MarketStatusIndicator } from '@/presentation/components/MarketStatusInd
 import { formatDate as formatDateUtil } from '@/shared/utils/dateUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '@/presentation/components/SkeletonLoader';
-import { useToast } from '@/shared/hooks/useToast';
 import { useConfirmation } from '@/shared/hooks/useConfirmation';
 import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog';
 import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
 import { sortData, type SortConfig } from '@/shared/utils/tableSorting';
-import { getUserFriendlyErrorMessage } from '@/shared/utils/errorHandler';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
 
 const Crypto: React.FC = () => {
@@ -33,15 +31,12 @@ const Crypto: React.FC = () => {
   const [showSellForm, setShowSellForm] = useState(false);
   const [selectedPositionForSell, setSelectedPositionForSell] = useState<CryptoPosition | null>(null);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [, setEditingTransaction] = useState<Transaction | null>(null);
   const [positionSort, setPositionSort] = useState<SortConfig<CryptoPosition> | null>(null);
   const [transactionSort, setTransactionSort] = useState<SortConfig<CryptoTransaction> | null>(null);
   
-  const toast = useToast();
   const confirmation = useConfirmation();
-  const updatePositionMutation = useUpdatePosition();
   const deletePositionMutation = useDeletePosition();
-  const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
 
   // Fetch crypto positions (open only for display)

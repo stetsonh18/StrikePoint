@@ -18,6 +18,33 @@ const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
 
+interface TradierSymbolResultApi {
+  symbol?: string;
+  name?: string;
+  description?: string;
+  type?: string;
+  exchange?: string;
+}
+
+interface FinnhubSymbolResultApi {
+  symbol?: string;
+  displaySymbol?: string;
+  description?: string;
+  type?: string;
+}
+
+interface FinnhubNewsArticleApi {
+  id?: number;
+  category?: string;
+  datetime?: number;
+  headline?: string;
+  image?: string;
+  related?: string;
+  source?: string;
+  summary?: string;
+  url?: string;
+}
+
 async function getEdgeAuthHeaders() {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) {
@@ -71,10 +98,10 @@ export async function searchSymbolsTradier(query: string): Promise<SymbolSearchR
     // Response: { result: [...] }
     if (data.result && Array.isArray(data.result)) {
       const results = data.result
-        .map((item: any) => ({
-          symbol: (item.symbol as string) || '',
-          name: (item.name as string) || (item.description as string) || (item.symbol as string) || '',
-          type: (item.type as string) || 'stock',
+        .map((item: TradierSymbolResultApi) => ({
+          symbol: item.symbol || '',
+          name: item.name || item.description || item.symbol || '',
+          type: item.type || 'stock',
           region: item.exchange ? 'United States' : 'United States',
           currency: 'USD',
         }))
@@ -137,10 +164,10 @@ export async function searchSymbols(keywords: string): Promise<SymbolSearchResul
     if (data.result && Array.isArray(data.result)) {
       // Filter for US stocks primarily, but include others
       const results = data.result
-        .map((item: any) => {
+        .map((item: FinnhubSymbolResultApi) => {
           // Determine region based on symbol suffix or type
           let region = 'United States';
-          const symbol = (item.symbol as string) || '';
+          const symbol = item.symbol || '';
 
           if (symbol.includes('.TO')) region = 'Canada';
           else if (symbol.includes('.L') || symbol.includes('.LON')) region = 'United Kingdom';
@@ -315,7 +342,7 @@ export async function getMarketNews(category: string = 'general', minId?: number
 
     // Parse and map to NewsArticle interface
     if (Array.isArray(data)) {
-      return data.map((article: any) => {
+      return data.map((article: FinnhubNewsArticleApi) => {
         // Parse related symbols (comma-separated string)
         const symbols = article.related
           ? article.related.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)

@@ -39,7 +39,7 @@ function sendToSentry(metric: Metric) {
   // Create transaction for performance monitoring
   Sentry.metrics.distribution(metric.name, metric.value, {
     unit: metric.name === 'CLS' ? 'ratio' : 'millisecond',
-    tags: {
+    attributes: {
       rating,
       id: metric.id,
       navigationType: metric.navigationType,
@@ -124,7 +124,7 @@ export function trackCustomMetric(name: string, value: number, unit: 'millisecon
   try {
     Sentry.metrics.distribution(name, value, {
       unit,
-      tags: tags || {},
+      attributes: tags || {},
     });
   } catch (error) {
     if (env.isDevelopment) {

@@ -9,6 +9,8 @@ import type {
   StrategyType,
   StrategyInsert,
   OptionContract,
+  StrategyLeg,
+  TransactionInsert,
 } from '@/domain/types';
 import { SymbolAutocomplete } from './SymbolAutocomplete';
 import { OptionsChain } from './OptionsChain';
@@ -32,7 +34,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const modalRef = useFocusTrap();
+  const modalRef = useFocusTrap(true);
   const [showChainSelector, setShowChainSelector] = useState(false);
   const [selectedLegIndex, setSelectedLegIndex] = useState<number | null>(null); // Track which leg is being edited from chain
 
@@ -40,15 +42,15 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   // Store original positions to reference later
   const originalPositions = useMemo(() => initialPositions || [], [initialPositions]);
 
-  const initialLegs = useMemo(() => {
+  const initialLegs = useMemo<OptionLegFormData[]>(() => {
     if (initialPositions && initialPositions.length > 0) {
       return initialPositions.map((pos) => ({
-        expiration: pos.expirationDate,
-        strike: pos.strikePrice,
+        expiration: pos.expirationDate ?? '',
+        strike: pos.strikePrice ?? 0,
         optionType: pos.optionType,
-        side: pos.side, // Keep original side - we'll flip it in transaction code
+        side: pos.side,
         quantity: pos.quantity,
-        price: 0, // User will enter close price
+        price: 0,
         fee: 0,
         priceInput: '',
       }));
@@ -73,6 +75,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         quantity: 1,
         price: 0,
         fee: 0,
+        priceInput: '',
       },
     ];
   }, [initialPositions]);
@@ -166,6 +169,42 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
       );
     }
   }, [isWorthlessClose, isClosing]);
+
+  const buildOptionTransaction = (
+    leg: OptionLegFormData,
+    config: {
+      transactionCode: 'BTO' | 'STO' | 'BTC' | 'STC';
+      amount: number;
+      isOpening: boolean;
+      isLong: boolean;
+      descriptionText: string;
+      notesText: string;
+      strategyId?: string | null;
+    }
+  ): Omit<TransactionInsert, 'import_id'> => ({
+    user_id: userId,
+    activity_date: transactionDate,
+    process_date: transactionDate,
+    settle_date: transactionDate,
+    description: config.descriptionText,
+    notes: config.notesText,
+    tags: [] as string[],
+    fees: leg.fee || 0,
+    asset_type: 'option' as const,
+    transaction_code: config.transactionCode,
+    underlying_symbol: underlyingSymbol,
+    instrument: null,
+    option_type: leg.optionType,
+    strike_price: leg.strike,
+    expiration_date: leg.expiration,
+    quantity: leg.quantity,
+    price: leg.price,
+    amount: config.amount,
+    is_opening: config.isOpening,
+    is_long: config.isLong,
+    position_id: null,
+    strategy_id: config.strategyId ?? null,
+  });
 
   // Add a new leg
   const addLeg = () => {
@@ -414,30 +453,17 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
           // For closing: STC (selling) = credit (+), BTC (buying) = debit (-)
           const amount = transactionCode === 'STC' ? Math.abs(legAmount) : -Math.abs(legAmount);
 
-          return {
-            user_id: userId,
-            activity_date: transactionDate,
-            process_date: transactionDate,
-            settle_date: transactionDate,
-            description:
+          return buildOptionTransaction(leg, {
+            transactionCode,
+            amount,
+            isOpening: false,
+            isLong: transactionCode === 'STC',
+            descriptionText:
               description ||
               `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
-            notes: combinedNotes,
-            tags: [],
-            fees: leg.fee || 0,
-            asset_type: 'option' as const,
-            transaction_code: transactionCode,
-            underlying_symbol: underlyingSymbol,
-            option_type: leg.optionType,
-            strike_price: leg.strike,
-            expiration_date: leg.expiration,
-            quantity: leg.quantity,
-            price: leg.price,
-            amount,
-            is_opening: false, // Closing transaction
-            is_long: transactionCode === 'STC', // STC closes long (is_long=true), BTC closes short (is_long=false)
-            strategy_id: existingStrategyId, // Link to existing strategy
-          };
+            notesText: combinedNotes,
+            strategyId: existingStrategyId,
+          });
         });
 
         // Step 2: Create all closing transactions in batch
@@ -465,13 +491,13 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
       } else {
         // OPENING MODE: Create new strategy and positions
         // Step 1: Create the strategy first
-        const strategyLegs = legs.map((leg) => ({
+        const strategyLegs: StrategyLeg[] = legs.map((leg) => ({
           strike: leg.strike,
-          expiration: leg.expiration,
-          optionType: leg.optionType,
+          expiration: leg.expiration || null,
+          option_type: leg.optionType,
           side: leg.side,
           quantity: leg.quantity,
-          openingPrice: leg.price,
+          opening_price: leg.price,
         }));
 
         // Calculate total opening cost (net debit/credit)
@@ -495,7 +521,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
           underlying_symbol: underlyingSymbol,
           direction: null, // Can be calculated later
           leg_count: legs.length,
-          legs: strategyLegs as any,
+          legs: strategyLegs,
           opened_at: openedAtTimestamp,
           expiration_date: primaryExpiration,
           entry_time: transactionTime, // Save entry time in HH:MM format
@@ -525,30 +551,17 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
           const legAmount = leg.quantity * leg.price * 100; // Options are per share
           const amount = leg.side === 'long' ? -Math.abs(legAmount) : Math.abs(legAmount);
 
-          return {
-            user_id: userId,
-            activity_date: transactionDate,
-            process_date: transactionDate,
-            settle_date: transactionDate,
-            description:
+          return buildOptionTransaction(leg, {
+            transactionCode,
+            amount,
+            isOpening: true,
+            isLong: leg.side === 'long',
+            descriptionText:
               description ||
               `${transactionCode} ${leg.quantity} ${underlyingSymbol} ${leg.expiration} ${leg.optionType.toUpperCase()} $${leg.strike}`,
-            notes: combinedNotes,
-            tags: [],
-            fees: leg.fee || 0,
-            asset_type: 'option' as const,
-            transaction_code: transactionCode,
-            underlying_symbol: underlyingSymbol,
-            option_type: leg.optionType,
-            strike_price: leg.strike,
-            expiration_date: leg.expiration,
-            quantity: leg.quantity,
-            price: leg.price,
-            amount,
-            is_opening: true,
-            is_long: leg.side === 'long',
-            strategy_id: strategy.id, // Link transaction to strategy
-          };
+            notesText: combinedNotes,
+            strategyId: strategy.id,
+          });
         });
 
         // Step 3: Create all transactions in batch, linked to the strategy
@@ -597,7 +610,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div
-        ref={modalRef}
+        ref={modalRef as React.RefObject<HTMLDivElement>}
         className="relative w-full max-w-4xl max-h-[90vh] bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}

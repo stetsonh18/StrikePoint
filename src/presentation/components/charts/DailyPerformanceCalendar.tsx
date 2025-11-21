@@ -409,9 +409,13 @@ export const DailyPerformanceCalendar = React.memo(({
                             {position.asset_type}
                           </span>
                           {position.side && (
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              position.side === 'buy' ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'
-                            }`}>
+                            <span
+                              className={`text-xs px-2 py-1 rounded ${
+                                position.side === 'long'
+                                  ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                                  : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                              }`}
+                            >
                               {position.side.toUpperCase()}
                             </span>
                           )}

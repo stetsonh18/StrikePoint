@@ -4,6 +4,7 @@ import { useActiveFuturesContractSpecs } from '@/application/hooks/useFuturesCon
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { formatContractSymbol, calculateFuturesValue, calculateMarginRequirement, calculateExpirationDate } from '@/domain/types/futures.types';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
+import type { TransactionInsert } from '@/domain/types';
 
 interface FuturesTransactionFormProps {
   userId: string;
@@ -163,13 +164,12 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
 
       const transactionData = {
         user_id: userId,
-        import_id: null,
         activity_date: transactionDate,
         process_date: transactionDate,
         settle_date: transactionDate,
         description: description || `${transactionType} ${Math.abs(qty)} ${fullContractSymbol}`,
         notes: combinedNotes,
-        tags: [],
+        tags: [] as string[],
         fees: feeAmt * Math.abs(qty),
         asset_type: 'futures' as const,
         transaction_code: transactionType,
@@ -184,7 +184,9 @@ export const FuturesTransactionForm: React.FC<FuturesTransactionFormProps> = ({
         // Explicitly set option-specific fields to null (futures are not options)
         option_type: null,
         strike_price: null,
-      };
+        position_id: null,
+        strategy_id: null,
+      } satisfies Omit<TransactionInsert, 'import_id'>;
 
       await TransactionService.createManualTransaction(transactionData);
       onSuccess();

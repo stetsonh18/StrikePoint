@@ -6,10 +6,8 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
-  type TooltipProps,
-  type ValueType,
-  type NameType,
 } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { DrawdownOverTimeData } from '@/application/hooks/useDrawdownOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -42,9 +40,10 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: TooltipProps<ValueType, NameType>) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const entry = payload[0].payload as DrawdownOverTimeData;
+      const entry = payload[0]?.payload as DrawdownOverTimeData | undefined;
+      if (!entry) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
           <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>
@@ -84,7 +83,7 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-        <Tooltip content={<CustomTooltip />} />
+      <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Area
           type="monotone"
           dataKey="drawdown"

@@ -13,6 +13,10 @@ const sentryDsn = env.sentryDsn;
 const environment = env.mode || 'development';
 const isProduction = env.isProduction;
 
+function hasNameProperty(value: unknown): value is { name?: unknown } {
+  return typeof value === 'object' && value !== null && 'name' in value;
+}
+
 /**
  * Initialize Sentry
  * Only initializes if DSN is provided
@@ -35,12 +39,6 @@ export function initSentry() {
       // Performance Monitoring
       integrations: [
         browserTracingIntegration({
-          // Set tracing origins to track performance for these domains
-          tracePropagationTargets: [
-            'localhost',
-            /^https:\/\/.*\.supabase\.co/,
-            /^https:\/\/.*\.supabase\.io/,
-          ],
           // React Router integration
           // Note: React Router v6 instrumentation requires the router to be initialized
           // This will be set up automatically when BrowserRouter is used
@@ -49,6 +47,11 @@ export function initSentry() {
 
       // Performance Monitoring Settings
       tracesSampleRate: isProduction ? 0.1 : 1.0, // 10% in production, 100% in dev
+      tracePropagationTargets: [
+        'localhost',
+        /^https:\/\/.*\.supabase\.co/,
+        /^https:\/\/.*\.supabase\.io/,
+      ],
       
       // Session Replay (optional - can be enabled later)
       replaysSessionSampleRate: 0, // Disabled by default
@@ -101,7 +104,9 @@ export function initSentry() {
         if (event.exception) {
           event.tags = {
             ...event.tags,
-            errorBoundary: hint.originalException?.name === 'ErrorBoundary',
+            errorBoundary:
+              hasNameProperty(hint?.originalException) &&
+              hint.originalException?.name === 'ErrorBoundary',
           };
         }
 

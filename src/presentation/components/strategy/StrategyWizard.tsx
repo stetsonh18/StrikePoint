@@ -37,7 +37,7 @@ const questionBank: Record<
   ],
 };
 
-const fallbackQuestions = [
+const fallbackQuestions: Array<{ id: string; label: string; placeholder: string; assetType?: StrategyAssetType }> = [
   { id: 'mindset', label: 'If you stray from plan, what usually breaks first?', placeholder: 'Sizing discipline, chasing, revenge trades, etc.' },
   { id: 'focus', label: 'What do you want AI insights to monitor closely?', placeholder: 'Overtrading mornings, ignoring stop discipline, etc.' },
 ];

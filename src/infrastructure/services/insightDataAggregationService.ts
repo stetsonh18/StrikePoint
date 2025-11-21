@@ -154,16 +154,19 @@ export class InsightDataAggregationService {
     const totalMarketValue = Object.values(byAssetType).reduce((sum, a) => sum + a.marketValue, 0);
 
     // Calculate recent transaction metrics
-    const recentTransactions = allTransactions.filter(t => {
-      if (!t.transaction_date) return false;
-      return new Date(t.transaction_date) >= thirtyDaysAgo;
+    const recentTransactions = allTransactions.filter((t) => {
+      const activityDate = t.activity_date;
+      if (!activityDate) return false;
+      return new Date(activityDate) >= thirtyDaysAgo;
     });
 
     const symbolCounts: Record<string, number> = {};
-    recentTransactions.forEach(t => {
-      if (t.symbol) {
-        symbolCounts[t.symbol] = (symbolCounts[t.symbol] || 0) + 1;
+    recentTransactions.forEach((t) => {
+      const transactionSymbol = t.underlying_symbol || t.instrument;
+      if (!transactionSymbol) {
+        return;
       }
+      symbolCounts[transactionSymbol] = (symbolCounts[transactionSymbol] || 0) + 1;
     });
 
     const mostTradedSymbols = Object.entries(symbolCounts)
@@ -197,9 +200,10 @@ export class InsightDataAggregationService {
       .reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
 
     const last30DaysFlow = allCashTransactions
-      .filter(tx => {
-        if (!tx.transaction_date) return false;
-        return new Date(tx.transaction_date) >= thirtyDaysAgo;
+      .filter((tx) => {
+        const activityDate = tx.activity_date;
+        if (!activityDate) return false;
+        return new Date(activityDate) >= thirtyDaysAgo;
       })
       .filter(tx => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);

@@ -269,7 +269,7 @@ const Journal: React.FC = () => {
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as JournalEntryType | 'all')}
                 options={ENTRY_TYPE_OPTIONS}
-                size="sm"
+                controlSize="sm"
                 className="flex-1 sm:flex-none"
               />
             </div>
@@ -557,7 +557,7 @@ const Journal: React.FC = () => {
               )}
 
               {/* Attachments */}
-              {(entry.imageUrls?.length > 0 || entry.chartUrls?.length > 0) && (
+              {((entry.imageUrls?.length ?? 0) > 0 || (entry.chartUrls?.length ?? 0) > 0) && (
                 <div className="mb-3">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">Attachments:</p>
                   <div className="grid grid-cols-4 gap-2">

@@ -222,7 +222,7 @@ const CashTransactions: React.FC = () => {
               { value: 'all', label: 'All Types' },
               ...transactionCodes.map(code => ({ value: code, label: code })),
             ]}
-            size="sm"
+            controlSize="sm"
           />
 
           <Select
@@ -234,7 +234,7 @@ const CashTransactions: React.FC = () => {
               { value: '90d', label: 'Last 90 days' },
               { value: 'all', label: 'All time' },
             ]}
-            size="sm"
+            controlSize="sm"
           />
         </div>
       </div>

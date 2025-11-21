@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Save, User, Shield, Bell, Settings as SettingsIcon, TrendingDown, Trash2, AlertTriangle, Activity } from 'lucide-react';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useUserPreferences, useUpdateUserPreferences } from '@/application/hooks/useUserPreferences';

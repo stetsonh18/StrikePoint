@@ -16,6 +16,58 @@ const EDGE_FUNCTIONS_BASE_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '/functions/v1';
 
+interface MarketDataOptionEntry {
+  symbol?: string;
+  option_symbol?: string;
+  underlying?: string;
+  underlying_symbol?: string;
+  expiration?: string;
+  exp?: string;
+  exp_date?: string;
+  expiration_date?: string;
+  strike?: number;
+  strike_price?: number;
+  option_type?: string;
+  type?: string;
+  side?: string;
+  bid?: number;
+  ask?: number;
+  last?: number;
+  price?: number;
+  volume?: number;
+  open_interest?: number;
+  oi?: number;
+  implied_volatility?: number;
+  iv?: number;
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+}
+
+interface MarketDataChainResponse {
+  chain?: Record<string, MarketDataOptionEntry[]>;
+  expirations?: string[];
+  underlying_price?: number;
+  last_updated?: string;
+}
+
+interface MarketDataEntriesContainer {
+  entries?: MarketDataOptionEntry[];
+  underlying_price?: number;
+  last_updated?: string;
+}
+
+type OptionsChainApiResponse =
+  | MarketDataChainResponse
+  | MarketDataEntriesContainer
+  | MarketDataOptionEntry[];
+
+function isMarketDataChainResponse(value: OptionsChainApiResponse): value is MarketDataChainResponse {
+  return typeof value === 'object' && value !== null && ('chain' in value || 'expirations' in value);
+}
+
 async function getEdgeAuthHeaders() {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) {
@@ -65,7 +117,7 @@ export async function getOptionsChain(
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data: OptionsChainApiResponse = await response.json();
 
     // Check for error in response
     if (data.error) {
@@ -75,7 +127,7 @@ export async function getOptionsChain(
 
     // Transform MarketData.app response to OptionsChain format
     // MarketData.app may return: { chain: {...}, expirations: [...], underlying_price: ... } or array of entries
-    if (data.chain || data.expirations) {
+    if (isMarketDataChainResponse(data)) {
       // Response is already in chain format
       return transformChainResponse(data, underlyingSymbol, expiration, strike, side);
     } else {
@@ -92,7 +144,7 @@ export async function getOptionsChain(
  * Transform chain response to OptionsChain format (MarketData.app format)
  */
 function transformChainResponse(
-  data: any,
+  data: MarketDataChainResponse,
   underlying: string,
   expirationFilter?: string,
   strikeFilter?: number,
@@ -111,7 +163,7 @@ function transformChainResponse(
 
       // Transform and filter entries
       const entries = data.chain[expiration]
-        .map((entry: any) => transformEntry(entry))
+        .map((entry: MarketDataOptionEntry) => transformEntry(entry))
         .filter((entry: OptionChainEntry) => {
           // Apply strike filter
           if (strikeFilter && entry.strike !== strikeFilter) return false;
@@ -138,7 +190,7 @@ function transformChainResponse(
  */
 function transformEntriesToChain(
   underlying: string,
-  data: any,
+  data: MarketDataEntriesContainer | MarketDataOptionEntry[],
   expirationFilter?: string,
   strikeFilter?: number,
   sideFilter?: 'call' | 'put'
@@ -147,9 +199,11 @@ function transformEntriesToChain(
   const expirationsSet = new Set<string>();
 
   // If data is an object with entries, or if it's an array
-  const entries = Array.isArray(data) ? data : (data.entries || []);
+  const entries: MarketDataOptionEntry[] = Array.isArray(data) ? data : (data.entries || []);
+  const underlyingPrice = Array.isArray(data) ? undefined : data.underlying_price;
+  const lastUpdated = Array.isArray(data) ? undefined : data.last_updated;
 
-  entries.forEach((entry: any) => {
+  entries.forEach((entry: MarketDataOptionEntry) => {
     const expiration = entry.expiration || entry.exp || entry.exp_date || entry.expiration_date;
     if (!expiration) return;
 
@@ -178,17 +232,17 @@ function transformEntriesToChain(
 
   return {
     underlying,
-    underlying_price: data.underlying_price,
+    underlying_price: underlyingPrice,
     expirations: Array.from(expirationsSet).sort(),
     chain,
-    last_updated: new Date().toISOString(),
+    last_updated: lastUpdated || new Date().toISOString(),
   };
 }
 
 /**
  * Transform API entry to OptionChainEntry
  */
-function transformEntry(entry: any): OptionChainEntry {
+function transformEntry(entry: MarketDataOptionEntry): OptionChainEntry {
   return {
     symbol: entry.symbol || entry.option_symbol || '',
     underlying: entry.underlying || entry.underlying_symbol || '',

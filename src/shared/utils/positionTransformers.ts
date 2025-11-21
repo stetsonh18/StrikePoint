@@ -1,4 +1,4 @@
-import type { Position, Transaction, CashTransaction } from '@/domain/types';
+import type { Position, Transaction, DomainCashTransaction } from '@/domain/types';
 import type {
   StockPosition,
   OptionContract,
@@ -404,9 +404,9 @@ export function toFuturesTransaction(transaction: Transaction): FuturesTransacti
 /**
  * Transform database Transaction to CashTransaction
  */
-export function toCashTransaction(transaction: Transaction): CashTransaction {
+export function toCashTransaction(transaction: Transaction): DomainCashTransaction {
   // Map transaction codes to cash transaction types
-  const codeToType: Record<string, CashTransaction['transactionType']> = {
+  const codeToType: Record<string, DomainCashTransaction['transactionType']> = {
     INT: 'interest',
     DIV: 'dividend',
     CDIV: 'dividend',
@@ -423,7 +423,8 @@ export function toCashTransaction(transaction: Transaction): CashTransaction {
     OCC: 'other',
   };
 
-  let transactionType: CashTransaction['transactionType'] = codeToType[transaction.transaction_code] || 'other';
+  let transactionType: DomainCashTransaction['transactionType'] =
+    codeToType[transaction.transaction_code] || 'other';
 
   // Handle ACH/WIRE based on amount sign
   if (transaction.transaction_code === 'ACH' || transaction.transaction_code === 'WIRE') {

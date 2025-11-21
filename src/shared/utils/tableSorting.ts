@@ -56,7 +56,7 @@ function getNestedValue<T>(obj: T, path: string | keyof T): unknown {
     }, obj as unknown);
   }
 
-  const key = typeof path === 'string' ? path : (path as string);
+  const key = typeof path === 'string' ? path : String(path);
   if (obj && typeof obj === 'object') {
     return (obj as Record<string, unknown>)[key];
   }

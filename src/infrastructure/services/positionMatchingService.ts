@@ -205,7 +205,6 @@ export class PositionMatchingService {
       opening_transaction_ids: [tx.id],
       closing_transaction_ids: [],
       opened_at: openedAtTimestamp,
-      closed_at: null,
       notes: null,
       tags: [],
     };
@@ -286,7 +285,8 @@ export class PositionMatchingService {
       closingQuantity,
       tx.id,
       tx.amount,
-      realizedPL
+      realizedPL,
+      tx.activity_date
     );
 
     // Link transaction to position
@@ -324,7 +324,6 @@ export class PositionMatchingService {
       opening_transaction_ids: [tx.id],
       closing_transaction_ids: [],
       opened_at: new Date(tx.activity_date).toISOString(),
-      closed_at: null,
       notes: null,
       tags: [],
     };
@@ -379,7 +378,7 @@ export class PositionMatchingService {
           marginRequirement = contractSpec.initial_margin;
         }
       } catch (error) {
-        logger.warn('Failed to fetch contract spec', error, { baseSymbol, userId: tx.user_id });
+        logger.error('Failed to fetch contract spec', error, { baseSymbol, userId: tx.user_id });
         // Continue with null values - defaults will be used in transformer
       }
     }
@@ -409,7 +408,6 @@ export class PositionMatchingService {
       opening_transaction_ids: [tx.id],
       closing_transaction_ids: [],
       opened_at: new Date(tx.activity_date).toISOString(),
-      closed_at: null,
       notes: null,
       tags: [],
     };
@@ -487,7 +485,8 @@ export class PositionMatchingService {
       sellingQuantity,
       tx.id,
       tx.amount,
-      totalPL
+      totalPL,
+      tx.activity_date
     );
 
     // Link transaction to position
@@ -573,7 +572,6 @@ export class PositionMatchingService {
       opening_transaction_ids: [tx.id],
       closing_transaction_ids: [],
       opened_at: new Date(tx.activity_date).toISOString(),
-      closed_at: null,
       notes: null,
       tags: [],
     };
@@ -637,7 +635,8 @@ export class PositionMatchingService {
       sellingQuantity,
       tx.id,
       tx.amount,
-      totalPL
+      totalPL,
+      tx.activity_date
     );
 
     // Link transaction to position
@@ -675,7 +674,7 @@ export class PositionMatchingService {
       );
 
       if (positions.length > 0) {
-        await PositionRepository.updateStatus(positions[0].id, 'assigned');
+        await PositionRepository.updateStatus(positions[0].id, 'assigned', tx.activity_date);
         await TransactionRepository.update(tx.id, { position_id: positions[0].id });
       }
     }
@@ -693,7 +692,7 @@ export class PositionMatchingService {
       );
 
       if (positions.length > 0) {
-        await PositionRepository.updateStatus(positions[0].id, 'exercised');
+        await PositionRepository.updateStatus(positions[0].id, 'exercised', tx.activity_date);
         await TransactionRepository.update(tx.id, { position_id: positions[0].id });
       }
     }
@@ -715,7 +714,7 @@ export class PositionMatchingService {
     );
 
     for (const position of expiredPositions) {
-      await PositionRepository.updateStatus(position.id, 'expired');
+      await PositionRepository.updateStatus(position.id, 'expired', position.expiration_date || undefined);
     }
 
     logger.info('Marked positions as expired', { count: expiredPositions.length, userId });

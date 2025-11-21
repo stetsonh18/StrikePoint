@@ -22,6 +22,17 @@ export interface SearchResult {
 const SEARCH_HISTORY_KEY = 'strikepoint_search_history';
 const MAX_HISTORY_ITEMS = 10;
 
+const ASSET_ROUTE_MAP: Record<string, string> = {
+  stock: '/stocks',
+  option: '/options',
+  crypto: '/crypto',
+  futures: '/futures',
+  cash: '/cash',
+};
+
+const getAssetRoute = (assetType?: string | null) =>
+  ASSET_ROUTE_MAP[assetType?.toLowerCase() ?? ''] ?? '/';
+
 /**
  * Get search history from localStorage
  */
@@ -78,6 +89,8 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
   }, [query]);
 
   const hasQuery = debouncedQuery.trim().length >= 2;
+  const shouldFetchData = enabled && hasQuery && !!userId;
+  const fetchUserId = shouldFetchData ? userId : '';
   const searchLower = debouncedQuery.toLowerCase();
 
   // Search symbols (stocks)
@@ -87,25 +100,21 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
   const cryptoSymbolSearch = useDebouncedCryptoSymbolSearch(debouncedQuery, 300, enabled && hasQuery);
 
   // Fetch transactions
-  const { data: transactions = [] } = useTransactions(userId, undefined, {
-    enabled: enabled && hasQuery,
-  });
+  const { data: transactions = [] } = useTransactions(fetchUserId);
 
   // Fetch journal entries
-  const { data: journalEntries = [] } = useJournalEntries(userId, undefined, {
-    enabled: enabled && hasQuery,
-  });
+  const { data: journalEntries = [] } = useJournalEntries(fetchUserId);
 
   // Fetch positions
-  const { data: positions = [] } = usePositions(userId, {
-    enabled: enabled && hasQuery,
-  });
+  const { data: positions = [] } = usePositions(fetchUserId);
 
   // Combine and filter results
   const results = useMemo<SearchResult[]>(() => {
     if (!hasQuery) return [];
 
     const allResults: SearchResult[] = [];
+    const includesSearch = (value?: string | null) =>
+      value ? value.toLowerCase().includes(searchLower) : false;
 
     // Add stock symbol results
     if (stockSymbolSearch.data) {
@@ -114,7 +123,7 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
           type: 'symbol',
           id: `symbol-${symbol.symbol}`,
           title: symbol.symbol,
-          subtitle: symbol.description || symbol.name,
+          subtitle: symbol.name,
           symbol: symbol.symbol,
           route: `/stocks`,
           metadata: { assetType: 'stock', ...symbol },
@@ -140,10 +149,11 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
     // Filter and add transactions
     transactions
       .filter((tx: Transaction) => {
-        const matchesSymbol = tx.instrument?.toLowerCase().includes(searchLower) ||
-          tx.underlying_symbol?.toLowerCase().includes(searchLower) ||
-          tx.description?.toLowerCase().includes(searchLower);
-        return matchesSymbol;
+        return (
+          includesSearch(tx.instrument) ||
+          includesSearch(tx.underlying_symbol) ||
+          includesSearch(tx.description)
+        );
       })
       .forEach((tx: Transaction) => {
         const assetType = tx.asset_type.toLowerCase();
@@ -153,7 +163,7 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
           title: `${tx.transaction_code} ${tx.instrument || tx.underlying_symbol || 'Unknown'}`,
           subtitle: `${tx.quantity || 0} @ $${tx.price?.toFixed(2) || '0.00'} on ${tx.activity_date}`,
           symbol: tx.instrument || tx.underlying_symbol || undefined,
-          route: `/${assetType === 'stock' ? 'stocks' : assetType === 'option' ? 'options' : assetType === 'crypto' ? 'crypto' : assetType === 'future' ? 'futures' : 'cash'}`,
+          route: getAssetRoute(assetType),
           metadata: { transaction: tx },
         });
       });
@@ -183,20 +193,18 @@ export function useGlobalSearch(query: string, enabled: boolean = true) {
     // Filter and add positions
     positions
       .filter((pos: Position) => {
-        return (
-          pos.symbol?.toLowerCase().includes(searchLower) ||
-          pos.underlyingSymbol?.toLowerCase().includes(searchLower)
-        );
+        return includesSearch(pos.symbol);
       })
       .forEach((pos: Position) => {
-        const assetType = pos.assetType.toLowerCase();
+        const assetType = pos.asset_type.toLowerCase();
+        const symbol = pos.symbol || undefined;
         allResults.push({
           type: 'position',
           id: `position-${pos.id}`,
-          title: `${pos.symbol || pos.underlyingSymbol || 'Unknown'}`,
-          subtitle: `${pos.quantity || 0} @ $${pos.averagePrice?.toFixed(2) || '0.00'} (${assetType})`,
-          symbol: pos.symbol || pos.underlyingSymbol || undefined,
-          route: `/${assetType === 'stock' ? 'stocks' : assetType === 'option' ? 'options' : assetType === 'crypto' ? 'crypto' : assetType === 'future' ? 'futures' : 'cash'}`,
+          title: symbol || 'Unknown',
+          subtitle: `${pos.current_quantity || 0} @ $${pos.average_opening_price?.toFixed(2) || '0.00'} (${assetType})`,
+          symbol,
+          route: getAssetRoute(assetType),
           metadata: { position: pos },
         });
       });

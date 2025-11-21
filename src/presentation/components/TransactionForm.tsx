@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
-import type { AssetType, OptionChainEntry, Transaction } from '@/domain/types';
+import type { AssetType, OptionChainEntry, Transaction, TransactionInsert } from '@/domain/types';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
@@ -266,16 +266,29 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         ? `${notes}\n${entryTimeNote}` 
         : entryTimeNote;
       
-      let transactionData: any = {
+      let transactionData: Omit<TransactionInsert, 'import_id'> = {
         user_id: userId,
-        import_id: null,
         activity_date: useDate,
         process_date: useProcessDate,
         settle_date: useSettleDate,
         description: description || 'Manual entry',
         notes: combinedNotes,
-        tags: [],
+        tags: [] as string[],
         fees: parseFloat(fees) || 0,
+        asset_type: assetType,
+        transaction_code: transactionCode,
+        underlying_symbol: null,
+        instrument: null,
+        quantity: null,
+        price: null,
+        amount: 0,
+        is_opening: null,
+        is_long: null,
+        option_type: null,
+        strike_price: null,
+        expiration_date: null,
+        position_id: editingTransaction?.position_id ?? null,
+        strategy_id: editingTransaction?.strategy_id ?? null,
       };
 
       switch (assetType) {
@@ -362,7 +375,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           };
           break;
 
-        case 'cash':
+        case 'cash': {
           const cashAmount = parseFloat(amount) || 0;
           
           // Determine if this is a credit (positive) or debit (negative) transaction
@@ -383,6 +396,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             settle_date: useSettleDate,
             symbol: null,
             tags: [],
+            transaction_id: editingTransaction?.id ?? null,
           });
           
           // Also update cash balance
@@ -426,12 +440,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           onSuccess();
           onClose();
           return; // Early return for cash transactions
+        }
       }
 
       // If editing, update the transaction; otherwise create a new one
       if (editingTransaction) {
         // Remove fields that shouldn't be updated
-        const { user_id, import_id, created_at, updated_at, ...updateData } = transactionData;
+        const updateData = { ...transactionData };
+        delete (updateData as Partial<typeof transactionData>).user_id;
         await TransactionRepository.update(editingTransaction.id, updateData);
       } else {
         await TransactionService.createManualTransaction(transactionData);
@@ -646,7 +662,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   </label>
                   <select
                     value={optionTransactionCode}
-                    onChange={(e) => setOptionTransactionCode(e.target.value as any)}
+                    onChange={(e) =>
+                      setOptionTransactionCode(e.target.value as 'BTO' | 'STO' | 'BTC' | 'STC')
+                    }
                     required
                     className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                   >

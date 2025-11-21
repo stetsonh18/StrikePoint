@@ -98,6 +98,7 @@ export type SuggestedStrategyType =
   | 'cash_secured_put'
   | 'vertical_spread'
   | 'horizontal_spread'
+  | 'calendar_spread'
   | 'diagonal_spread'
   | 'iron_condor'
   | 'iron_butterfly'

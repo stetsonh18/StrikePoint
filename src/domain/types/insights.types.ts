@@ -17,6 +17,10 @@ export interface AIInsightFilters {
   priority?: InsightPriority | InsightPriority[];
   isRead?: boolean;
   isDismissed?: boolean;
+  /** @deprecated Use isRead instead */
+  is_read?: boolean;
+  /** @deprecated Use isDismissed instead */
+  is_dismissed?: boolean;
   limit?: number;
   actionable?: boolean;
   related_symbols?: string[];

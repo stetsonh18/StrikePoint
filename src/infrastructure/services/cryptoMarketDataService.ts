@@ -68,6 +68,40 @@ export interface CryptoQuote {
   last_updated: string;
 }
 
+interface CoinGeckoSearchCoin {
+  id?: string;
+  symbol?: string;
+  name?: string;
+  market_cap_rank?: number;
+  thumb?: string;
+  large?: string;
+}
+
+interface CoinGeckoMarketCoin {
+  id?: string;
+  symbol?: string;
+  name?: string;
+  image?: string;
+  current_price?: number;
+  market_cap?: number;
+  market_cap_rank?: number;
+  total_volume?: number;
+  high_24h?: number;
+  low_24h?: number;
+  price_change_24h?: number;
+  price_change_percentage_24h?: number;
+  circulating_supply?: number;
+  total_supply?: number;
+  max_supply?: number | null;
+  ath?: number;
+  ath_change_percentage?: number;
+  ath_date?: string;
+  atl?: number;
+  atl_change_percentage?: number;
+  atl_date?: string;
+  last_updated?: string;
+}
+
 /**
  * Search for cryptocurrencies using CoinGecko API
  * Documentation: https://docs.coingecko.com/v3.0.1/reference/search
@@ -94,14 +128,16 @@ export async function searchCrypto(query: string): Promise<CryptoSearchResult[]>
     // Parse CoinGecko response format
     // Response: { coins: [...], exchanges: [...], categories: [...], nfts: [...] }
     if (data.coins && Array.isArray(data.coins)) {
-      const results: CryptoSearchResult[] = data.coins.map((coin: any) => ({
-        id: coin.id || '',
-        symbol: (coin.symbol || '').toUpperCase(),
-        name: coin.name || '',
-        market_cap_rank: coin.market_cap_rank,
-        thumb: coin.thumb,
-        large: coin.large,
-      })).filter((r: CryptoSearchResult) => r.id && r.symbol && r.name);
+      const results: CryptoSearchResult[] = data.coins
+        .map((coin: CoinGeckoSearchCoin) => ({
+          id: coin.id || '',
+          symbol: (coin.symbol || '').toUpperCase(),
+          name: coin.name || '',
+          market_cap_rank: coin.market_cap_rank,
+          thumb: coin.thumb,
+          large: coin.large,
+        }))
+        .filter((r: CryptoSearchResult) => r.id && r.symbol && r.name);
 
       return results;
     }
@@ -140,7 +176,7 @@ export async function getCryptoQuote(coinId: string): Promise<CryptoQuote | null
       throw new Error(`No data found for ${coinId}`);
     }
 
-    const coin = data[0];
+    const coin: CoinGeckoMarketCoin = data[0] || {};
 
     return {
       id: coin.id || coinId,
@@ -196,7 +232,7 @@ export async function getCryptoQuotes(coinIds: string[]): Promise<Record<string,
     const quotes: Record<string, CryptoQuote> = {};
 
     if (Array.isArray(data)) {
-      data.forEach((coin: any) => {
+      data.forEach((coin: CoinGeckoMarketCoin) => {
         const quote: CryptoQuote = {
           id: coin.id || '',
           symbol: (coin.symbol || '').toUpperCase(),

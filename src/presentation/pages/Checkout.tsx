@@ -7,6 +7,16 @@ import { useToast } from '@/shared/hooks/useToast';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, CreditCard, Gift, CheckCircle2, Home, LogOut } from 'lucide-react';
 
+type StripeCheckout = {
+  redirectToCheckout: (options: { sessionId: string }) => Promise<{ error?: { message?: string } }>;
+};
+
+function hasRedirectToCheckout(stripe: unknown): stripe is StripeCheckout {
+  return Boolean(
+    stripe && typeof (stripe as Partial<StripeCheckout>).redirectToCheckout === 'function'
+  );
+}
+
 export function Checkout() {
   const user = useAuthStore((state) => state.user);
   const userId = user?.id || '';
@@ -142,7 +152,7 @@ export function Checkout() {
 
       // Redirect to Stripe Checkout
       const stripe = await getStripe();
-      if (stripe) {
+      if (hasRedirectToCheckout(stripe)) {
         await stripe.redirectToCheckout({ sessionId });
       } else {
         // Fallback: redirect to URL directly

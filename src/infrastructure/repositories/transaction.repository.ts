@@ -506,6 +506,35 @@ export class TransactionRepository {
   }
 
   /**
+   * Get activity dates for a list of transaction IDs
+   */
+  static async getActivityDates(transactionIds: string[]): Promise<Record<string, string>> {
+    if (!transactionIds || transactionIds.length === 0) {
+      return {};
+    }
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('id, activity_date')
+      .in('id', transactionIds);
+
+    if (error) {
+      const parsed = parseError(error);
+      logErrorWithContext(error, { context: 'TransactionRepository.getActivityDates', count: transactionIds.length });
+      throw new Error(`Failed to fetch transaction dates: ${parsed.message}`, { cause: error });
+    }
+
+    const result: Record<string, string> = {};
+    (data || []).forEach((tx) => {
+      if (tx.id && tx.activity_date) {
+        result[tx.id] = tx.activity_date;
+      }
+    });
+
+    return result;
+  }
+
+  /**
    * Check for duplicate transactions
    * Matches on: activity_date, underlying_symbol, transaction_code, quantity, amount
    */

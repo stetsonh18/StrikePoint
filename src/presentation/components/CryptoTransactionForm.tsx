@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { TransactionService } from '@/infrastructure/services/transactionService';
+import type { TransactionInsert } from '@/domain/types';
 import { CryptoSymbolAutocomplete } from './CryptoSymbolAutocomplete';
 
 interface CryptoTransactionFormProps {
@@ -56,13 +57,12 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
 
       const transactionData = {
         user_id: userId,
-        import_id: null,
         activity_date: useDate,
         process_date: useProcessDate,
         settle_date: useSettleDate,
         description: description || `${transactionCode} ${quantity} ${symbol}`,
         notes: notes || null,
-        tags: [],
+        tags: [] as string[],
         fees: parseFloat(fees) || 0,
         asset_type: 'crypto' as const,
         transaction_code: transactionCode,
@@ -70,16 +70,19 @@ export const CryptoTransactionForm: React.FC<CryptoTransactionFormProps> = ({
         instrument: symbol,
         quantity: parseFloat(quantity) || 0,
         price: parseFloat(price) || 0,
-        amount: transactionCode === 'Buy'
-          ? -(parseFloat(price) || 0) * (parseFloat(quantity) || 0) // Negative for buy (debit)
-          : (parseFloat(price) || 0) * (parseFloat(quantity) || 0), // Positive for sell (credit)
+        amount:
+          transactionCode === 'Buy'
+            ? -(parseFloat(price) || 0) * (parseFloat(quantity) || 0) // Negative for buy (debit)
+            : (parseFloat(price) || 0) * (parseFloat(quantity) || 0), // Positive for sell (credit)
         is_opening: null,
         is_long: transactionCode === 'Buy',
         // Explicitly set option-specific fields to null for non-option transactions
         option_type: null,
         strike_price: null,
         expiration_date: null,
-      };
+        position_id: null,
+        strategy_id: null,
+      } satisfies Omit<TransactionInsert, 'import_id'>;
 
       await TransactionService.createManualTransaction(transactionData);
       onSuccess();

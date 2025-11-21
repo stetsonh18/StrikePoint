@@ -238,7 +238,8 @@ export class PositionRepository {
     closingQuantity: number,
     closingTransactionId: string,
     closingAmount: number,
-    realizedPL: number
+    realizedPL: number,
+    closingDate?: string
   ): Promise<Position> {
     const position = await this.getById(id);
     if (!position) throw new Error('Position not found');
@@ -265,7 +266,7 @@ export class PositionRepository {
     };
 
     if (newStatus === 'closed') {
-      updates.closed_at = new Date().toISOString();
+      updates.closed_at = closingDate ? new Date(closingDate).toISOString() : new Date().toISOString();
       updates.unrealized_pl = 0; // No unrealized P/L when position is fully closed
     }
 
@@ -275,11 +276,11 @@ export class PositionRepository {
   /**
    * Update status (for assignments, exercises, expirations)
    */
-  static async updateStatus(id: string, status: PositionStatus): Promise<Position> {
+  static async updateStatus(id: string, status: PositionStatus, closedAt?: string): Promise<Position> {
     const updates: PositionUpdate = { status };
 
     if (status === 'closed' || status === 'assigned' || status === 'exercised' || status === 'expired') {
-      updates.closed_at = new Date().toISOString();
+      updates.closed_at = closedAt ? new Date(closedAt).toISOString() : new Date().toISOString();
     }
 
     return this.update(id, updates);

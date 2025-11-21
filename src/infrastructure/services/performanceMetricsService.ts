@@ -2,6 +2,7 @@ import { PositionRepository } from '@/infrastructure/repositories/position.repos
 import { StrategyRepository } from '@/infrastructure/repositories/strategy.repository';
 import { PortfolioSnapshotRepository } from '@/infrastructure/repositories/portfolioSnapshot.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
+import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import type { Position, Strategy } from '@/domain/types';
 import type { AssetType } from '@/domain/types/asset.types';
 
@@ -280,9 +281,6 @@ export class PerformanceMetricsService {
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     
-    // Calculate ROI: (Realized P&L / Initial Investment) * 100
-    const roi = initialInvestment > 0 ? (realizedPL / initialInvestment) * 100 : 0;
-    
     // Calculate current balance: Net cash flow + unrealized P&L
     // Net cash flow = sum of all cash transactions (excluding futures margin)
     const netCashFlow = cashTransactions
@@ -292,6 +290,12 @@ export class PerformanceMetricsService {
     // For current balance, we'll use a simplified calculation: net cash flow + unrealized PL
     // Full portfolio value would require market quotes, which is handled in the hook
     const currentBalance = netCashFlow + unrealizedPL;
+    
+    // Calculate ROI relative to initial investment (matching ROI chart logic)
+    const roi =
+      initialInvestment > 0
+        ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
+        : 0;
 
     if (totalTrades === 0) {
       return {
@@ -423,14 +427,16 @@ export class PerformanceMetricsService {
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     
-    // Calculate ROI: (Realized P&L / Initial Investment) * 100
-    const roi = initialInvestment > 0 ? (realizedPL / initialInvestment) * 100 : 0;
-    
     // Calculate current balance: Net cash flow + unrealized P&L
     const netCashFlow = cashTransactions
       .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     const currentBalance = netCashFlow + unrealizedPL;
+    
+    const roi =
+      initialInvestment > 0
+        ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
+        : 0;
 
     if (totalTrades === 0) {
       return {
@@ -626,21 +632,67 @@ export class PerformanceMetricsService {
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
     const openTrades = filteredTrades.filter((trade) => trade.status !== 'closed');
 
+    const formatDateKey = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const parseDateKey = (key: string) => {
+      const [year, month, day] = key.split('-').map((value) => parseInt(value, 10));
+      return new Date(year, (month || 1) - 1, day || 1);
+    };
+    const addDays = (date: Date, amount: number) => {
+      const copy = new Date(date);
+      copy.setDate(copy.getDate() + amount);
+      return copy;
+    };
+
     const dateMap = new Map<string, { realized: number; unrealized: number }>();
 
+    const closingTransactionIdSet = new Set<string>();
     realizedTrades.forEach((trade) => {
+      trade.legs.forEach((leg) => {
+        (leg.closing_transaction_ids || []).forEach((id) => {
+          if (id) {
+            closingTransactionIdSet.add(id);
+          }
+        });
+      });
+    });
+    const closingTransactionDates =
+      closingTransactionIdSet.size > 0
+        ? await TransactionRepository.getActivityDates(Array.from(closingTransactionIdSet))
+        : {};
+
+    const getRealizedDateKey = (trade: NormalizedTrade): string | null => {
       const closedDate = this.getTradeClosedDate(trade);
-      if (!closedDate) {
+      const legClosingDates = trade.legs
+        .flatMap((leg) => leg.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((date): date is string => Boolean(date));
+
+      if (legClosingDates.length > 0) {
+        const latestLegDate = this.getLatestDate(legClosingDates);
+        return latestLegDate ?? null;
+      }
+
+      return closedDate ? formatDateKey(closedDate) : null;
+    };
+
+    realizedTrades.forEach((trade) => {
+      const dateKey = getRealizedDateKey(trade);
+      if (!dateKey) {
         return;
       }
-      const dateKey = closedDate.toISOString().split('T')[0];
       if (!dateMap.has(dateKey)) {
         dateMap.set(dateKey, { realized: 0, unrealized: 0 });
       }
       dateMap.get(dateKey)!.realized += trade.realizedPL;
     });
 
-    const todayKey = new Date().toISOString().split('T')[0];
+    const todayKey = formatDateKey(new Date());
+    const todayDate = parseDateKey(todayKey);
     if (openTrades.length > 0) {
       if (!dateMap.has(todayKey)) {
         dateMap.set(todayKey, { realized: 0, unrealized: 0 });
@@ -656,9 +708,40 @@ export class PerformanceMetricsService {
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    if (dailyPL.length === 0) {
+      return [];
+    }
+
+    const dailyPLMap = new Map(dailyPL.map((day) => [day.date, day]));
+
+    let rangeEndDate = days ? todayDate : parseDateKey(dailyPL[dailyPL.length - 1].date);
+    let rangeStartDate = days
+      ? addDays(rangeEndDate, -(days - 1))
+      : parseDateKey(dailyPL[0].date);
+
+    if (!days && rangeStartDate.getTime() === rangeEndDate.getTime()) {
+      rangeEndDate = addDays(rangeEndDate, 1);
+    }
+
+    const filledDailyPL: Array<{ date: string; dailyRealized: number; dailyUnrealized: number }> = [];
+    for (let cursor = new Date(rangeStartDate); cursor <= rangeEndDate; cursor = addDays(cursor, 1)) {
+      const dateKey = formatDateKey(cursor);
+      const existing = dailyPLMap.get(dateKey);
+      filledDailyPL.push({
+        date: dateKey,
+        dailyRealized: existing?.dailyRealized ?? 0,
+        dailyUnrealized: existing?.dailyUnrealized ?? 0,
+      });
+    }
+
+    const hasDataPointInRange = filledDailyPL.some((day) => dailyPLMap.has(day.date));
+    if (!hasDataPointInRange) {
+      return [];
+    }
+
     let cumulativeRealized = 0;
     let cumulativeUnrealized = 0;
-    const result = dailyPL.map((day) => {
+    return filledDailyPL.map((day) => {
       cumulativeRealized += day.dailyRealized;
       cumulativeUnrealized += day.dailyUnrealized;
       return {
@@ -669,14 +752,6 @@ export class PerformanceMetricsService {
       };
     });
 
-    if (days) {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
-      return result.filter((r) => r.date >= cutoffDateStr);
-    }
-
-    return result;
   }
 
   /**
@@ -691,6 +766,36 @@ export class PerformanceMetricsService {
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
     const openTrades = filteredTrades.filter((trade) => trade.status !== 'closed');
 
+    const closingTransactionIdSet = new Set<string>();
+    realizedTrades.forEach((trade) => {
+      trade.legs.forEach((leg) => {
+        (leg.closing_transaction_ids || []).forEach((id) => {
+          if (id) {
+            closingTransactionIdSet.add(id);
+          }
+        });
+      });
+    });
+    const closingTransactionDates =
+      closingTransactionIdSet.size > 0
+        ? await TransactionRepository.getActivityDates(Array.from(closingTransactionIdSet))
+        : {};
+
+    const getTradeDateKey = (trade: NormalizedTrade): string | null => {
+      const closedDate = this.getTradeClosedDate(trade);
+      const legClosingDates = trade.legs
+        .flatMap((leg) => leg.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((date): date is string => Boolean(date));
+
+      if (legClosingDates.length > 0) {
+        const latestLegDate = this.getLatestDate(legClosingDates);
+        return latestLegDate ? latestLegDate : null;
+      }
+
+      return closedDate ? closedDate.toISOString().split('T')[0] : null;
+    };
+
     const dates: string[] = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -701,11 +806,7 @@ export class PerformanceMetricsService {
     const dailyPL = dates.map((date) => {
       let value = 0;
       realizedTrades.forEach((trade) => {
-        const closedDate = this.getTradeClosedDate(trade);
-        if (!closedDate) {
-          return;
-        }
-        const closedKey = closedDate.toISOString().split('T')[0];
+        const closedKey = getTradeDateKey(trade);
         if (closedKey === date) {
           value += trade.realizedPL;
         }
@@ -942,8 +1043,8 @@ export class PerformanceMetricsService {
     userId: string
   ): Promise<Array<{ dteBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
-    const getUtcMidnight = (date: Date) =>
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    const getLocalMidnight = (date: Date) =>
+      new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
     
     // Group by DTE bucket
     const bucketMap = new Map<string, NormalizedTrade[]>();
@@ -960,8 +1061,8 @@ export class PerformanceMetricsService {
         if (!expirationDate || !openedDate) {
           return;
         }
-        const normalizedExpiration = getUtcMidnight(expirationDate);
-        const normalizedOpened = getUtcMidnight(openedDate);
+        const normalizedExpiration = getLocalMidnight(expirationDate);
+        const normalizedOpened = getLocalMidnight(openedDate);
         const dayDiff = (normalizedExpiration - normalizedOpened) / MS_PER_DAY;
         const daysToExp = Math.max(0, Math.round(dayDiff));
       
@@ -1315,7 +1416,21 @@ export class PerformanceMetricsService {
     const sortedSnapshots = [...filteredSnapshots].sort(
       (a, b) => a.snapshot_date.localeCompare(b.snapshot_date)
     );
-    const initialNetCashFlow = sortedSnapshots[0]?.net_cash_flow || 0;
+    
+    // Determine initial investment (sum of deposits) to match ROI metric summary
+    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+    const initialInvestmentFromDeposits = cashTransactions
+      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+      .filter((tx) => (tx.amount || 0) > 0)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    
+    const fallbackInvestment =
+      sortedSnapshots.find((snapshot) => snapshot.net_cash_flow !== 0)?.net_cash_flow ??
+      sortedSnapshots[0]?.portfolio_value ??
+      0;
+    
+    const investmentBase = initialInvestmentFromDeposits || fallbackInvestment;
     
     const result = sortedSnapshots.map((s) => {
       let portfolioValue = s.portfolio_value;
@@ -1334,10 +1449,11 @@ export class PerformanceMetricsService {
         }
       }
       
-      // Calculate ROI: (Current Value - Initial Investment) / Initial Investment * 100
-      // Use net_cash_flow as the investment amount
-      const investment = s.net_cash_flow || initialNetCashFlow;
-      const roi = investment !== 0 ? ((portfolioValue - investment) / Math.abs(investment)) * 100 : 0;
+      // Calculate ROI relative to initial investment
+      const roi =
+        investmentBase !== 0
+          ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
+          : 0;
       
       return {
         date: s.snapshot_date,
@@ -1363,14 +1479,37 @@ export class PerformanceMetricsService {
       this.isRealizedTrade(trade)
     );
 
+    const closingTransactionIdSet = new Set<string>();
+    realizedTrades.forEach((trade) => {
+      trade.legs.forEach((leg) => {
+        (leg.closing_transaction_ids || []).forEach((id) => {
+          if (id) {
+            closingTransactionIdSet.add(id);
+          }
+        });
+      });
+    });
+    const closingTransactionDates =
+      closingTransactionIdSet.size > 0
+        ? await TransactionRepository.getActivityDates(Array.from(closingTransactionIdSet))
+        : {};
+
     const dateMap = new Map<string, { pl: number; count: number }>();
 
     realizedTrades.forEach((trade) => {
       const closedDate = this.getTradeClosedDate(trade);
-      if (!closedDate) {
+
+      const legClosingDates = trade.legs
+        .flatMap((leg) => leg.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((date): date is string => Boolean(date));
+
+      const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
+      const dateKey = latestLegDate || (closedDate ? closedDate.toISOString().split('T')[0] : null);
+
+      if (!dateKey) {
         return;
       }
-      const dateKey = closedDate.toISOString().split('T')[0];
       if (!dateMap.has(dateKey)) {
         dateMap.set(dateKey, { pl: 0, count: 0 });
       }
