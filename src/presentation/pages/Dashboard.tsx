@@ -16,6 +16,7 @@ import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
 import { useDailyPerformance } from '@/application/hooks/useDailyPerformance';
 import { useWeeklyPerformance } from '@/application/hooks/useWeeklyPerformance';
 import { useMonthlyPerformanceDashboard } from '@/application/hooks/useMonthlyPerformanceDashboard';
+import { useYearlyPerformance } from '@/application/hooks/useYearlyPerformance';
 import { PortfolioSnapshotService } from '@/infrastructure/services/portfolioSnapshotService';
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from 'recharts';
 import type { Position } from '@/domain/types';
@@ -55,11 +56,18 @@ export const Dashboard = () => {
   const { data: dailyPerformance } = useDailyPerformance(userId);
   const { data: weeklyPerformance } = useWeeklyPerformance(userId);
   const { data: monthlyPerformance } = useMonthlyPerformanceDashboard(userId);
+  const { data: yearlyPerformance } = useYearlyPerformance(userId);
   const [isNewsExpanded, setIsNewsExpanded] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   const realizedPL = positionStats?.totalRealizedPL || 0;
   const unrealizedPL = portfolioUnrealizedPL; // Use calculated unrealized P&L from all open positions
+
+  // Calculate total fees from all transactions
+  const totalFees = useMemo(() => {
+    if (!transactions) return 0;
+    return transactions.reduce((sum, tx) => sum + Number(tx.fees || 0), 0);
+  }, [transactions]);
   const { normalizedOpenPositions, normalizedTotalPositions } = useMemo(() => {
     if (!allPositions) {
       return { normalizedOpenPositions: 0, normalizedTotalPositions: 0 };
@@ -489,9 +497,9 @@ export const Dashboard = () => {
       )}
 
       {/* Zone 1: Primary Metrics - Most Important */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         {portfolioLoading || statsLoading ? (
-          <StatCardSkeleton count={3} />
+          <StatCardSkeleton count={4} />
         ) : (
           <>
             <StatCard
@@ -518,6 +526,13 @@ export const Dashboard = () => {
               bgColor="bg-blue-500/10"
               subtitle={`${normalizedTotalPositions || allPositions?.length || 0} total`}
             />
+            <StatCard
+              title="Cash Balance"
+              value={formatCurrency(cashBalance)}
+              icon={DollarSign}
+              iconColor="text-emerald-400"
+              bgColor="bg-emerald-500/10"
+            />
           </>
         )}
       </div>
@@ -525,7 +540,7 @@ export const Dashboard = () => {
       {/* Zone 2: Performance Summary Card */}
       <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
         <h3 className="text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3 md:mb-4">Performance Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <div className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-800/30 rounded-xl">
             <div>
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Today</p>
@@ -583,22 +598,34 @@ export const Dashboard = () => {
             </div>
             <TrendingUp className={`w-8 h-8 ${monthlyPerformance && monthlyPerformance.monthlyPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} />
           </div>
+          <div className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-800/30 rounded-xl">
+            <div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">This Year</p>
+              <p className={`text-xl font-bold ${yearlyPerformance && yearlyPerformance.yearlyPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                {yearlyPerformance ? `${yearlyPerformance.yearlyPL >= 0 ? '+' : ''}${formatCurrency(yearlyPerformance.yearlyPL)}` : '—'}
+              </p>
+              {yearlyPerformance && yearlyPerformance.yearlyPLPercent !== 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  {yearlyPerformance.yearlyPLPercent >= 0 ? '+' : ''}{yearlyPerformance.yearlyPLPercent.toFixed(2)}%
+                </p>
+              )}
+              {yearlyPerformance && (
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                  {`${formatCurrency(yearlyPerformance.realizedPL)} realized / ${formatCurrency(yearlyPerformance.unrealizedPL)} unrealized`}
+                </p>
+              )}
+            </div>
+            <TrendingUp className={`w-8 h-8 ${yearlyPerformance && yearlyPerformance.yearlyPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} />
+          </div>
         </div>
       </div>
 
-      {/* Zone 3: Secondary Metrics - Includes Profit Factor when available */}
-      <div className={`grid gap-4 ${!portfolioLoading && !statsLoading && winRateMetrics && winRateMetrics.totalTrades > 0 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
-        {portfolioLoading || statsLoading ? (
-          <StatCardSkeleton count={winRateMetrics && winRateMetrics.totalTrades > 0 ? 4 : 3} />
+      {/* Zone 3: Secondary Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        {portfolioLoading || statsLoading || transactionsLoading ? (
+          <StatCardSkeleton count={4} />
         ) : (
           <>
-            <StatCard
-              title="Cash Balance"
-              value={formatCurrency(cashBalance)}
-              icon={DollarSign}
-              iconColor="text-emerald-400"
-              bgColor="bg-emerald-500/10"
-            />
             <StatCard
               title="Realized P&L"
               value={`${realizedPL >= 0 ? '+' : ''}${formatCurrency(realizedPL)}`}
@@ -613,16 +640,22 @@ export const Dashboard = () => {
               iconColor={unrealizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}
               bgColor={unrealizedPL >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
             />
-            {winRateMetrics && winRateMetrics.totalTrades > 0 && (
-              <StatCard
-                title="Profit Factor"
-                value={winRateMetrics.profitFactor.toFixed(2)}
-                icon={BarChart3}
-                iconColor={winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'}
-                bgColor={winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-red-500/10'}
-                subtitle={`${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}`}
-              />
-            )}
+            <StatCard
+              title="Total Fees"
+              value={formatCurrency(totalFees)}
+              icon={DollarSign}
+              iconColor="text-red-400"
+              bgColor="bg-red-500/10"
+              subtitle={transactions ? `${transactions.length} transactions` : undefined}
+            />
+            <StatCard
+              title="Profit Factor"
+              value={winRateMetrics && winRateMetrics.totalTrades > 0 ? winRateMetrics.profitFactor.toFixed(2) : '—'}
+              icon={BarChart3}
+              iconColor={winRateMetrics && winRateMetrics.profitFactor >= 1 ? 'text-emerald-400' : 'text-slate-400'}
+              bgColor={winRateMetrics && winRateMetrics.profitFactor >= 1 ? 'bg-emerald-500/10' : 'bg-slate-500/10'}
+              subtitle={winRateMetrics && winRateMetrics.totalTrades > 0 ? `${formatCurrency(winRateMetrics.totalGains)} / ${formatCurrency(winRateMetrics.totalLosses)}` : 'No trades yet'}
+            />
           </>
         )}
       </div>

@@ -171,6 +171,8 @@ export const queryKeys = {
       ['monthly-performance', userId, assetType, months] as const,
     monthlyDashboard: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
       ['monthly-performance-dashboard', userId, portfolioValue, unrealizedPL] as const,
+    yearlyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
+      ['yearly-performance', userId, portfolioValue, unrealizedPL] as const,
     symbolPerformance: (userId: string, assetType?: AssetType, days?: number) =>
       ['symbol-performance', userId, assetType, days] as const,
     strategyPerformance: (userId: string) => ['strategy-performance', userId] as const,
