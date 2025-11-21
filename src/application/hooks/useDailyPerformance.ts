@@ -15,11 +15,11 @@ export interface DailyPerformance {
 const DAYS_IN_DAY = 1;
 
 /**
- * Hook to calculate today's performance by comparing current portfolio value with yesterday's snapshot.
+ * Hook to calculate today's performance using real-time portfolio value vs yesterday's snapshot.
  * This correctly accounts for:
  * - Realized P&L from positions closed today
  * - Changes in unrealized P&L from price movements on open positions
- * - Any cash deposits/withdrawals
+ * - Uses real-time current portfolio value compared to yesterday's snapshot baseline
  */
 export function useDailyPerformance(
   userId: string,
@@ -36,7 +36,7 @@ export function useDailyPerformance(
       const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
       const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
 
-      // Get yesterday's portfolio snapshot
+      // Get yesterday's portfolio snapshot as baseline
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayDate = yesterday.toISOString().split('T')[0];
@@ -46,15 +46,15 @@ export function useDailyPerformance(
       let dailyPLPercent: number;
 
       if (yesterdaySnapshot) {
-        // Calculate daily P&L as the change in portfolio value from yesterday
+        // Calculate daily P&L as change from yesterday's snapshot to current real-time value
+        // This captures: realized P&L + change in unrealized P&L + deposits/withdrawals
         dailyPL = portfolioValue - yesterdaySnapshot.portfolio_value;
         dailyPLPercent = yesterdaySnapshot.portfolio_value !== 0
           ? (dailyPL / Math.abs(yesterdaySnapshot.portfolio_value)) * 100
           : 0;
       } else {
-        // Fallback: If no yesterday snapshot exists (new user or first day),
-        // use realized P&L + unrealized P&L as an approximation
-        // This ensures the dashboard shows something even without historical data
+        // Fallback: If no yesterday snapshot exists, use current realized + unrealized
+        // This won't be accurate but ensures dashboard shows something
         dailyPL = realizedPL + unrealizedPL;
         dailyPLPercent = portfolioValue !== 0 ? (dailyPL / Math.abs(portfolioValue)) * 100 : 0;
       }
