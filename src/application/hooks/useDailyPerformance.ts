@@ -47,7 +47,7 @@ export function useDailyPerformance(
 
       if (yesterdaySnapshot) {
         // Calculate daily P&L as change from yesterday's snapshot to current real-time value
-        // This captures: realized P&L + change in unrealized P&L + deposits/withdrawals
+        // This captures: realized P&L + change in unrealized P&L + deposits/withdrawals + fees
         dailyPL = portfolioValue - yesterdaySnapshot.portfolio_value;
         dailyPLPercent = yesterdaySnapshot.portfolio_value !== 0
           ? (dailyPL / Math.abs(yesterdaySnapshot.portfolio_value)) * 100
@@ -59,15 +59,14 @@ export function useDailyPerformance(
         dailyPLPercent = portfolioValue !== 0 ? (dailyPL / Math.abs(portfolioValue)) * 100 : 0;
       }
 
-      // Calculate the unrealized portion for display breakdown
-      // This represents the change in unrealized P&L today (dailyPL minus realized from closed positions)
-      const unrealizedChange = dailyPL - realizedPL;
-
+      // For display breakdown: when using snapshot comparison, the entire change should be
+      // shown as realized (includes closed position P&L + fees). Unrealized change is zero
+      // because we're comparing total portfolio value, not trying to split out components.
       return {
         dailyPL,
         dailyPLPercent,
-        realizedPL, // P&L from positions closed today
-        unrealizedPL: unrealizedChange, // Change in unrealized P&L today
+        realizedPL: dailyPL, // Total change in portfolio value (includes fees)
+        unrealizedPL: 0, // No unrealized component when using snapshot comparison
       };
     },
     enabled: !!userId,
