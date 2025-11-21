@@ -197,7 +197,7 @@ const Stocks: React.FC = () => {
 
     if (!confirmed) return;
     await deletePositionMutation.mutateAsync({ id: position.id, userId });
-  }, [confirmation, deletePositionMutation]);
+  }, [confirmation, deletePositionMutation, userId]);
 
   const handleEditTransaction = useCallback((transaction: StockTransaction) => {
     // Find the original transaction from allTransactions
@@ -219,7 +219,7 @@ const Stocks: React.FC = () => {
 
     if (!confirmed) return;
     await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
-  }, [confirmation, deleteTransactionMutation]);
+  }, [confirmation, deleteTransactionMutation, userId]);
 
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">

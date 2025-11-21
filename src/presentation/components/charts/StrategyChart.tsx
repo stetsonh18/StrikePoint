@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { StrategyPerformanceData } from '@/application/hooks/useStrategyPerformance';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -64,23 +65,29 @@ export const StrategyChart = ({ data, isLoading, chartType = 'donut', metric = '
   }
 
   if (chartType === 'donut' && metric === 'distribution') {
-    const pieData = data.map((strategy) => ({
+    interface PieDataEntry {
+      name: string;
+      value: number;
+      color: string;
+    }
+    const pieData: PieDataEntry[] = data.map((strategy) => ({
       name: formatStrategyName(strategy.strategyType),
       value: strategy.totalTrades,
       color: STRATEGY_COLORS[strategy.strategyType] || '#64748b',
     }));
 
-    const CustomTooltip = ({ active, payload }: any) => {
+    const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
       if (active && payload && payload.length) {
         const entry = payload[0];
-        const percentage = ((entry.value / totalTrades) * 100).toFixed(1);
+        const pieEntry = entry.payload as PieDataEntry;
+        const percentage = ((entry.value ?? 0) / totalTrades) * 100;
         return (
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-            <p className="text-sm font-semibold" style={{ color: entry.payload.color }}>
+            <p className="text-sm font-semibold" style={{ color: pieEntry.color }}>
               {entry.name}
             </p>
             <p className="text-sm text-slate-300">
-              {entry.value} trades ({percentage}%)
+              {entry.value} trades ({percentage.toFixed(1)}%)
             </p>
           </div>
         );
@@ -88,7 +95,7 @@ export const StrategyChart = ({ data, isLoading, chartType = 'donut', metric = '
       return null;
     };
 
-    const renderLabel = (entry: any) => {
+    const renderLabel = (entry: PieDataEntry) => {
       const percentage = ((entry.value / totalTrades) * 100).toFixed(1);
       return `${percentage}%`;
     };
@@ -123,7 +130,17 @@ export const StrategyChart = ({ data, isLoading, chartType = 'donut', metric = '
   }
 
   // Bar chart for P&L, Win Rate, or Profit on Risk
-  const barData = data.map((strategy) => ({
+  interface BarDataEntry {
+    name: string;
+    strategyType: string;
+    pl: number;
+    winRate: number;
+    profitOnRisk: number;
+    totalTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+  }
+  const barData: BarDataEntry[] = data.map((strategy) => ({
     name: formatStrategyName(strategy.strategyType),
     strategyType: strategy.strategyType,
     pl: strategy.pl,
@@ -134,10 +151,11 @@ export const StrategyChart = ({ data, isLoading, chartType = 'donut', metric = '
     losingTrades: strategy.losingTrades,
   }));
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const entry = payload[0].payload;
-      const value = payload[0].value;
+      const entry = payload[0]?.payload as BarDataEntry | undefined;
+      const value = payload[0]?.value;
+      if (!entry || value === undefined) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
           <p className="text-slate-400 text-sm mb-2 font-semibold">{entry.name}</p>

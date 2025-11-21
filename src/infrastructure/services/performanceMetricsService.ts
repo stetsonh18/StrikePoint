@@ -715,7 +715,7 @@ export class PerformanceMetricsService {
     const dailyPLMap = new Map(dailyPL.map((day) => [day.date, day]));
 
     let rangeEndDate = days ? todayDate : parseDateKey(dailyPL[dailyPL.length - 1].date);
-    let rangeStartDate = days
+    const rangeStartDate = days
       ? addDays(rangeEndDate, -(days - 1))
       : parseDateKey(dailyPL[0].date);
 

@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 
 interface WinLossDistributionChartProps {
   winningTrades: number;
@@ -30,22 +31,28 @@ export const WinLossDistributionChart = ({ winningTrades, losingTrades, isLoadin
     );
   }
 
-  const data = [
+  interface PieDataEntry {
+    name: string;
+    value: number;
+    color: string;
+  }
+  const data: PieDataEntry[] = [
     { name: 'Wins', value: winningTrades, color: COLORS.win },
     { name: 'Losses', value: losingTrades, color: COLORS.loss },
   ];
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const data = payload[0];
-      const percentage = ((data.value / totalTrades) * 100).toFixed(1);
+      const entry = payload[0];
+      const pieEntry = entry.payload as PieDataEntry;
+      const percentage = ((entry.value ?? 0) / totalTrades) * 100;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-sm font-semibold" style={{ color: data.payload.color }}>
-            {data.name}
+          <p className="text-sm font-semibold" style={{ color: pieEntry.color }}>
+            {entry.name}
           </p>
           <p className="text-sm text-slate-300">
-            {data.value} trades ({percentage}%)
+            {entry.value} trades ({percentage.toFixed(1)}%)
           </p>
         </div>
       );
@@ -53,7 +60,7 @@ export const WinLossDistributionChart = ({ winningTrades, losingTrades, isLoadin
     return null;
   };
 
-  const renderLabel = (entry: any) => {
+  const renderLabel = (entry: PieDataEntry) => {
     const percentage = ((entry.value / totalTrades) * 100).toFixed(1);
     return `${percentage}%`;
   };

@@ -263,7 +263,7 @@ const Futures: React.FC = () => {
 
     if (!confirmed) return;
     await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
-  }, [confirmation, deleteTransactionMutation]);
+  }, [confirmation, deleteTransactionMutation, userId]);
 
   const handleDeletePosition = useCallback(async (position: FuturesContract) => {
     const confirmed = await confirmation.confirm({
@@ -279,7 +279,7 @@ const Futures: React.FC = () => {
     if (originalPosition) {
       await deletePositionMutation.mutateAsync({ id: originalPosition.id, userId });
     }
-  }, [confirmation, deletePositionMutation, allPositions]);
+  }, [confirmation, deletePositionMutation, allPositions, userId]);
 
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">

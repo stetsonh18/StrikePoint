@@ -100,7 +100,7 @@ const Crypto: React.FC = () => {
       .map((p) => {
         try {
           return toCryptoPosition(p);
-        } catch (e) {
+        } catch {
           return null;
         }
       })
@@ -137,7 +137,7 @@ const Crypto: React.FC = () => {
       .map((t) => {
         try {
           return toCryptoTransaction(t);
-        } catch (e) {
+        } catch {
           return null;
         }
       })
@@ -228,7 +228,7 @@ const Crypto: React.FC = () => {
 
     if (!confirmed) return;
     await deletePositionMutation.mutateAsync({ id: position.id, userId });
-  }, [confirmation, deletePositionMutation]);
+  }, [confirmation, deletePositionMutation, userId]);
 
   const handleEditTransaction = useCallback((transaction: CryptoTransaction) => {
     // Find the original transaction from allTransactions
@@ -250,7 +250,7 @@ const Crypto: React.FC = () => {
 
     if (!confirmed) return;
     await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
-  }, [confirmation, deleteTransactionMutation]);
+  }, [confirmation, deleteTransactionMutation, userId]);
 
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">

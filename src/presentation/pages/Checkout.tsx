@@ -112,7 +112,7 @@ export function Checkout() {
     };
 
     loadPricing();
-  }, [userId, searchParams, toast]); // Only run once when userId or URL changes
+  }, [userId, searchParams, toast, discountCode]); // Run when userId, URL, or discount code changes
 
   const handleCheckout = async () => {
     if (!userId || !pricing) return;

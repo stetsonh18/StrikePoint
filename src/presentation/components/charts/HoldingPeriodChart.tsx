@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { HoldingPeriodDistributionData } from '@/application/hooks/useHoldingPeriodDistribution';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -26,10 +27,11 @@ export const HoldingPeriodChart = ({ data, isLoading, showWinRate = false }: Hol
   }
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const entry = payload[0].payload;
-      const value = payload[0].value;
+      const entry = payload[0]?.payload as HoldingPeriodDistributionData | undefined;
+      const value = payload[0]?.value;
+      if (!entry || value === undefined) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
           <p className="text-slate-400 text-sm mb-2 font-semibold">{entry.period}</p>

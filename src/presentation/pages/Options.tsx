@@ -255,7 +255,7 @@ const Options: React.FC = () => {
       }
     });
     return map;
-  }, [underlyingSymbols, chain1.data, chain2.data, chain3.data, chain4.data, chain5.data]);
+  }, [underlyingSymbols, chain1, chain2, chain3, chain4, chain5]);
 
   // Transform positions with real-time prices from Tradier option quotes
   // Include all positions (both with and without strategies) for price updates
@@ -405,7 +405,7 @@ const Options: React.FC = () => {
       .map((t) => {
         try {
           return toOptionTransaction(t);
-        } catch (e) {
+        } catch {
           return null;
         }
       })
@@ -721,7 +721,7 @@ const Options: React.FC = () => {
 
     if (!confirmed) return;
     await deleteTransactionMutation.mutateAsync({ id: transaction.id, userId });
-  }, [confirmation, deleteTransactionMutation, allTransactions]);
+  }, [confirmation, deleteTransactionMutation, allTransactions, userId]);
 
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">
@@ -854,7 +854,12 @@ const Options: React.FC = () => {
           {activeTab === 'positions' && (
             <select
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === 'all' || value === 'call' || value === 'put') {
+                  setFilterType(value);
+                }
+              }}
               className="px-4 py-2.5 md:py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-xl text-slate-900 dark:text-slate-300 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 text-base md:text-sm touch-target w-full sm:w-auto"
             >
               <option value="all">All Types</option>

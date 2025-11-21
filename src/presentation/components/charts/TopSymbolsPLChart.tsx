@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { SymbolPerformance } from '@/infrastructure/services/performanceMetricsService';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -32,10 +33,12 @@ export const TopSymbolsPLChart = ({ data, isLoading, limit = 10 }: TopSymbolsPLC
   }));
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const value = payload[0].value;
-      const symbol = payload[0].payload.symbol;
+      const entry = payload[0]?.payload as { symbol: string; pl: number } | undefined;
+      const value = payload[0]?.value;
+      if (!entry || value === undefined) return null;
+      const symbol = entry.symbol;
       const symbolData = data.find((s) => s.symbol === symbol);
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">

@@ -1,4 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { Last7DaysPLData } from '@/application/hooks/useLast7DaysPL';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 
@@ -36,12 +37,14 @@ export const Last7DaysPLChart = ({ data, isLoading }: Last7DaysPLChartProps) => 
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
-      const value = payload[0].value;
+      const entry = payload[0]?.payload as Last7DaysPLData | undefined;
+      const value = payload[0]?.value;
+      if (!entry || value === undefined) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(payload[0].payload.date)}</p>
+          <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>
           <p className={`text-sm font-semibold ${value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {formatCurrency(value)}
           </p>
