@@ -59,11 +59,15 @@ export function useDailyPerformance(
         dailyPLPercent = portfolioValue !== 0 ? (dailyPL / Math.abs(portfolioValue)) * 100 : 0;
       }
 
+      // Calculate the unrealized portion for display breakdown
+      // This represents the change in unrealized P&L today (dailyPL minus realized from closed positions)
+      const unrealizedChange = dailyPL - realizedPL;
+
       return {
         dailyPL,
         dailyPLPercent,
-        realizedPL,
-        unrealizedPL,
+        realizedPL, // P&L from positions closed today
+        unrealizedPL: unrealizedChange, // Change in unrealized P&L today
       };
     },
     enabled: !!userId,
