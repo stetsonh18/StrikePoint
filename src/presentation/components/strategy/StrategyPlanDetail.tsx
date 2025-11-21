@@ -13,6 +13,7 @@ interface StrategyPlanDetailProps {
   onSetPrimary?: () => void;
   onUpdateStatus?: (status: 'active' | 'draft' | 'archived') => void;
   alignmentHistory?: StrategyAlignmentSnapshot[];
+  portfolioValue?: number;
 }
 
 const toArray = (value: unknown): string[] => {
@@ -80,8 +81,6 @@ const SectionCard = ({
 };
 
 // Types for recommendations
-
-
 interface UnifiedRecommendation {
   type: 'action_item' | 'breach';
   priority: 'high' | 'medium' | 'low';
@@ -246,6 +245,7 @@ export const StrategyPlanDetail = ({
   onSetPrimary,
   onUpdateStatus,
   alignmentHistory,
+  portfolioValue = 0,
 }: StrategyPlanDetailProps) => {
   const [selectedSnapshot, setSelectedSnapshot] = useState<StrategyAlignmentSnapshot | null>(null);
 
@@ -274,6 +274,7 @@ export const StrategyPlanDetail = ({
   const guardrails = toArray(plan.guardrails?.rules ?? plan.guardrails);
   const routines = toArray(plan.routines);
   const riskPercent = plan.risk_per_trade_percent ?? 0;
+  const riskAmount = (riskPercent / 100) * portfolioValue;
 
   return (
     <div className="bg-white dark:bg-slate-900/60 rounded-3xl p-6 border border-slate-200 dark:border-slate-800">
@@ -317,9 +318,16 @@ export const StrategyPlanDetail = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Risk Per Trade</p>
-          <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-            {riskPercent ? formatPercent(riskPercent) : '—'}
-          </p>
+          <div className="mt-1">
+            <p className="text-xl font-bold text-slate-900 dark:text-white">
+              {riskPercent ? formatPercent(riskPercent) : '—'}
+            </p>
+            {riskPercent > 0 && portfolioValue > 0 && (
+              <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                ${riskAmount.toFixed(2)}
+              </p>
+            )}
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Target allocation cap per idea</p>
         </div>
         <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">

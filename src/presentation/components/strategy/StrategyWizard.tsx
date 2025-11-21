@@ -102,7 +102,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 rounded-3xl p-6 border border-slate-800 shadow-lg shadow-slate-900/40 relative group">
+    <div className="bg-white dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/40 dark:shadow-slate-900/40 relative group">
       {onClose && (
         <button
           type="button"
@@ -129,10 +129,10 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
       <div className="flex items-start justify-between gap-4 mb-6 pr-8">
         <div>
           <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Strategy Lab</p>
-          <h2 className="text-3xl font-semibold text-white mt-2">Design your plan of attack</h2>
-          <p className="text-slate-400 mt-1">Answer a few adaptive prompts and let AI assemble a guardrailed strategy for this asset.</p>
+          <h2 className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">Design your plan of attack</h2>
+          <p className="text-slate-600 dark:text-slate-400 mt-1">Answer a few adaptive prompts and let AI assemble a guardrailed strategy for this asset.</p>
         </div>
-        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-400/30">
           AI Powered
         </span>
       </div>
@@ -140,7 +140,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Asset focus</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Asset focus</label>
             <div className="grid grid-cols-2 gap-2 mt-2">
               {assetOptions.map((option) => (
                 <button
@@ -150,8 +150,8 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
                   className={cn(
                     'px-3 py-2 rounded-xl border text-sm font-medium transition-all',
                     assetType === option.value
-                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-glow-sm'
-                      : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-700 dark:text-emerald-200 shadow-glow-sm'
+                      : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
                   )}
                 >
                   {option.label}
@@ -160,7 +160,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Strategy style</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Strategy style</label>
             <div className="flex flex-wrap gap-2 mt-2">
               {styleOptions.map((style) => (
                 <button
@@ -170,8 +170,8 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
                   className={cn(
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition',
                     strategyStyle === style
-                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-glow-sm'
-                      : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-700 dark:text-emerald-200 shadow-glow-sm'
+                      : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
                   )}
                 >
                   {style.replace('_', ' ')}
@@ -183,37 +183,37 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Plan nickname</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Plan nickname</label>
             <input
               type="text"
-              className="mt-2 w-full rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
+              className="mt-2 w-full rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               placeholder="e.g., Theta Guardian"
               value={planName}
               onChange={(event) => setPlanName(event.target.value)}
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Time horizon</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Time horizon</label>
             <input
               type="text"
-              className="mt-2 w-full rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
+              className="mt-2 w-full rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               value={timeHorizon}
               onChange={(event) => setTimeHorizon(event.target.value)}
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Trade frequency</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Trade frequency</label>
             <input
               type="text"
-              className="mt-2 w-full rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
+              className="mt-2 w-full rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               value={tradeFrequency}
               onChange={(event) => setTradeFrequency(event.target.value)}
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Risk tolerance</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Risk tolerance</label>
             <Dropdown
-              className="mt-2 w-full rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
+              className="mt-2 w-full rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               value={riskTolerance}
               onChange={setRiskTolerance}
               options={[
@@ -226,13 +226,13 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Questionnaire</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Questionnaire</label>
           <div className="space-y-3 mt-3">
             {questions.map((question) => (
-              <div key={question.id} className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3">
-                <p className="text-sm font-medium text-white">{question.label}</p>
+              <div key={question.id} className="bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-3">
+                <p className="text-sm font-medium text-slate-900 dark:text-white">{question.label}</p>
                 <textarea
-                  className="mt-2 w-full rounded-xl bg-transparent border border-slate-700 text-sm text-slate-200 px-3 py-2 min-h-[70px] focus:border-emerald-400 focus:ring-0"
+                  className="mt-2 w-full rounded-xl bg-white dark:bg-transparent border border-slate-300 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-200 px-3 py-2 min-h-[70px] focus:border-emerald-400 focus:ring-0"
                   placeholder={question.placeholder}
                   value={responses[question.id] ?? ''}
                   onChange={(event) =>
@@ -248,19 +248,18 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
             Focus areas for AI Insights
           </label>
           <div className="flex flex-wrap gap-2 mt-2">
             {focusAreas.map((focus) => (
               <span
                 key={focus}
-                className="flex items-center gap-1 px-3 py-1 rounded-full text-xs bg-emerald-500/15 text-emerald-100 border border-emerald-400/40"
-              >
+                className="flex items-center gap-1 px-3 py-1 rounded-full text-xs bg-emerald-500/15 text-emerald-700 dark:text-emerald-100 border border-emerald-400/40">
                 {focus}
                 <button
                   type="button"
-                  className="text-emerald-200 hover:text-white"
+                  className="text-emerald-600 dark:text-emerald-200 hover:text-emerald-800 dark:hover:text-white"
                   onClick={() => removeFocusArea(focus)}
                 >
                   ×
@@ -271,7 +270,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
           <div className="flex items-center gap-2 mt-2">
             <input
               type="text"
-              className="flex-1 rounded-2xl bg-slate-900/60 border border-slate-700 text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
+              className="flex-1 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white px-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40"
               placeholder="Add a new focus area"
               value={focusInput}
               onChange={(event) => setFocusInput(event.target.value)}
@@ -285,7 +284,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
             <button
               type="button"
               onClick={addFocusArea}
-              className="px-3 py-2 text-sm font-semibold rounded-2xl border border-slate-600 text-slate-200 hover:border-emerald-400 hover:text-white transition"
+              className="px-3 py-2 text-sm font-semibold rounded-2xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-white transition"
             >
               Add
             </button>
@@ -318,7 +317,7 @@ export const StrategyWizard = ({ isGenerating, onGenerate, onClose }: StrategyWi
           )}
         </button>
       </div>
-    </div>
+    </div >
   );
 };
 

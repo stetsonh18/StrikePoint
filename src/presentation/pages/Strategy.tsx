@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Shield, NotepadText, Filter } from 'lucide-react';
-import type { StrategyAssetType, TradingStrategyPlan, StrategyPlanGenerationPayload } from '@/domain/types';
+import { useState, useEffect, useMemo } from 'react';
+import { useAuthStore } from '@/application/stores/auth.store';
 import {
   useStrategyPlans,
   useGenerateStrategyPlan,
@@ -10,38 +9,35 @@ import {
   useEvaluateStrategyAlignment,
   useStrategyAlignmentHistory,
 } from '@/application/hooks/useStrategyPlans';
-import { useAuthStore } from '@/application/stores/auth.store';
-import { useToast } from '@/shared/hooks/useToast';
-import { StrategyWizard } from '@/presentation/components/strategy/StrategyWizard';
-import { StrategyPlanDetail } from '@/presentation/components/strategy/StrategyPlanDetail';
-import { StrategyPlanList } from '@/presentation/components/strategy/StrategyPlanList';
-import { cn } from '@/shared/utils/cn';
 import { usePortfolioValue } from '@/application/hooks/usePortfolioValue';
 import { useWinRateMetrics } from '@/application/hooks/useWinRateMetrics';
+import { StrategyWizard } from '@/presentation/components/strategy/StrategyWizard';
+import { StrategyPlanList } from '@/presentation/components/strategy/StrategyPlanList';
+import { StrategyPlanDetail } from '@/presentation/components/strategy/StrategyPlanDetail';
+import { Filter, Sparkles, Shield, NotepadText } from 'lucide-react';
+import { cn } from '@/shared/utils/cn';
+import { useToast } from '@/shared/hooks/useToast';
+import type { TradingStrategyPlan, StrategyPlanGenerationPayload, StrategyAssetType } from '@/domain/types';
 
-type AssetFilter = 'all' | StrategyAssetType;
-
-const assetFilterOptions: { label: string; value: AssetFilter }[] = [
-  { label: 'All', value: 'all' },
+const assetFilterOptions: { label: string; value: StrategyAssetType | 'all' }[] = [
+  { label: 'All Assets', value: 'all' },
   { label: 'Stocks', value: 'stock' },
   { label: 'Options', value: 'option' },
   { label: 'Crypto', value: 'crypto' },
-  { label: 'Futures', value: 'futures' },
 ];
 
-export const Strategy = () => {
-  const user = useAuthStore((state) => state.user);
+const Strategy = () => {
+  const { user } = useAuthStore();
   const userId = user?.id;
   const { success, error } = useToast();
 
-  const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
-  const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>();
-
+  const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>(undefined);
+  const [assetFilter, setAssetFilter] = useState<StrategyAssetType | 'all'>('all');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   const planFilters = useMemo(() => {
     if (assetFilter === 'all') return undefined;
-    return { asset_type: assetFilter };
+    return { asset_type: assetFilter as StrategyAssetType };
   }, [assetFilter]);
 
   const { data: plans = [], isLoading: plansLoading } = useStrategyPlans(userId, planFilters);
@@ -250,6 +246,7 @@ export const Strategy = () => {
             onSetPrimary={selectedPlan ? () => handleSetPrimary(selectedPlan) : undefined}
             onUpdateStatus={selectedPlan ? (status) => handleUpdateStatus(selectedPlan, status) : undefined}
             alignmentHistory={alignmentHistoryQuery.data}
+            portfolioValue={portfolioValue}
           />
         </div>
         <div className="xl:col-span-3">

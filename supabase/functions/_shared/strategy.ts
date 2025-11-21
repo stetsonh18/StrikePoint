@@ -23,6 +23,13 @@ export interface PortfolioContextSummary {
     dailyLossCap: number;
     cashBuffer: number;
   };
+  recentPerformance?: {
+    winRate: number;
+    totalRealizedPL: number;
+    tradeCount: number;
+    avgWin: number;
+    avgLoss: number;
+  };
 }
 
 const SUPPORTED_ASSET_TYPES = ['stock', 'option', 'crypto', 'futures'];
@@ -48,7 +55,7 @@ export async function fetchPortfolioContext(
       .maybeSingle(),
     adminClient
       .from('positions')
-      .select('asset_type, status, unrealized_pl, total_cost_basis')
+      .select('asset_type, status, unrealized_pl, total_cost_basis, realized_pl, closed_at')
       .eq('user_id', userId),
   ]);
 
@@ -71,36 +78,65 @@ export async function fetchPortfolioContext(
   let totalMarketValue = 0;
   let totalUnrealized = 0;
 
-  (positionsResult.data ?? []).forEach((position) => {
-    if (position.status !== 'open') {
-      return;
+  // Performance tracking
+  let closedTradeCount = 0;
+  let winningTrades = 0;
+  let totalRealizedPL = 0;
+  let totalWinAmt = 0;
+  let totalLossAmt = 0;
+  let winCount = 0;
+  let lossCount = 0;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  (positionsResult.data ?? []).forEach((position: any) => {
+    // Handle Open Positions
+    if (position.status === 'open') {
+      const assetType = SUPPORTED_ASSET_TYPES.includes(position.asset_type)
+        ? position.asset_type
+        : 'stock';
+
+      const exposure = exposures[assetType] ?? { openPositions: 0, marketValue: 0, unrealizedPL: 0 };
+      exposure.openPositions += 1;
+
+      const costBasis = Math.abs(Number(position.total_cost_basis) || 0);
+      const unrealized = Number(position.unrealized_pl) || 0;
+      const marketValue = costBasis + unrealized;
+
+      exposure.marketValue += marketValue;
+      exposure.unrealizedPL += unrealized;
+
+      exposures[assetType] = exposure;
+      totalOpenPositions += 1;
+      totalMarketValue += marketValue;
+      totalUnrealized += unrealized;
     }
+    // Handle Closed Positions (Recent Performance)
+    else if (position.status === 'closed' && position.closed_at) {
+      const closeDate = new Date(position.closed_at);
+      if (closeDate >= thirtyDaysAgo) {
+        const realized = Number(position.realized_pl) || 0;
+        closedTradeCount++;
+        totalRealizedPL += realized;
 
-    const assetType = SUPPORTED_ASSET_TYPES.includes(position.asset_type)
-      ? position.asset_type
-      : 'stock';
-
-    const exposure = exposures[assetType] ?? { openPositions: 0, marketValue: 0, unrealizedPL: 0 };
-    exposure.openPositions += 1;
-
-    const costBasis = Math.abs(Number(position.total_cost_basis) || 0);
-    const unrealized = Number(position.unrealized_pl) || 0;
-    const marketValue = costBasis + unrealized;
-
-    exposure.marketValue += marketValue;
-    exposure.unrealizedPL += unrealized;
-
-    exposures[assetType] = exposure;
-    totalOpenPositions += 1;
-    totalMarketValue += marketValue;
-    totalUnrealized += unrealized;
+        if (realized > 0) {
+          winningTrades++;
+          winCount++;
+          totalWinAmt += realized;
+        } else if (realized < 0) {
+          lossCount++;
+          totalLossAmt += Math.abs(realized);
+        }
+      }
+    }
   });
 
   const portfolioValue = Number(
     snapshotResult.data?.portfolio_value ??
-      (totalMarketValue !== 0 ? totalMarketValue : undefined) ??
-      cashResult.data?.total_cash ??
-      0
+    (totalMarketValue !== 0 ? totalMarketValue : undefined) ??
+    cashResult.data?.total_cash ??
+    0
   );
 
   const availableCash = cashResult.data
@@ -126,6 +162,13 @@ export async function fetchPortfolioContext(
       dailyLossCap: Number(dailyLossCap.toFixed(2)),
       cashBuffer: Number(cashBuffer.toFixed(2)),
     },
+    recentPerformance: {
+      tradeCount: closedTradeCount,
+      totalRealizedPL: Number(totalRealizedPL.toFixed(2)),
+      winRate: closedTradeCount > 0 ? Number(((winningTrades / closedTradeCount) * 100).toFixed(1)) : 0,
+      avgWin: winCount > 0 ? Number((totalWinAmt / winCount).toFixed(2)) : 0,
+      avgLoss: lossCount > 0 ? Number((totalLossAmt / lossCount).toFixed(2)) : 0,
+    },
   };
 }
 
@@ -141,15 +184,23 @@ export function buildPortfolioPrompt(context: PortfolioContextSummary): string {
   Object.entries(context.exposures).forEach(([type, exposure]) => {
     parts.push(
       `- ${type}: ${exposure.openPositions} open positions, ` +
-        `Market Value $${exposure.marketValue.toFixed(2)}, ` +
-        `Unrealized P/L $${exposure.unrealizedPL.toFixed(2)}`
+      `Market Value $${exposure.marketValue.toFixed(2)}, ` +
+      `Unrealized P/L $${exposure.unrealizedPL.toFixed(2)}`
     );
   });
 
+  if (context.recentPerformance) {
+    parts.push('Recent Performance (Last 30 Days):');
+    parts.push(`- Trades Closed: ${context.recentPerformance.tradeCount}`);
+    parts.push(`- Win Rate: ${context.recentPerformance.winRate}%`);
+    parts.push(`- Total Realized P/L: $${context.recentPerformance.totalRealizedPL}`);
+    parts.push(`- Avg Win: $${context.recentPerformance.avgWin}`);
+    parts.push(`- Avg Loss: $${context.recentPerformance.avgLoss}`);
+  }
+
   if (context.snapshot) {
     parts.push(
-      `Latest snapshot on ${
-        context.snapshot.snapshot_date ?? context.snapshot.created_at ?? 'n/a'
+      `Latest snapshot on ${context.snapshot.snapshot_date ?? context.snapshot.created_at ?? 'n/a'
       }: net cash flow ${context.snapshot.net_cash_flow}, realized P/L ${context.snapshot.total_realized_pl}`
     );
   }

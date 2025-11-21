@@ -31,7 +31,7 @@ const Journal = createRouteWithErrorBoundary(() => import('./presentation/pages/
 const AIInsights = createRouteWithErrorBoundary(() => import('./presentation/pages/AIInsights'));
 const News = createRouteWithErrorBoundary(() => import('./presentation/pages/News'));
 const Checkout = createRouteWithErrorBoundary(() => import('./presentation/pages/Checkout').then(module => ({ default: module.Checkout })));
-const Strategy = createRouteWithErrorBoundary(() => import('./presentation/pages/Strategy').then(module => ({ default: module.Strategy })));
+const Strategy = createRouteWithErrorBoundary(() => import('./presentation/pages/Strategy'));
 
 function App() {
   useTheme();

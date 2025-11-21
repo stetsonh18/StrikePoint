@@ -15,6 +15,7 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 
 interface AlignmentAIResponse {
   alignment_score?: number;
+  alignmentScore?: number;
   verdict?: string;
   summary?: string;
   focus_areas?: string[];
@@ -186,17 +187,39 @@ Deno.serve(async (req) => {
     const planSummary = summarizePlan(plan);
 
     const systemPrompt = `
-You are an accountability coach that enforces strict trading playbooks.
-Compare the stored strategy plan with current portfolio and cash data.
-Return JSON with:
-  - alignment_score (0-100 integer)
-  - verdict (string)
-  - summary (string)
-  - focus_areas (array of strings)
-  - breaches (array of { rule, evidence, severity, recommendation })
-  - action_items (array of { priority, description, timeframe })
-  - strengths (array of strings)
-When assessing alignment, weigh guardrails, risk limits, and exposure concentration. Flag missing data gently.
+    You are an expert trading coach and risk manager. Your goal is to evaluate if a user's recent trading activity aligns with their defined strategy plan.
+    
+    You will be provided with:
+    1. The user's Strategy Plan (Guardrails, Entry/Exit Rules, Risk Management).
+    2. The user's Portfolio Context (Current balances, open positions, AND RECENT CLOSED TRADES performance).
+    
+    CRITICAL INSTRUCTION:
+    - You MUST check the 'recentPerformance' section in the Portfolio Context. This contains data on CLOSED trades (realized P/L, win rate, trade count).
+    - If 'recentPerformance' shows executed trades (trade_count > 0), you MUST use this as evidence of trading activity. Do NOT say "no trades executed" if there are closed trades in 'recentPerformance'.
+    - Compare their actual trading behavior (from both open positions and recent closed trades) against their stated rules.
+    - If they have no open positions but have closed trades, evaluate the closed trades against their rules.
+    
+    Output a JSON object with the following structure:
+    {
+      "alignment_score": number (0-100),
+      "breaches": [
+        {
+          "rule": "string (the specific rule violated)",
+          "severity": "critical" | "warning" | "info",
+          "evidence": "string (specific trade or metric that proves the breach)",
+          "recommendation": "string (how to fix it)"
+        }
+      ],
+      "action_items": [
+        {
+          "priority": "high" | "medium" | "low",
+          "description": "string",
+          "timeframe": "string (e.g., 'Immediate', 'Next Trade', 'Weekly')"
+        }
+      ],
+      "focus_areas": ["string", "string"],
+      "summary": "string (2-3 sentences summarizing their discipline)"
+    }
     `.trim();
 
     const userPrompt = `
@@ -240,35 +263,22 @@ ${portfolioSummary}
       throw snapshotError;
     }
 
-    const { error: updateError } = await adminClient
+    // Update the plan with the latest alignment check
+    await adminClient
       .from('trading_strategy_plans')
       .update({
-        alignment_score: alignmentScore,
-        alignment_focus: aiResult.focus_areas ?? [],
         last_alignment_check: new Date().toISOString(),
+        alignment_score: alignmentScore,
       })
       .eq('id', plan.id);
 
-    if (updateError) {
-      throw updateError;
-    }
-
-    return new Response(
-      JSON.stringify({
-        snapshot,
-        aiResult,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify(snapshot), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    console.error('Strategy alignment evaluation failed', error);
-    return new Response(
-      JSON.stringify({
-        error: 'Alignment evaluation failed',
-        message: error instanceof Error ? error.message : String(error),
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
-
