@@ -1,6 +1,7 @@
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { ROIOverTimeData } from '@/application/hooks/useROIOverTime';
+import { formatChartDate } from '@/shared/utils/dateUtils';
 
 interface ROIOverTimeChartProps {
   data: ROIOverTimeData[];
@@ -24,11 +25,6 @@ export const ROIOverTimeChart = ({ data, isLoading }: ROIOverTimeChartProps) => 
     );
   }
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
@@ -37,7 +33,7 @@ export const ROIOverTimeChart = ({ data, isLoading }: ROIOverTimeChartProps) => 
       if (!entry) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>
+          <p className="text-slate-400 text-sm mb-2">{formatChartDate(entry.date)}</p>
           <p className={`text-sm font-semibold ${entry.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             ROI: {entry.roi.toFixed(2)}%
           </p>
@@ -65,7 +61,7 @@ export const ROIOverTimeChart = ({ data, isLoading }: ROIOverTimeChartProps) => 
         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
         <XAxis
           dataKey="date"
-          tickFormatter={formatDate}
+          tickFormatter={formatChartDate}
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
@@ -74,7 +70,7 @@ export const ROIOverTimeChart = ({ data, isLoading }: ROIOverTimeChartProps) => 
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Area
           type="monotone"
           dataKey="roi"

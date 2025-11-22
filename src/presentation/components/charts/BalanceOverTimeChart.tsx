@@ -10,6 +10,7 @@ import {
 import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { BalanceOverTimeData } from '@/application/hooks/useBalanceOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
+import { formatChartDate } from '@/shared/utils/dateUtils';
 
 interface BalanceOverTimeChartProps {
   data: BalanceOverTimeData[];
@@ -33,11 +34,7 @@ export const BalanceOverTimeChart = ({ data, isLoading }: BalanceOverTimeChartPr
     );
   }
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+
 
   const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (active && payload && payload.length) {
@@ -45,7 +42,7 @@ export const BalanceOverTimeChart = ({ data, isLoading }: BalanceOverTimeChartPr
       if (!entry) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>
+          <p className="text-slate-400 text-sm mb-2">{formatChartDate(entry.date)}</p>
           <p className="text-sm text-emerald-400 font-semibold">
             Balance: {formatCurrency(entry.balance)}
           </p>
@@ -70,7 +67,7 @@ export const BalanceOverTimeChart = ({ data, isLoading }: BalanceOverTimeChartPr
         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
         <XAxis
           dataKey="date"
-          tickFormatter={formatDate}
+          tickFormatter={formatChartDate}
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
@@ -79,7 +76,7 @@ export const BalanceOverTimeChart = ({ data, isLoading }: BalanceOverTimeChartPr
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-      <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
+        <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Area
           type="monotone"
           dataKey="balance"

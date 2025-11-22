@@ -10,6 +10,7 @@ import {
 import type { TooltipContentProps } from 'recharts/types/component/Tooltip';
 import type { DrawdownOverTimeData } from '@/application/hooks/useDrawdownOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
+import { formatChartDate } from '@/shared/utils/dateUtils';
 
 interface DrawdownChartProps {
   data: DrawdownOverTimeData[];
@@ -33,11 +34,7 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
     );
   }
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
@@ -46,7 +43,7 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
       if (!entry) return null;
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(entry.date)}</p>
+          <p className="text-slate-400 text-sm mb-2">{formatChartDate(entry.date)}</p>
           <p className="text-sm text-red-400 font-semibold">
             Drawdown: {entry.drawdown.toFixed(2)}%
           </p>
@@ -74,7 +71,7 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
         <XAxis
           dataKey="date"
-          tickFormatter={formatDate}
+          tickFormatter={formatChartDate}
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
@@ -83,7 +80,7 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-      <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
+        <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Area
           type="monotone"
           dataKey="drawdown"

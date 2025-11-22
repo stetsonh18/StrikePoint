@@ -4,6 +4,7 @@ type ChartTooltipPayload = NonNullable<TooltipContentProps<number, string>['payl
 import type { PLOverTimeData } from '@/application/hooks/usePLOverTime';
 import { formatCurrency } from '@/shared/utils/formatUtils';
 import { ChartSkeleton } from '@/presentation/components/SkeletonLoader';
+import { formatChartDate } from '@/shared/utils/dateUtils';
 
 interface PLOverTimeChartProps {
   data: PLOverTimeData[];
@@ -23,11 +24,6 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
     );
   }
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
 
   // Custom tooltip with proper typing
   const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
@@ -38,7 +34,7 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
       }
       return (
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-          <p className="text-slate-400 text-sm mb-2">{formatDate(dataPoint.date)}</p>
+          <p className="text-slate-400 text-sm mb-2">{formatChartDate(dataPoint.date)}</p>
           {payload.map((entry: ChartTooltipPayload, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {`${entry.name}: ${formatCurrency(entry.value as number)}`}
@@ -56,7 +52,7 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
         <XAxis
           dataKey="date"
-          tickFormatter={formatDate}
+          tickFormatter={formatChartDate}
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
@@ -65,7 +61,7 @@ export const PLOverTimeChart = ({ data, isLoading }: PLOverTimeChartProps) => {
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
         />
-      <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
+        <Tooltip<number, string> content={(props) => <CustomTooltip {...props} />} />
         <Legend />
         <Line
           type="monotone"

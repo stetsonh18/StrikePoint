@@ -10,7 +10,7 @@
  */
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
-  
+
   // If it's already in YYYY-MM-DD format, parse it as local date
   if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -21,7 +21,7 @@ export function formatDate(dateStr: string | null | undefined): string {
       year: 'numeric',
     });
   }
-  
+
   // Fallback for other date formats
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
@@ -35,7 +35,7 @@ export function formatDate(dateStr: string | null | undefined): string {
  */
 export function formatDateShort(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
-  
+
   if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
@@ -45,7 +45,7 @@ export function formatDateShort(dateStr: string | null | undefined): string {
       year: 'numeric',
     });
   }
-  
+
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: '2-digit',
     day: '2-digit',
@@ -84,5 +84,31 @@ export function parseLocalDate(dateStr: string): Date {
     return new Date(year, month - 1, day); // month is 0-indexed
   }
   return new Date(dateStr);
+}
+
+/**
+ * Format a date string for chart display (e.g., "Nov 21")
+ * Handles both ISO strings and Date objects
+ * Ensures dates are parsed as local dates to avoid timezone shifts
+ * 
+ * @param dateStr - ISO date string (YYYY-MM-DD) or Date object
+ * @returns Formatted date string like "Nov 21"
+ */
+export function formatChartDate(dateStr: string | Date): string {
+  const date = typeof dateStr === 'string' ? parseLocalDate(dateStr) : dateStr;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Format a date string with year for chart display (e.g., "Nov 21, 2024")
+ * Handles both ISO strings and Date objects
+ * Ensures dates are parsed as local dates to avoid timezone shifts
+ * 
+ * @param dateStr - ISO date string (YYYY-MM-DD) or Date object
+ * @returns Formatted date string like "Nov 21, 2024"
+ */
+export function formatChartDateWithYear(dateStr: string | Date): string {
+  const date = typeof dateStr === 'string' ? parseLocalDate(dateStr) : dateStr;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
