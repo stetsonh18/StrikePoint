@@ -534,9 +534,37 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
 
         await TransactionService.createManualTransactions(transactions, existingStrategyId);
 
+        // If this is a worthless/expired close, update position statuses to 'expired'
+        if (isWorthlessClose) {
+          try {
+            const { PositionRepository } = await import('@/infrastructure/repositories');
+            const positions = await PositionRepository.getByStrategyId(existingStrategyId);
+
+            // Update all positions in this strategy to 'expired' status
+            for (const position of positions) {
+              if (position.status === 'closed') {
+                await PositionRepository.updateStatus(
+                  position.id,
+                  'expired',
+                  position.closed_at || undefined
+                );
+              }
+            }
+
+            logger.info('[OptionsMultiLegForm] Updated positions to expired status', {
+              strategyId: existingStrategyId,
+              positionCount: positions.length,
+            });
+          } catch (error) {
+            logger.error('[OptionsMultiLegForm] Error updating position status to expired', error);
+            // Don't fail the entire close operation if status update fails
+          }
+        }
+
         logger.info('[OptionsMultiLegForm] Successfully closed multi-leg strategy', {
           strategyId: existingStrategyId,
           legCount: transactions.length,
+          isExpired: isWorthlessClose,
         });
 
         onSuccess();
