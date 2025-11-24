@@ -428,9 +428,9 @@ const Options: React.FC = () => {
     // Exclude positions that are part of a closed strategy with realized_pl (those are counted via the strategy)
     const individualPositionsWithRealizedPL = allOptionPositions.filter(
       (p) => {
-        const hasRealizedPL = p.status === 'closed' || 
+        const hasRealizedPL = ['closed', 'expired', 'assigned', 'exercised'].includes(p.status) ||
           (p.status === 'open' && (p.realized_pl || 0) !== 0 && (p.current_quantity || 0) < (p.opening_quantity || 0));
-        
+
         if (!hasRealizedPL) return false;
         
         // If position is not part of a strategy, include it

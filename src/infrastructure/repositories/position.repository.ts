@@ -488,7 +488,7 @@ export class PositionRepository {
       .from('positions')
       .select('id, realized_pl, closed_at')
       .eq('user_id', userId)
-      .eq('status', 'closed')
+      .in('status', ['closed', 'expired', 'assigned', 'exercised'])
       .gte('closed_at', startDate)
       .lte('closed_at', endDate);
 
