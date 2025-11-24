@@ -92,6 +92,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     initialValues?.optionTransactionCode || 'BTO'
   );
   const [showChainSelector, setShowChainSelector] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
+  const [savedPrice, setSavedPrice] = useState<string | null>(null);
 
   // Cash fields
   const [cashTransactionCategory, setCashTransactionCategory] = useState<string>('');
@@ -243,6 +245,21 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       }
     }
   }, [editingTransaction]);
+
+  // Handle expired checkbox - auto-fill $0 price when checked
+  useEffect(() => {
+    if (assetType === 'option' && ['BTC', 'STC'].includes(optionTransactionCode)) {
+      if (isExpired) {
+        // Save current price and set to 0
+        setSavedPrice(price);
+        setPrice('0');
+      } else if (savedPrice !== null) {
+        // Restore previous price
+        setPrice(savedPrice);
+        setSavedPrice(null);
+      }
+    }
+  }, [isExpired, assetType, optionTransactionCode]);
 
   // Futures fields
   const [contractMonth, setContractMonth] = useState('');
@@ -450,9 +467,42 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         delete (updateData as Partial<typeof transactionData>).user_id;
         await TransactionRepository.update(editingTransaction.id, updateData);
       } else {
-        await TransactionService.createManualTransaction(transactionData);
+        const createdTransaction = await TransactionService.createManualTransaction(transactionData);
+
+        // If this is an expired option close, update the position status to 'expired'
+        if (assetType === 'option' && isExpired && ['BTC', 'STC'].includes(optionTransactionCode)) {
+          try {
+            // Wait a moment for position matching to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Get the position that was just closed
+            // The position_id will be set on the transaction after matching
+            const updatedTransaction = await TransactionRepository.getById(createdTransaction.id);
+
+            if (updatedTransaction?.position_id) {
+              const { PositionRepository } = await import('@/infrastructure/repositories');
+              const position = await PositionRepository.getById(updatedTransaction.position_id);
+
+              if (position && position.status === 'closed') {
+                await PositionRepository.updateStatus(
+                  position.id,
+                  'expired',
+                  position.closed_at || undefined
+                );
+
+                logger.info('[TransactionForm] Updated position to expired status', {
+                  positionId: position.id,
+                  transactionId: createdTransaction.id,
+                });
+              }
+            }
+          } catch (error) {
+            logger.error('[TransactionForm] Error updating position status to expired', error);
+            // Don't fail the transaction creation if status update fails
+          }
+        }
       }
-      
+
       onSuccess();
       onClose();
     } catch (err) {
@@ -779,6 +829,25 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Expired checkbox - only show when closing a position */}
+              {['BTC', 'STC'].includes(optionTransactionCode) && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={isExpired}
+                      onChange={(e) => setIsExpired(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Mark this option as expired worthless
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Enables a zero-cost close so you can realize the full credit from an expiring option without entering a market quote.
+                    You can toggle this off to restore your previous close price.
+                  </p>
+                </div>
+              )}
             </>
           )}
 
