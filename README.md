@@ -29,7 +29,7 @@ A comprehensive trading journal application built with React, TypeScript, and Su
 
 ## Quick Start
 
-See [QUICK_START.md](./QUICK_START.md) for local development setup.
+See [QUICK_START.md](./docs/setup/QUICK_START.md) for local development setup.
 
 ## Deployment
 
@@ -128,8 +128,13 @@ npx playwright test
 
 ## Documentation
 
-- [QUICK_START.md](./QUICK_START.md) - Local development guide
-- [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) - Production deployment guide
+### Setup Guides
+- [Quick Start](./docs/setup/QUICK_START.md) - Local development guide
+- [Deployment Guide](./docs/setup/DEPLOYMENT_GUIDE.md) - Production deployment guide
+- [Stripe Setup](./docs/setup/STRIPE_SETUP.md) - Payment integration setup
+- [Sentry Setup](./docs/setup/SENTRY_SETUP.md) - Error tracking setup
+- [Free Trial Explanation](./docs/setup/FREE_TRIAL_EXPLANATION.md) - How free trials work
+- [Futures Contract Specs](./docs/setup/FUTURES_CONTRACT_SPECS_USAGE.md) - Futures table documentation
 
 ## License
 
