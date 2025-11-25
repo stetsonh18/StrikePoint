@@ -1,5 +1,5 @@
 import { useMemo, memo, useCallback, useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, Activity, PieChart, Award, Newspaper, ExternalLink, LineChart, Bitcoin, Zap, FileText, Camera, BarChart3, ChevronDown, ChevronUp, Maximize2, Minimize2, Info } from 'lucide-react';
+import { DollarSign, TrendingUp, Activity, PieChart, Award, Newspaper, ExternalLink, LineChart, Bitcoin, Zap, FileText, Camera, BarChart3, ChevronDown, ChevronUp, Maximize2, Minimize2, Info, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuthStore } from '@/application/stores/auth.store';
@@ -128,6 +128,21 @@ export const Dashboard = () => {
     },
     onError: (error: Error) => {
       toast.error('Failed to generate snapshot', {
+        description: error.message,
+      });
+    },
+  });
+
+  // Regenerate all snapshots mutation
+  const regenerateAllSnapshotsMutation = useMutation({
+    mutationFn: () => PortfolioSnapshotService.regenerateAllSnapshots(userId),
+    onSuccess: (count: number) => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio-snapshots', userId] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio-history', userId] });
+      toast.success(`Successfully regenerated ${count} snapshot${count !== 1 ? 's' : ''}`);
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to regenerate snapshots', {
         description: error.message,
       });
     },
@@ -457,6 +472,19 @@ export const Dashboard = () => {
                 <Camera className="w-4 h-4" />
                 <span className="hidden sm:inline">{generateSnapshotMutation.isPending ? 'Generating...' : 'Generate Snapshot'}</span>
                 <span className="sm:hidden">{generateSnapshotMutation.isPending ? '...' : 'Snapshot'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('This will regenerate ALL historical snapshots with the latest calculation logic. This may take a few moments. Continue?')) {
+                    regenerateAllSnapshotsMutation.mutate();
+                  }
+                }}
+                disabled={regenerateAllSnapshotsMutation.isPending}
+                className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 text-xs sm:text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed touch-target whitespace-nowrap"
+              >
+                <RefreshCw className={`w-4 h-4 ${regenerateAllSnapshotsMutation.isPending ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{regenerateAllSnapshotsMutation.isPending ? 'Regenerating...' : 'Regenerate All'}</span>
+                <span className="sm:hidden">{regenerateAllSnapshotsMutation.isPending ? '...' : 'Regen'}</span>
               </button>
               <div className="relative group">
                 <Info className="w-4 h-4 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-help transition-colors" />

@@ -344,6 +344,46 @@ export class PortfolioSnapshotService {
   }
 
   /**
+   * Regenerate all snapshots for a user
+   * Useful when calculation logic has been fixed and historical data needs to be recalculated
+   * @param userId - User ID
+   * @param startDate - Optional start date (ISO format YYYY-MM-DD) - only regenerate snapshots from this date onwards
+   */
+  static async regenerateAllSnapshots(userId: string, startDate?: string): Promise<number> {
+    console.log(`[PortfolioSnapshotService] Regenerating all snapshots for user ${userId}${startDate ? ` from ${startDate}` : ''}`);
+
+    try {
+      // Get all existing snapshots
+      const allSnapshots = await PortfolioSnapshotRepository.getAll(userId);
+
+      // Filter by start date if provided
+      const snapshotsToRegenerate = startDate
+        ? allSnapshots.filter(s => s.snapshot_date >= startDate)
+        : allSnapshots;
+
+      console.log(`[PortfolioSnapshotService] Found ${snapshotsToRegenerate.length} snapshots to regenerate`);
+
+      // Regenerate each snapshot
+      let successCount = 0;
+      for (const snapshot of snapshotsToRegenerate) {
+        try {
+          await this.generateSnapshot(userId, snapshot.snapshot_date, true);
+          successCount++;
+        } catch (error) {
+          console.error(`[PortfolioSnapshotService] Failed to regenerate snapshot for ${snapshot.snapshot_date}:`, error);
+          // Continue with other snapshots even if one fails
+        }
+      }
+
+      console.log(`[PortfolioSnapshotService] Successfully regenerated ${successCount}/${snapshotsToRegenerate.length} snapshots`);
+      return successCount;
+    } catch (error) {
+      console.error('[PortfolioSnapshotService] Error regenerating snapshots:', error);
+      throw new Error(`Failed to regenerate snapshots: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Calculate daily P&L change compared to previous day
    * This is handled by the database trigger, but can be called manually if needed
    */
