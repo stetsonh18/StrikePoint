@@ -617,7 +617,9 @@ export class StrategyDetectionService {
 
     const totalOpeningCost = positions.reduce((sum, p) => sum + p.total_cost_basis, 0);
     const earliestOpen = positions.reduce(
-      (earliest, p) => (p.opened_at < earliest ? p.opened_at : earliest),
+      (earliest, p) => {
+        return new Date(p.opened_at) < new Date(earliest) ? p.opened_at : earliest;
+      },
       positions[0].opened_at
     );
 
