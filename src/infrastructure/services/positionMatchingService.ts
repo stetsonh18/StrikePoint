@@ -267,8 +267,15 @@ export class PositionMatchingService {
     // For other assets: multiplier is typically 1
     const multiplier = position.multiplier || (tx.asset_type === 'option' ? 100 : 1);
     const closingPrice = Math.abs(tx.price || 0);
-    const openingPrice = position.average_opening_price || 0;
-    
+    let openingPrice = position.average_opening_price || 0;
+
+    // For short positions, if opening price is 0, calculate from cost basis
+    // This handles cases where short options expire worthless (closed at $0)
+    // total_cost_basis is positive for short (credit received)
+    if (!tx.is_long && openingPrice === 0 && position.total_cost_basis !== 0) {
+      openingPrice = Math.abs(position.total_cost_basis) / position.opening_quantity / multiplier;
+    }
+
     let realizedPL = 0;
     if (tx.is_long) {
       // Long position: P/L = (selling price - buying price) * quantity * multiplier

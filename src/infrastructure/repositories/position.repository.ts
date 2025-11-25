@@ -500,4 +500,50 @@ export class PositionRepository {
 
     return data || [];
   }
+
+  /**
+   * Get sum of realized P&L for positions closed before a specific date
+   * Used to calculate historical baseline when viewing time-limited P&L charts
+   */
+  static async getSumRealizedPLBeforeDate(
+    userId: string,
+    beforeDate: string,
+    assetType?: string
+  ): Promise<number> {
+    let query = supabase
+      .from('positions')
+      .select('realized_pl, status, side, total_cost_basis')
+      .eq('user_id', userId)
+      .in('status', ['closed', 'expired', 'assigned', 'exercised'])
+      .lt('closed_at', beforeDate);
+
+    if (assetType) {
+      query = query.eq('asset_type', assetType);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      const parsed = parseError(error);
+      logErrorWithContext(error, {
+        context: 'PositionRepository.getSumRealizedPLBeforeDate',
+        userId,
+        beforeDate,
+        assetType,
+      });
+      throw new Error(`Failed to fetch historical realized P&L: ${parsed.message}`, { cause: error });
+    }
+
+    // Sum realized P&L with fix for expired short options
+    return data?.reduce((sum, p) => {
+      let realizedPL = p.realized_pl || 0;
+
+      // Fix for expired short options that were closed with buggy calculation
+      if (p.status === 'expired' && p.side === 'short' && realizedPL === 0 && p.total_cost_basis && p.total_cost_basis !== 0) {
+        realizedPL = Math.abs(p.total_cost_basis);
+      }
+
+      return sum + realizedPL;
+    }, 0) || 0;
+  }
 }

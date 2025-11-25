@@ -36,8 +36,9 @@ export class PortfolioSnapshotService {
       // Get all positions
       const allPositions = await PositionRepository.getAll(userId);
       const openPositions = allPositions.filter((p) => p.status === 'open');
-      const closedPositions = allPositions.filter((p) => p.status === 'closed');
-      console.log(`[PortfolioSnapshotService] Found ${allPositions.length} total positions (${openPositions.length} open, ${closedPositions.length} closed)`);
+      const finalizedStatuses = ['closed', 'expired', 'assigned', 'exercised'];
+      const closedPositions = allPositions.filter((p) => finalizedStatuses.includes(p.status));
+      console.log(`[PortfolioSnapshotService] Found ${allPositions.length} total positions (${openPositions.length} open, ${closedPositions.length} closed/expired)`);
 
       // Calculate net cash flow from cash transactions
       const cashTransactions = await CashTransactionRepository.getByUserId(userId);
@@ -251,12 +252,22 @@ export class PortfolioSnapshotService {
           const currentPrice =
             quote.last ||
             (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
-          marketValue = position.current_quantity * multiplier * currentPrice;
+          const rawMarketValue = position.current_quantity * multiplier * currentPrice;
           const isLong = position.side === 'long';
-          unrealizedPL = isLong ? marketValue - costBasis : costBasis - marketValue;
+
+          // Calculate unrealized P&L
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
+
+          // For portfolio value: long options are assets (+), short options are liabilities (-)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
         } else {
+          // Fallback when no quote available
           const storedUnrealizedPL = position.unrealized_pl || 0;
-          marketValue = costBasis + storedUnrealizedPL;
+          const isLong = position.side === 'long';
+
+          // For long: marketValue = costBasis + P&L (asset value)
+          // For short: marketValue = -(costBasis - P&L) = -costBasis + P&L (liability)
+          marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
           unrealizedPL = storedUnrealizedPL;
         }
 
@@ -279,7 +290,17 @@ export class PortfolioSnapshotService {
       });
 
       // Calculate total realized P&L from closed positions
-      const totalRealizedPL = closedPositions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+      // For expired short options with realized_pl=0, use total_cost_basis (fix for historical bug)
+      const totalRealizedPL = closedPositions.reduce((sum, p) => {
+        let realizedPL = p.realized_pl || 0;
+
+        // Fix for expired short options that were closed with buggy calculation
+        if (p.status === 'expired' && p.side === 'short' && realizedPL === 0 && p.total_cost_basis && p.total_cost_basis !== 0) {
+          realizedPL = Math.abs(p.total_cost_basis);
+        }
+
+        return sum + realizedPL;
+      }, 0);
 
       // Calculate portfolio value
       const portfolioValue = netCashFlow + totalMarketValue;
