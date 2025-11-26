@@ -11,6 +11,7 @@ import type {
   OptionContract,
   StrategyLeg,
   TransactionInsert,
+  PositionStatus,
 } from '@/domain/types';
 import { SymbolAutocomplete } from './SymbolAutocomplete';
 import { OptionsChain } from './OptionsChain';
@@ -93,7 +94,8 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   });
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
-  const [isWorthlessClose, setIsWorthlessClose] = useState(false);
+  type CloseStatus = 'closed' | 'expired' | 'assigned' | 'exercised';
+  const [closeStatus, setCloseStatus] = useState<CloseStatus>('closed');
   const savedLegPricesRef = useRef<Array<{ price: number; priceInput?: string }> | null>(null);
   const [strategyOpeningCost, setStrategyOpeningCost] = useState<number | null>(null);
   const [transactionTime, setTransactionTime] = useState(() => {
@@ -127,6 +129,36 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   // Legs state - initialize from initialPositions if provided
   const [legs, setLegs] = useState<OptionLegFormData[]>(initialLegs);
 
+  // Helper to get available close status options based on leg sides
+  const getCloseStatusOptions = useMemo(() => {
+    const options: Array<{ value: CloseStatus; label: string }> = [
+      { value: 'closed', label: 'Closed (normal market close)' },
+      { value: 'expired', label: 'Expired worthless' },
+    ];
+
+    if (!isClosing || legs.length === 0) return options;
+
+    // Check if all legs are same side
+    const allShort = legs.every(leg => leg.side === 'short');
+    const allLong = legs.every(leg => leg.side === 'long');
+
+    if (allShort) {
+      options.push({
+        value: 'assigned',
+        label: 'Assigned (all short legs were assigned)'
+      });
+    }
+
+    if (allLong) {
+      options.push({
+        value: 'exercised',
+        label: 'Exercised (all long legs were exercised)'
+      });
+    }
+
+    return options;
+  }, [isClosing, legs]);
+
   // Fetch strategy opening cost when in closing mode
   useEffect(() => {
     const fetchStrategyOpeningCost = async () => {
@@ -157,7 +189,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
 
   useEffect(() => {
     if (!isClosing) {
-      setIsWorthlessClose(false);
+      setCloseStatus('closed');
       savedLegPricesRef.current = null;
       setLegs((prev) =>
         prev.map((leg) => ({
@@ -171,7 +203,9 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
   useEffect(() => {
     if (!isClosing) return;
 
-    if (isWorthlessClose) {
+    const shouldZeroPrice = closeStatus !== 'closed';
+
+    if (shouldZeroPrice) {
       setLegs((prev) => {
         savedLegPricesRef.current = prev.map((leg) => ({
           price: leg.price || 0,
@@ -197,7 +231,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         })
       );
     }
-  }, [isWorthlessClose, isClosing]);
+  }, [closeStatus, isClosing]);
 
   const buildOptionTransaction = (
     leg: OptionLegFormData,
@@ -534,29 +568,30 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
 
         await TransactionService.createManualTransactions(transactions, existingStrategyId);
 
-        // If this is a worthless/expired close, update position statuses to 'expired'
-        if (isWorthlessClose) {
+        // If this is a non-closed status close, update position statuses
+        if (closeStatus !== 'closed') {
           try {
             const { PositionRepository } = await import('@/infrastructure/repositories');
             const positions = await PositionRepository.getByStrategyId(existingStrategyId);
 
-            // Update all positions in this strategy to 'expired' status
+            // Update all positions in this strategy to the selected status
             for (const position of positions) {
               if (position.status === 'closed') {
                 await PositionRepository.updateStatus(
                   position.id,
-                  'expired',
+                  closeStatus as PositionStatus,
                   position.closed_at || undefined
                 );
               }
             }
 
-            logger.info('[OptionsMultiLegForm] Updated positions to expired status', {
+            logger.info('[OptionsMultiLegForm] Updated positions status', {
               strategyId: existingStrategyId,
               positionCount: positions.length,
+              status: closeStatus,
             });
           } catch (error) {
-            logger.error('[OptionsMultiLegForm] Error updating position status to expired', error);
+            logger.error('[OptionsMultiLegForm] Error updating position status', error);
             // Don't fail the entire close operation if status update fails
           }
         }
@@ -564,7 +599,7 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
         logger.info('[OptionsMultiLegForm] Successfully closed multi-leg strategy', {
           strategyId: existingStrategyId,
           legCount: transactions.length,
-          isExpired: isWorthlessClose,
+          status: closeStatus,
         });
 
         onSuccess();
@@ -789,20 +824,26 @@ export const OptionsMultiLegForm: React.FC<OptionsMultiLegFormProps> = ({
             </div>
 
             {isClosing && (
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col gap-2">
-                <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={isWorthlessClose}
-                    onChange={(e) => setIsWorthlessClose(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  Mark this strategy as expired worthless
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  How is this strategy closing? *
                 </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Enables a zero-cost close so you can realize the full credit from an expiring spread without entering market
-                  quotes. You can toggle this off to restore your previous close prices.
-                </p>
+                <select
+                  value={closeStatus}
+                  onChange={(e) => setCloseStatus(e.target.value as CloseStatus)}
+                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                >
+                  {getCloseStatusOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                {closeStatus !== 'closed' && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {closeStatus === 'expired' && "All legs expired worthless. Prices will be set to $0."}
+                    {closeStatus === 'assigned' && "All short legs were assigned. Strategy closes at $0 (you delivered shares per the contracts)."}
+                    {closeStatus === 'exercised' && "All long legs were exercised. Strategy closes at $0 (you received/delivered shares per the contracts)."}
+                  </p>
+                )}
               </div>
             )}
 

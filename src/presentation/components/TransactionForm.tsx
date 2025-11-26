@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
-import type { AssetType, OptionChainEntry, Transaction, TransactionInsert } from '@/domain/types';
+import type { AssetType, OptionChainEntry, Transaction, TransactionInsert, PositionStatus } from '@/domain/types';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
@@ -92,7 +92,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     initialValues?.optionTransactionCode || 'BTO'
   );
   const [showChainSelector, setShowChainSelector] = useState(false);
-  const [isExpired, setIsExpired] = useState(false);
+  type CloseStatus = 'closed' | 'expired' | 'assigned' | 'exercised';
+  const [closeStatus, setCloseStatus] = useState<CloseStatus>('closed');
   const [savedPrice, setSavedPrice] = useState<string | null>(null);
 
   // Cash fields
@@ -246,23 +247,51 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   }, [editingTransaction]);
 
-  // Handle expired checkbox - auto-fill $0 price when checked
+  // Handle close status - auto-zero price for non-closed statuses
   useEffect(() => {
     if (assetType === 'option' && ['BTC', 'STC'].includes(optionTransactionCode)) {
-      if (isExpired) {
+      const shouldZeroPrice = closeStatus !== 'closed';
+
+      if (shouldZeroPrice && price !== '0') {
         // Save current price and set to 0
         setSavedPrice(price);
         setPrice('0');
-      } else if (savedPrice !== null) {
+      } else if (!shouldZeroPrice && savedPrice !== null) {
         // Restore previous price
         setPrice(savedPrice);
         setSavedPrice(null);
       }
     }
-  }, [isExpired, assetType, optionTransactionCode]);
+  }, [closeStatus, assetType, optionTransactionCode]);
 
   // Futures fields
   const [contractMonth, setContractMonth] = useState('');
+
+  // Helper to get available close status options based on transaction code
+  const getCloseStatusOptions = useMemo(() => {
+    const options: Array<{ value: CloseStatus; label: string }> = [
+      { value: 'closed', label: 'Closed (normal market close)' },
+      { value: 'expired', label: 'Expired worthless' },
+    ];
+
+    // Assignment only for closing SHORT positions (STC)
+    if (optionTransactionCode === 'STC') {
+      options.push({
+        value: 'assigned',
+        label: 'Assigned (short option was assigned)'
+      });
+    }
+
+    // Exercise only for closing LONG positions (BTC)
+    if (optionTransactionCode === 'BTC') {
+      options.push({
+        value: 'exercised',
+        label: 'Exercised (long option was exercised)'
+      });
+    }
+
+    return options;
+  }, [optionTransactionCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -469,8 +498,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       } else {
         const createdTransaction = await TransactionService.createManualTransaction(transactionData);
 
-        // If this is an expired option close, update the position status to 'expired'
-        if (assetType === 'option' && isExpired && ['BTC', 'STC'].includes(optionTransactionCode)) {
+        // If this is a non-closed status option close, update the position status
+        if (assetType === 'option' && closeStatus !== 'closed' && ['BTC', 'STC'].includes(optionTransactionCode)) {
           try {
             // Wait a moment for position matching to complete
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -486,18 +515,19 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               if (position && position.status === 'closed') {
                 await PositionRepository.updateStatus(
                   position.id,
-                  'expired',
+                  closeStatus as PositionStatus,
                   position.closed_at || undefined
                 );
 
-                logger.info('[TransactionForm] Updated position to expired status', {
+                logger.info('[TransactionForm] Updated position status', {
                   positionId: position.id,
                   transactionId: createdTransaction.id,
+                  status: closeStatus,
                 });
               }
             }
           } catch (error) {
-            logger.error('[TransactionForm] Error updating position status to expired', error);
+            logger.error('[TransactionForm] Error updating position status', error);
             // Don't fail the transaction creation if status update fails
           }
         }
@@ -830,22 +860,33 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                 </div>
               </div>
 
-              {/* Expired checkbox - only show when closing a position */}
+              {/* Close Status Selector - only show when closing a position */}
               {['BTC', 'STC'].includes(optionTransactionCode) && (
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col gap-2">
-                  <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={isExpired}
-                      onChange={(e) => setIsExpired(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    Mark this option as expired worthless
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    How is this position closing? *
                   </label>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Enables a zero-cost close so you can realize the full credit from an expiring option without entering a market quote.
-                    You can toggle this off to restore your previous close price.
-                  </p>
+                  <select
+                    value={closeStatus}
+                    onChange={(e) => setCloseStatus(e.target.value as CloseStatus)}
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                  >
+                    {getCloseStatusOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Helper text for non-closed statuses */}
+                  {closeStatus !== 'closed' && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {closeStatus === 'expired' &&
+                        "Option expired worthless. Price will be set to $0."}
+                      {closeStatus === 'assigned' &&
+                        "Your short option was assigned. Position closes at $0 (you delivered shares per the contract)."}
+                      {closeStatus === 'exercised' &&
+                        "You exercised your long option. Position closes at $0 (you received/delivered shares per the contract)."}
+                    </p>
+                  )}
                 </div>
               )}
             </>
