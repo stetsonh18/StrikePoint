@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
-import type { AssetType, OptionChainEntry, Transaction, TransactionInsert, PositionStatus } from '@/domain/types';
+import type { AssetType, OptionChainEntry, Transaction, TransactionInsert, PositionStatus, CashTransaction } from '@/domain/types';
 import { TransactionService } from '@/infrastructure/services/transactionService';
 import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { CashTransactionRepository } from '@/infrastructure/repositories/cashTransaction.repository';
@@ -30,6 +30,8 @@ interface TransactionFormProps {
   };
   // Transaction to edit (if provided, form will be in edit mode)
   editingTransaction?: Transaction;
+  // Cash transaction to edit (if provided, form will be in edit mode for cash)
+  editingCashTransaction?: CashTransaction;
 }
 
 export const TransactionForm: React.FC<TransactionFormProps> = ({
@@ -39,6 +41,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onSuccess,
   initialValues,
   editingTransaction,
+  editingCashTransaction,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +250,39 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   }, [editingTransaction]);
 
+  // Populate form fields when editing a cash transaction
+  useEffect(() => {
+    if (editingCashTransaction) {
+      // Set dates
+      if (editingCashTransaction.activity_date) {
+        setTransactionDate(editingCashTransaction.activity_date);
+      }
+
+      // Set description and notes
+      if (editingCashTransaction.description) {
+        setDescription(editingCashTransaction.description);
+      }
+      if (editingCashTransaction.notes) {
+        setNotes(editingCashTransaction.notes);
+      }
+
+      // Set transaction code
+      if (editingCashTransaction.transaction_code) {
+        setCashTransactionCode(editingCashTransaction.transaction_code);
+      }
+
+      // Set amount (absolute value)
+      if (editingCashTransaction.amount !== null && editingCashTransaction.amount !== undefined) {
+        setAmount(Math.abs(editingCashTransaction.amount).toString());
+      }
+
+      // Set symbol if present
+      if (editingCashTransaction.symbol) {
+        setSymbol(editingCashTransaction.symbol);
+      }
+    }
+  }, [editingCashTransaction]);
+
   // Handle close status - auto-zero price for non-closed statuses
   useEffect(() => {
     if (assetType === 'option' && ['BTC', 'STC'].includes(optionTransactionCode)) {
@@ -423,27 +459,41 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
         case 'cash': {
           const cashAmount = parseFloat(amount) || 0;
-          
+
           // Determine if this is a credit (positive) or debit (negative) transaction
           // Credits: ACH, RTP, DCF, INT, CDIV, SLIP, GMPC, OCC (deposits, income)
           // Debits: WD, WDRL, WITHD, WIRE, WT, FEE, GOLD (withdrawals, fees)
           const creditCodes = ['ACH', 'RTP', 'DCF', 'INT', 'CDIV', 'SLIP', 'GMPC', 'OCC', 'DEP', 'DEPOSIT', 'WIRE'];
           const isCredit = creditCodes.includes(cashTransactionCode);
-          
-          // Save to cash_transactions table
-          await CashTransactionRepository.create({
-            user_id: userId,
-            transaction_code: cashTransactionCode,
-            amount: isCredit ? cashAmount : -cashAmount,
-            description: description || null,
-            notes: notes || null,
-            activity_date: useDate,
-            process_date: useProcessDate,
-            settle_date: useSettleDate,
-            symbol: null,
-            tags: [],
-            transaction_id: editingTransaction?.id ?? null,
-          });
+
+          // If editing, update; otherwise create
+          if (editingCashTransaction) {
+            await CashTransactionRepository.update(editingCashTransaction.id, {
+              transaction_code: cashTransactionCode,
+              amount: isCredit ? cashAmount : -cashAmount,
+              description: description || null,
+              notes: notes || null,
+              activity_date: useDate,
+              process_date: useProcessDate,
+              settle_date: useSettleDate,
+              symbol: symbol || null,
+            });
+          } else {
+            // Save to cash_transactions table
+            await CashTransactionRepository.create({
+              user_id: userId,
+              transaction_code: cashTransactionCode,
+              amount: isCredit ? cashAmount : -cashAmount,
+              description: description || null,
+              notes: notes || null,
+              activity_date: useDate,
+              process_date: useProcessDate,
+              settle_date: useSettleDate,
+              symbol: null,
+              tags: [],
+              transaction_id: editingTransaction?.id ?? null,
+            });
+          }
           
           // Also update cash balance
           try {
@@ -584,7 +634,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       >
         <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 md:p-6 flex items-center justify-between">
           <h2 id="transaction-form-title" className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {editingTransaction ? 'Edit' : 'Add'} {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
+            {editingTransaction || editingCashTransaction ? 'Edit' : 'Add'} {assetType.charAt(0).toUpperCase() + assetType.slice(1)} Transaction
           </h2>
           <button
             onClick={onClose}
@@ -1194,7 +1244,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               disabled={isSubmitting}
               className="flex-1 px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? (editingTransaction ? 'Updating...' : 'Creating...') : (editingTransaction ? 'Update Transaction' : 'Create Transaction')}
+              {isSubmitting ? (editingTransaction || editingCashTransaction ? 'Updating...' : 'Creating...') : (editingTransaction || editingCashTransaction ? 'Update Transaction' : 'Create Transaction')}
             </button>
           </div>
         </form>

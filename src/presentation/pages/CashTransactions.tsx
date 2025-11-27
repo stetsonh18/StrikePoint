@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Plus, TrendingUp, TrendingDown, DollarSign, Download, Filter, Trash2 } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, DollarSign, Download, Filter, Trash2, Edit2 } from 'lucide-react';
 import { useAuthStore } from '@/application/stores/auth.store';
 import { useCashTransactions, useDeleteCashTransaction } from '@/application/hooks/useCashTransactions';
 import { TransactionForm } from '@/presentation/components/TransactionForm';
@@ -22,6 +22,7 @@ const CashTransactions: React.FC = () => {
   const [filterType, setFilterType] = useState<string | 'all'>('all');
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<CashTransaction | null>(null);
   
   const toast = useToast();
   const confirmation = useConfirmation();
@@ -278,6 +279,16 @@ const CashTransactions: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          setEditingTransaction(transaction);
+                        }}
+                        className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors touch-target"
+                        title="Edit transaction"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleDelete(transaction);
                         }}
                         className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors touch-target"
@@ -370,6 +381,16 @@ const CashTransactions: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            setEditingTransaction(transaction);
+                          }}
+                          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                          title="Edit transaction"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleDelete(transaction);
                           }}
                           className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
@@ -411,6 +432,23 @@ const CashTransactions: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['cash_transactions'] });
             queryClient.invalidateQueries({ queryKey: ['cash_balances'] });
             setShowAddModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Transaction Form Modal */}
+      {editingTransaction && (
+        <TransactionForm
+          assetType="cash"
+          userId={userId}
+          editingCashTransaction={editingTransaction}
+          onClose={() => {
+            setEditingTransaction(null);
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['cash_transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['cash_balances'] });
+            setEditingTransaction(null);
           }}
         />
       )}
