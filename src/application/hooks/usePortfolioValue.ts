@@ -233,7 +233,9 @@ export function usePortfolioValue(userId: string): PortfolioValue {
         position.option_type
       ) {
         metrics.options.count++;
-        let marketValue = costBasis + storedUnrealizedPL;
+        const isLong = position.side === 'long';
+        // Fallback: For long: asset value, For short: liability (negative)
+        let marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
         let unrealizedPL = storedUnrealizedPL;
 
         let quote: OptionQuote | null = null;
@@ -283,9 +285,14 @@ export function usePortfolioValue(userId: string): PortfolioValue {
           const currentPrice =
             quote.last ||
             (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
-          marketValue = position.current_quantity * multiplier * currentPrice;
+          const rawMarketValue = position.current_quantity * multiplier * currentPrice;
           const isLong = position.side === 'long';
-          unrealizedPL = isLong ? marketValue - costBasis : costBasis - marketValue;
+
+          // Calculate unrealized P&L
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
+
+          // For portfolio value: long options are assets (+), short options are liabilities (-)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
         }
 
         metrics.options.marketValue += marketValue;

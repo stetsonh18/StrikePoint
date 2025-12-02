@@ -145,7 +145,19 @@ export class InsightDataAggregationService {
       // Market value calculation
       const costBasis = Math.abs(p.total_cost_basis || 0);
       const unrealizedPL = p.unrealized_pl || 0;
-      const marketValue = assetType === 'futures' ? unrealizedPL : costBasis + unrealizedPL;
+      const isLong = p.side === 'long';
+
+      let marketValue: number;
+      if (assetType === 'futures') {
+        // Futures: only use unrealized P&L (margin-based)
+        marketValue = unrealizedPL;
+      } else if (assetType === 'option' && !isLong) {
+        // Short options: treat as liability (negative market value)
+        marketValue = -costBasis + unrealizedPL;
+      } else {
+        // Long positions (stocks, options, crypto): asset value
+        marketValue = costBasis + unrealizedPL;
+      }
 
       byAssetType[assetType].marketValue += marketValue;
       byAssetType[assetType].unrealizedPL += unrealizedPL;
