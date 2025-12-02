@@ -759,48 +759,37 @@ export class PerformanceMetricsService {
       formatDateKey(rangeEndDate)
     );
 
-    // Create a map of snapshot data by date
-    const snapshotMap = new Map<string, { realizedPL: number; unrealizedPL: number }>();
+    // Create a map of snapshot unrealized P&L by date
+    const snapshotUnrealizedMap = new Map<string, number>();
     snapshots.forEach((snapshot) => {
       const dateKey = snapshot.snapshot_date;
-
-      // If filtering by asset type, we use total P&L for now
+      // Only use snapshot for unrealized P&L (not realized)
       // TODO: Future enhancement - add per-asset unrealized P&L to snapshot schema
-      const realizedPL = snapshot.total_realized_pl;
-      const unrealizedPL = snapshot.total_unrealized_pl;
-
-      snapshotMap.set(dateKey, {
-        realizedPL,
-        unrealizedPL,
-      });
+      snapshotUnrealizedMap.set(dateKey, snapshot.total_unrealized_pl);
     });
 
     let cumulativeRealized = historicalRealizedPL;
     let cumulativeUnrealized = 0;
 
     return filledDailyPL.map((day) => {
-      const snapshotData = snapshotMap.get(day.date);
+      // Always accumulate realized P&L from trades (already working correctly)
+      cumulativeRealized += day.dailyRealized;
 
-      if (snapshotData) {
-        // Use snapshot data for accurate unrealized P&L
-        return {
-          date: day.date,
-          cumulativePL: snapshotData.realizedPL + snapshotData.unrealizedPL,
-          realizedPL: snapshotData.realizedPL,
-          unrealizedPL: snapshotData.unrealizedPL,
-        };
-      } else {
-        // Fallback: use trade-based calculation (for dates without snapshots)
-        cumulativeRealized += day.dailyRealized;
+      // For unrealized P&L: use snapshot if available, otherwise accumulate from trades
+      const snapshotUnrealized = snapshotUnrealizedMap.get(day.date);
+      const unrealizedPL = snapshotUnrealized !== undefined ? snapshotUnrealized : cumulativeUnrealized + day.dailyUnrealized;
+
+      // Only update cumulative if not using snapshot
+      if (snapshotUnrealized === undefined) {
         cumulativeUnrealized += day.dailyUnrealized;
-
-        return {
-          date: day.date,
-          cumulativePL: cumulativeRealized + cumulativeUnrealized,
-          realizedPL: cumulativeRealized,
-          unrealizedPL: cumulativeUnrealized,
-        };
       }
+
+      return {
+        date: day.date,
+        cumulativePL: cumulativeRealized + unrealizedPL,
+        realizedPL: cumulativeRealized,
+        unrealizedPL: unrealizedPL,
+      };
     });
 
   }
