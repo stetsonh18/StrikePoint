@@ -753,25 +753,10 @@ export class PerformanceMetricsService {
 
     let cumulativeRealized = historicalRealizedPL;
     let cumulativeUnrealized = 0;
-    let previousRealizedPL = historicalRealizedPL;
 
     return filledDailyPL.map((day) => {
       cumulativeRealized += day.dailyRealized;
-
-      // Monotonic validation: Realized P&L should never decrease
-      if (cumulativeRealized < previousRealizedPL) {
-        console.warn('Realized P&L decreased - data integrity issue detected', {
-          date: day.date,
-          previous: previousRealizedPL,
-          current: cumulativeRealized,
-          diff: cumulativeRealized - previousRealizedPL,
-        });
-        // Keep the previous value to prevent chart from showing decrease
-        cumulativeRealized = previousRealizedPL;
-      }
-
       cumulativeUnrealized += day.dailyUnrealized;
-      previousRealizedPL = cumulativeRealized;
 
       return {
         date: day.date,
