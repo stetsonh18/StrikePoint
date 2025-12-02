@@ -35,6 +35,34 @@ const ENTRY_TYPE_OPTIONS = [
   { value: 'general', label: 'General' },
 ];
 
+// Collapsible section component defined outside to prevent re-creation on each render
+const CollapsibleSection: React.FC<{
+  title: string;
+  sectionKey: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = React.memo(({ title, isExpanded, onToggle, children }) => {
+  return (
+    <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 flex items-center justify-between transition-colors"
+      >
+        <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{title}</span>
+        {isExpanded ? (
+          <ChevronUp size={18} className="text-slate-600 dark:text-slate-400" />
+        ) : (
+          <ChevronDown size={18} className="text-slate-600 dark:text-slate-400" />
+        )}
+      </button>
+      {isExpanded && <div className="p-4 space-y-4">{children}</div>}
+    </div>
+  );
+});
+CollapsibleSection.displayName = 'CollapsibleSection';
+
 export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
   userId,
   entry,
@@ -140,6 +168,11 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
   // File input refs
   const imageInputRef = useRef<HTMLInputElement>(null);
   const chartInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs for inputs that lose focus
+  const symbolInputRef = useRef<HTMLInputElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const actionItemInputRef = useRef<HTMLInputElement>(null);
 
   // Handle symbol input
   const handleAddSymbol = () => {
@@ -303,32 +336,6 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
     }
   };
 
-  // Collapsible section component
-  const CollapsibleSection: React.FC<{
-    title: string;
-    sectionKey: string;
-    children: React.ReactNode;
-  }> = ({ title, sectionKey, children }) => {
-    const isExpanded = isSectionExpanded(sectionKey);
-    return (
-      <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
-        <button
-          type="button"
-          onClick={() => toggleSection(sectionKey)}
-          className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800/70 flex items-center justify-between transition-colors"
-        >
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">{title}</span>
-          {isExpanded ? (
-            <ChevronUp size={18} className="text-slate-600 dark:text-slate-400" />
-          ) : (
-            <ChevronDown size={18} className="text-slate-600 dark:text-slate-400" />
-          )}
-        </button>
-        {isExpanded && <div className="p-4 space-y-4">{children}</div>}
-      </div>
-    );
-  };
-
   const modalRef = useFocusTrap(true);
 
   // Prevent body scroll when modal is open
@@ -460,7 +467,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
           {/* Collapsible Sections */}
           <div className="space-y-4">
             {/* Linked Trades & Symbols */}
-            <CollapsibleSection title="Linked Trades & Symbols" sectionKey="linked">
+            <CollapsibleSection
+              title="Linked Trades & Symbols"
+              sectionKey="linked"
+              isExpanded={isSectionExpanded('linked')}
+              onToggle={() => toggleSection('linked')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -518,6 +530,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                   </label>
                   <div className="flex gap-2">
                     <input
+                      ref={symbolInputRef}
                       type="text"
                       value={symbolInput}
                       onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
@@ -565,7 +578,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </CollapsibleSection>
 
             {/* Emotional & Market Context */}
-            <CollapsibleSection title="Emotional & Market Context" sectionKey="emotions">
+            <CollapsibleSection
+              title="Emotional & Market Context"
+              sectionKey="emotions"
+              isExpanded={isSectionExpanded('emotions')}
+              onToggle={() => toggleSection('emotions')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -614,7 +632,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </CollapsibleSection>
 
             {/* Strategy & Quality Ratings */}
-            <CollapsibleSection title="Strategy & Quality Ratings" sectionKey="strategy">
+            <CollapsibleSection
+              title="Strategy & Quality Ratings"
+              sectionKey="strategy"
+              isExpanded={isSectionExpanded('strategy')}
+              onToggle={() => toggleSection('strategy')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -664,7 +687,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </CollapsibleSection>
 
             {/* Analysis */}
-            <CollapsibleSection title="Analysis" sectionKey="analysis">
+            <CollapsibleSection
+              title="Analysis"
+              sectionKey="analysis"
+              isExpanded={isSectionExpanded('analysis')}
+              onToggle={() => toggleSection('analysis')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -711,6 +739,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                   </label>
                   <div className="flex gap-2 mb-2">
                     <input
+                      ref={actionItemInputRef}
                       type="text"
                       value={actionItemInput}
                       onChange={(e) => setActionItemInput(e.target.value)}
@@ -758,7 +787,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </CollapsibleSection>
 
             {/* Attachments */}
-            <CollapsibleSection title="Attachments" sectionKey="attachments">
+            <CollapsibleSection
+              title="Attachments"
+              sectionKey="attachments"
+              isExpanded={isSectionExpanded('attachments')}
+              onToggle={() => toggleSection('attachments')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -889,7 +923,12 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
             </CollapsibleSection>
 
             {/* Organization */}
-            <CollapsibleSection title="Organization" sectionKey="organization">
+            <CollapsibleSection
+              title="Organization"
+              sectionKey="organization"
+              isExpanded={isSectionExpanded('organization')}
+              onToggle={() => toggleSection('organization')}
+            >
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -897,6 +936,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({
                   </label>
                   <div className="flex gap-2 mb-2">
                     <input
+                      ref={tagInputRef}
                       type="text"
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
