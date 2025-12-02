@@ -623,6 +623,7 @@ export class PerformanceMetricsService {
 
   /**
    * Calculate P&L over time (daily cumulative)
+   * Uses portfolio snapshots for accurate unrealized P&L when available
    */
   static async calculatePLOverTime(
     userId: string,
@@ -751,19 +752,55 @@ export class PerformanceMetricsService {
         )
       : 0;
 
+    // Query portfolio snapshots for the date range to get accurate unrealized P&L
+    const snapshots = await PortfolioSnapshotRepository.getDateRange(
+      userId,
+      formatDateKey(rangeStartDate),
+      formatDateKey(rangeEndDate)
+    );
+
+    // Create a map of snapshot data by date
+    const snapshotMap = new Map<string, { realizedPL: number; unrealizedPL: number }>();
+    snapshots.forEach((snapshot) => {
+      const dateKey = snapshot.snapshot_date;
+
+      // If filtering by asset type, we use total P&L for now
+      // TODO: Future enhancement - add per-asset unrealized P&L to snapshot schema
+      const realizedPL = snapshot.total_realized_pl;
+      const unrealizedPL = snapshot.total_unrealized_pl;
+
+      snapshotMap.set(dateKey, {
+        realizedPL,
+        unrealizedPL,
+      });
+    });
+
     let cumulativeRealized = historicalRealizedPL;
     let cumulativeUnrealized = 0;
 
     return filledDailyPL.map((day) => {
-      cumulativeRealized += day.dailyRealized;
-      cumulativeUnrealized += day.dailyUnrealized;
+      const snapshotData = snapshotMap.get(day.date);
 
-      return {
-        date: day.date,
-        cumulativePL: cumulativeRealized + cumulativeUnrealized,
-        realizedPL: cumulativeRealized,
-        unrealizedPL: cumulativeUnrealized,
-      };
+      if (snapshotData) {
+        // Use snapshot data for accurate unrealized P&L
+        return {
+          date: day.date,
+          cumulativePL: snapshotData.realizedPL + snapshotData.unrealizedPL,
+          realizedPL: snapshotData.realizedPL,
+          unrealizedPL: snapshotData.unrealizedPL,
+        };
+      } else {
+        // Fallback: use trade-based calculation (for dates without snapshots)
+        cumulativeRealized += day.dailyRealized;
+        cumulativeUnrealized += day.dailyUnrealized;
+
+        return {
+          date: day.date,
+          cumulativePL: cumulativeRealized + cumulativeUnrealized,
+          realizedPL: cumulativeRealized,
+          unrealizedPL: cumulativeUnrealized,
+        };
+      }
     });
 
   }
