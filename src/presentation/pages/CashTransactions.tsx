@@ -13,6 +13,8 @@ import { ConfirmationDialog } from '@/presentation/components/ConfirmationDialog
 import type { CashTransaction } from '@/domain/types';
 import { logger } from '@/shared/utils/logger';
 import { MobileTableCard, MobileTableCardHeader, MobileTableCardRow } from '@/presentation/components/MobileTableCard';
+import { SortableTableHeader } from '@/presentation/components/SortableTableHeader';
+import { sortData, SortConfig } from '@/shared/utils/tableSorting';
 
 const CashTransactions: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -23,7 +25,11 @@ const CashTransactions: React.FC = () => {
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<CashTransaction | null>(null);
-  
+  const [cashSort, setCashSort] = useState<SortConfig<CashTransaction> | null>({
+    key: 'activity_date',
+    direction: 'desc'
+  });
+
   const toast = useToast();
   const confirmation = useConfirmation();
   const deleteMutation = useDeleteCashTransaction();
@@ -55,12 +61,10 @@ const CashTransactions: React.FC = () => {
     return Array.from(codes).sort();
   }, [transactions]);
 
-  // Filter transactions (already filtered by query, but sort here)
+  // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
-    return [...transactions].sort(
-      (a, b) => new Date(b.activity_date).getTime() - new Date(a.activity_date).getTime()
-    );
-  }, [transactions]);
+    return sortData(transactions, cashSort);
+  }, [transactions, cashSort]);
 
   // Calculate summary
   const summary = useMemo(() => {
@@ -319,21 +323,41 @@ const CashTransactions: React.FC = () => {
           <table className="w-full">
             <thead className="bg-slate-100 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Symbol
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Amount
-                </th>
+                <SortableTableHeader
+                  label="Date"
+                  sortKey="activity_date"
+                  currentSort={cashSort}
+                  onSortChange={setCashSort}
+                  align="left"
+                />
+                <SortableTableHeader
+                  label="Type"
+                  sortKey="transaction_code"
+                  currentSort={cashSort}
+                  onSortChange={setCashSort}
+                  align="left"
+                />
+                <SortableTableHeader
+                  label="Description"
+                  sortKey="description"
+                  currentSort={cashSort}
+                  onSortChange={setCashSort}
+                  align="left"
+                />
+                <SortableTableHeader
+                  label="Symbol"
+                  sortKey="symbol"
+                  currentSort={cashSort}
+                  onSortChange={setCashSort}
+                  align="left"
+                />
+                <SortableTableHeader
+                  label="Amount"
+                  sortKey="amount"
+                  currentSort={cashSort}
+                  onSortChange={setCashSort}
+                  align="right"
+                />
                 <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Actions
                 </th>

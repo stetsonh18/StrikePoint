@@ -517,15 +517,13 @@ const Options: React.FC = () => {
       };
     }
 
-    // Sort individual positions
-    if (positionSort && positionSort.direction) {
-      filtered = {
-        ...filtered,
-        individual: sortData(filtered.individual, positionSort),
-      };
-    }
-
-    return filtered;
+    // Apply sorting to both individual positions and strategies
+    return {
+      individual: sortData(filtered.individual, positionSort),
+      strategies: filtered.strategies.map(group =>
+        sortData(group, positionSort)
+      ),
+    };
   }, [groupedPositions, searchQuery, filterType, positionSort]);
 
   const portfolioSummary = useMemo(() => {
