@@ -493,6 +493,13 @@ const Options: React.FC = () => {
 
   // Filter and sort grouped positions
   const filteredGroupedPositions = useMemo(() => {
+    console.log('[Options] Starting filter:', {
+      groupedIndividual: groupedPositions.individual.length,
+      groupedStrategies: groupedPositions.strategies.length,
+      searchQuery,
+      filterType
+    });
+
     let filtered = groupedPositions;
 
     if (searchQuery) {
@@ -506,6 +513,10 @@ const Options: React.FC = () => {
           )
         ),
       };
+      console.log('[Options] After search filter:', {
+        individual: filtered.individual.length,
+        strategies: filtered.strategies.length
+      });
     }
 
     if (filterType !== 'all') {
@@ -515,6 +526,10 @@ const Options: React.FC = () => {
           strategyGroup.some(pos => pos.optionType === filterType)
         ),
       };
+      console.log('[Options] After type filter:', {
+        individual: filtered.individual.length,
+        strategies: filtered.strategies.length
+      });
     }
 
     // Apply sorting to both individual positions and strategies
@@ -526,18 +541,16 @@ const Options: React.FC = () => {
     };
 
     // DEBUG: Log sorting to help diagnose caching issues
-    if (positionSort) {
-      console.log('[Options] Sorting applied:', {
-        sortKey: positionSort.key,
-        direction: positionSort.direction,
-        count: result.individual.length,
-        first3: result.individual.slice(0, 3).map(p => ({
-          symbol: p.underlyingSymbol,
-          exp: p.expirationDate,
-          strike: p.strikePrice
-        }))
-      });
-    }
+    console.log('[Options] Final result:', {
+      positionSort,
+      individualCount: result.individual.length,
+      strategiesCount: result.strategies.length,
+      first3: result.individual.slice(0, 3).map(p => ({
+        symbol: p.underlyingSymbol,
+        exp: p.expirationDate,
+        strike: p.strikePrice
+      }))
+    });
 
     return result;
   }, [groupedPositions, searchQuery, filterType, positionSort]);
