@@ -70,13 +70,13 @@ function getNestedValue<T>(obj: T, path: string | keyof T): unknown {
 export function toggleSort<T>(
   currentSort: SortConfig<T> | null,
   key: keyof T | string
-): SortConfig<T> {
+): SortConfig<T> | null {
   if (currentSort?.key === key) {
     // Cycle through: asc -> desc -> null
     if (currentSort.direction === 'asc') {
       return { key, direction: 'desc' };
     } else if (currentSort.direction === 'desc') {
-      return { key, direction: null };
+      return null; // Clear sort
     }
   }
   return { key, direction: 'asc' };

@@ -6,7 +6,7 @@ interface SortableTableHeaderProps<T> {
   label: string;
   sortKey: keyof T | string;
   currentSort: SortConfig<T> | null;
-  onSortChange: (sort: SortConfig<T>) => void;
+  onSortChange: (sort: SortConfig<T> | null) => void;
   className?: string;
   align?: 'left' | 'center' | 'right';
   sortable?: boolean;
