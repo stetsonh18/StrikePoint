@@ -533,11 +533,48 @@ const Options: React.FC = () => {
     }
 
     // Apply sorting to both individual positions and strategies
+
+    // Helper to get sort value from first position in a strategy group
+    const getStrategyGroupSortValue = (group: OptionContract[], key: string) => {
+      if (group.length === 0) return null;
+      const firstPosition = group[0];
+      return (firstPosition as any)[key];
+    };
+
+    // Sort strategy groups by the specified column (using first position's value)
+    let sortedStrategies = filtered.strategies;
+    if (positionSort && positionSort.direction) {
+      sortedStrategies = [...filtered.strategies].sort((groupA, groupB) => {
+        const aValue = getStrategyGroupSortValue(groupA, positionSort.key as string);
+        const bValue = getStrategyGroupSortValue(groupB, positionSort.key as string);
+
+        // Handle nulls
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
+
+        // Compare values
+        let comparison = 0;
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          comparison = aValue - bValue;
+        } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+          comparison = aValue.localeCompare(bValue);
+        } else {
+          comparison = String(aValue).localeCompare(String(bValue));
+        }
+
+        return positionSort.direction === 'asc' ? comparison : -comparison;
+      });
+    }
+
+    // Sort positions within each strategy group
+    const strategiesWithSortedPositions = sortedStrategies.map(group =>
+      sortData(group, positionSort)
+    );
+
     const result = {
       individual: sortData(filtered.individual, positionSort),
-      strategies: filtered.strategies.map(group =>
-        sortData(group, positionSort)
-      ),
+      strategies: strategiesWithSortedPositions,
     };
 
     // DEBUG: Log sorting to help diagnose caching issues
@@ -545,10 +582,13 @@ const Options: React.FC = () => {
       positionSort,
       individualCount: result.individual.length,
       strategiesCount: result.strategies.length,
-      first3: result.individual.slice(0, 3).map(p => ({
-        symbol: p.underlyingSymbol,
-        exp: p.expirationDate,
-        strike: p.strikePrice
+      first3Strategies: result.strategies.slice(0, 3).map(group => ({
+        count: group.length,
+        firstPosition: group[0] ? {
+          symbol: group[0].underlyingSymbol,
+          exp: group[0].expirationDate,
+          strike: group[0].strikePrice
+        } : null
       }))
     });
 
