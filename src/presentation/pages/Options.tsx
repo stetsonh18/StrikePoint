@@ -518,12 +518,28 @@ const Options: React.FC = () => {
     }
 
     // Apply sorting to both individual positions and strategies
-    return {
+    const result = {
       individual: sortData(filtered.individual, positionSort),
       strategies: filtered.strategies.map(group =>
         sortData(group, positionSort)
       ),
     };
+
+    // DEBUG: Log sorting to help diagnose caching issues
+    if (positionSort) {
+      console.log('[Options] Sorting applied:', {
+        sortKey: positionSort.key,
+        direction: positionSort.direction,
+        count: result.individual.length,
+        first3: result.individual.slice(0, 3).map(p => ({
+          symbol: p.underlyingSymbol,
+          exp: p.expirationDate,
+          strike: p.strikePrice
+        }))
+      });
+    }
+
+    return result;
   }, [groupedPositions, searchQuery, filterType, positionSort]);
 
   const portfolioSummary = useMemo(() => {
