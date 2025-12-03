@@ -59,6 +59,7 @@ export const Dashboard = () => {
   const { data: yearlyPerformance } = useYearlyPerformance(userId);
   const [isNewsExpanded, setIsNewsExpanded] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
+  const [isPositionsExpanded, setIsPositionsExpanded] = useState(false);
 
   const realizedPL = positionStats?.totalRealizedPL || 0;
   const unrealizedPL = portfolioUnrealizedPL; // Use calculated unrealized P&L from all open positions
@@ -710,13 +711,21 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Left Column - Top Performing Positions */}
         <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900/50 dark:to-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-200 dark:border-slate-800/50 p-4 md:p-6 shadow-sm dark:shadow-none">
-          <div className="flex items-center gap-2 mb-4">
-            <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-              Top Performing Positions
-            </h3>
-          </div>
-          {positionsLoading ? (
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                Top Performing Positions
+              </h3>
+            </div>
+            <button
+              onClick={() => setIsPositionsExpanded(!isPositionsExpanded)}
+              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-700/50 transition-colors"
+              title={isPositionsExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isPositionsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>          {positionsLoading ? (
             <div className="space-y-3">
               <PositionCardSkeleton count={5} />
             </div>
@@ -725,25 +734,67 @@ export const Dashboard = () => {
               <p className="text-slate-500 dark:text-slate-400 text-sm">No open positions</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {topPositions.map((pos) => (
-                <PositionCard
-                  key={pos.id}
-                  id={pos.id}
-                  symbol={pos.symbol}
-                  assetType={pos.assetType}
-                  quantity={pos.quantity}
-                  avgPrice={pos.avgPrice}
-                  currentPrice={pos.currentPrice}
-                  marketValue={pos.marketValue}
-                  unrealizedPL={pos.unrealizedPL}
-                  totalPL={pos.totalPL}
-                  plPercent={pos.plPercent}
-                  formatCurrency={formatCurrency}
-                  getAssetIcon={getAssetIcon}
-                />
-              ))}
-            </div>
+            <>
+              {/* Collapsed state - show top 4 positions */}
+              {!isPositionsExpanded && (
+                <>
+                  <div className="space-y-3">
+                    {topPositions.slice(0, 4).map((pos) => (
+                      <PositionCard
+                        key={pos.id}
+                        id={pos.id}
+                        symbol={pos.symbol}
+                        assetType={pos.assetType}
+                        quantity={pos.quantity}
+                        avgPrice={pos.avgPrice}
+                        currentPrice={pos.currentPrice}
+                        marketValue={pos.marketValue}
+                        unrealizedPL={pos.unrealizedPL}
+                        totalPL={pos.totalPL}
+                        plPercent={pos.plPercent}
+                        formatCurrency={formatCurrency}
+                        getAssetIcon={getAssetIcon}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Show summary if more than 4 positions */}
+                  {topPositions.length > 4 && (
+                    <div className="text-center py-4 border-t border-slate-200 dark:border-slate-700/50 mt-3">
+                      <p className="text-slate-500 dark:text-slate-400 text-sm">
+                        {topPositions.length} positions total
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-500 text-xs mt-1">
+                        Click expand to view all
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Expanded state - show all positions with scroll */}
+              {isPositionsExpanded && (
+                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                  {topPositions.map((pos) => (
+                    <PositionCard
+                      key={pos.id}
+                      id={pos.id}
+                      symbol={pos.symbol}
+                      assetType={pos.assetType}
+                      quantity={pos.quantity}
+                      avgPrice={pos.avgPrice}
+                      currentPrice={pos.currentPrice}
+                      marketValue={pos.marketValue}
+                      unrealizedPL={pos.unrealizedPL}
+                      totalPL={pos.totalPL}
+                      plPercent={pos.plPercent}
+                      formatCurrency={formatCurrency}
+                      getAssetIcon={getAssetIcon}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
