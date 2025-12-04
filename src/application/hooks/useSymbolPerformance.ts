@@ -9,11 +9,12 @@ import type { AssetType } from '@/domain/types/asset.types';
 export function useSymbolPerformance(
   userId: string,
   assetType?: AssetType,
-  days?: number // Optional: filter by last N days
+  days?: number, // Optional: filter by last N days
+  dateRange?: { startDate: string; endDate: string }
 ) {
   return useQuery<SymbolPerformance[], Error>({
-    queryKey: ['symbol-performance', userId, assetType, days],
-    queryFn: () => PerformanceMetricsService.calculatePerformanceBySymbol(userId, assetType, days),
+    queryKey: ['symbol-performance', userId, assetType, days, dateRange],
+    queryFn: () => PerformanceMetricsService.calculatePerformanceBySymbol(userId, assetType, days, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

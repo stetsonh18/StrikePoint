@@ -142,9 +142,29 @@ export const Analytics = () => {
     DateRangeStorage.save(range);
     setShowDateRangeModal(false);
   };
-  
+
+  // Convert timePeriod to dateRange for hooks
+  const dateRange = useMemo((): { startDate: string; endDate: string } | undefined => {
+    if (timePeriod === 'custom') {
+      return customDateRange || undefined;
+    }
+    if (timePeriod === null) {
+      return undefined; // All time
+    }
+
+    // timePeriod is now a number (7, 30, 90, 365)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timePeriod);
+
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    };
+  }, [timePeriod, customDateRange]);
+
   const assetType = TAB_TO_ASSET_TYPE[activeTab];
-  const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType);
+  const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType, dateRange);
   const { data: allPositions } = usePositions(userId);
   
   // Log for debugging
@@ -302,51 +322,54 @@ export const Analytics = () => {
   const { data: symbolPerformance = [], isLoading: isLoadingSymbols } = useSymbolPerformance(
     userId,
     assetType,
-    timePeriod || undefined
+    (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined,
+    dateRange
   );
   const { data: monthlyPerformance = [], isLoading: isLoadingMonthly } = useMonthlyPerformance(
     userId,
     assetType,
-    12
+    12,
+    dateRange
   );
   const { data: plOverTimeData = [], isLoading: isLoadingPLOverTime } = usePLOverTime(
     userId,
     assetType,
-    timePeriod || undefined
+    (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined
   );
-  const { data: last7DaysData = [], isLoading: isLoadingLast7Days } = useLast7DaysPL(userId, assetType);
-  const { data: dayOfWeekData = [], isLoading: isLoadingDayOfWeek } = useDayOfWeekPerformance(userId, assetType);
+  const { data: last7DaysData = [], isLoading: isLoadingLast7Days } = useLast7DaysPL(userId, assetType, dateRange);
+  const { data: dayOfWeekData = [], isLoading: isLoadingDayOfWeek } = useDayOfWeekPerformance(userId, assetType, dateRange);
   const { data: drawdownData = [], isLoading: isLoadingDrawdown } = useDrawdownOverTime(
     userId,
     assetType,
-    timePeriod || undefined
+    (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined
   );
-  const { data: optionsByTypeData, isLoading: isLoadingOptionsByType } = useOptionsByType(userId);
-  const { data: expirationStatusData, isLoading: isLoadingExpirationStatus } = useExpirationStatus(userId);
-  const { data: daysToExpirationData = [], isLoading: isLoadingDaysToExpiration } = useDaysToExpiration(userId);
-  const { data: strategyPerformanceData = [], isLoading: isLoadingStrategyPerformance } = useStrategyPerformance(userId);
-  const { data: optionsEntryTimeData = [], isLoading: isLoadingOptionsEntryTime } = useEntryTimePerformance(userId, 'option');
-  const { data: futuresEntryTimeData = [], isLoading: isLoadingFuturesEntryTime } = useEntryTimePerformance(userId, 'futures');
-  const { data: entryTimeByStrategyData, isLoading: isLoadingEntryTimeByStrategy } = useEntryTimeByStrategy(userId);
+  const { data: optionsByTypeData, isLoading: isLoadingOptionsByType } = useOptionsByType(userId, dateRange);
+  const { data: expirationStatusData, isLoading: isLoadingExpirationStatus } = useExpirationStatus(userId, dateRange);
+  const { data: daysToExpirationData = [], isLoading: isLoadingDaysToExpiration } = useDaysToExpiration(userId, dateRange);
+  const { data: strategyPerformanceData = [], isLoading: isLoadingStrategyPerformance } = useStrategyPerformance(userId, dateRange);
+  const { data: optionsEntryTimeData = [], isLoading: isLoadingOptionsEntryTime } = useEntryTimePerformance(userId, 'option', dateRange);
+  const { data: futuresEntryTimeData = [], isLoading: isLoadingFuturesEntryTime } = useEntryTimePerformance(userId, 'futures', dateRange);
+  const { data: entryTimeByStrategyData, isLoading: isLoadingEntryTimeByStrategy } = useEntryTimeByStrategy(userId, dateRange);
   const { data: balanceOverTimeData = [], isLoading: isLoadingBalanceOverTime } = useBalanceOverTime(
     userId,
     assetType,
-    timePeriod || undefined
+    (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined
   );
   const { data: roiOverTimeData = [], isLoading: isLoadingROIOverTime } = useROIOverTime(
     userId,
     assetType,
-    timePeriod || undefined
+    (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined
   );
   const { data: dailyCalendarData = [], isLoading: isLoadingDailyCalendar } = useDailyPerformanceCalendar(
     userId,
-    activeTab === 'all' ? undefined : assetType
+    activeTab === 'all' ? undefined : assetType,
+    dateRange
   );
-  const { data: stocksHoldingPeriodData = [], isLoading: isLoadingStocksHoldingPeriod } = useHoldingPeriodDistribution(userId, 'stock');
-  const { data: cryptoHoldingPeriodData = [], isLoading: isLoadingCryptoHoldingPeriod } = useHoldingPeriodDistribution(userId, 'crypto');
-  const { data: futuresContractMonthData = [], isLoading: isLoadingFuturesContractMonth } = useFuturesContractMonthPerformance(userId);
-  const { data: futuresMarginEfficiencyData = [], isLoading: isLoadingFuturesMarginEfficiency } = useFuturesMarginEfficiency(userId);
-  const { data: cryptoCoinData = [], isLoading: isLoadingCryptoCoin } = useCryptoCoinPerformance(userId);
+  const { data: stocksHoldingPeriodData = [], isLoading: isLoadingStocksHoldingPeriod } = useHoldingPeriodDistribution(userId, 'stock', dateRange);
+  const { data: cryptoHoldingPeriodData = [], isLoading: isLoadingCryptoHoldingPeriod } = useHoldingPeriodDistribution(userId, 'crypto', dateRange);
+  const { data: futuresContractMonthData = [], isLoading: isLoadingFuturesContractMonth } = useFuturesContractMonthPerformance(userId, dateRange);
+  const { data: futuresMarginEfficiencyData = [], isLoading: isLoadingFuturesMarginEfficiency } = useFuturesMarginEfficiency(userId, dateRange);
+  const { data: cryptoCoinData = [], isLoading: isLoadingCryptoCoin } = useCryptoCoinPerformance(userId, dateRange);
 
   const formatValue = (value: number | undefined, isCurrency = false, isPercent = false): string => {
     if (value === undefined || value === null || isNaN(value)) return '—';

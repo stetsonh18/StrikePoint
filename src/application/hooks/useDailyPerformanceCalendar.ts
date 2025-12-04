@@ -14,11 +14,12 @@ export interface DailyPerformanceCalendarData {
  */
 export function useDailyPerformanceCalendar(
   userId: string,
-  assetType?: AssetType
+  assetType?: AssetType,
+  dateRange?: { startDate: string; endDate: string }
 ) {
   return useQuery<DailyPerformanceCalendarData[], Error>({
-    queryKey: ['daily-performance-calendar', userId, assetType],
-    queryFn: () => PerformanceMetricsService.calculateDailyPerformanceCalendar(userId, assetType),
+    queryKey: ['daily-performance-calendar', userId, assetType, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateDailyPerformanceCalendar(userId, assetType, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

@@ -13,10 +13,10 @@ export interface DaysToExpirationData {
 /**
  * Hook to fetch options performance by days to expiration
  */
-export function useDaysToExpiration(userId: string) {
+export function useDaysToExpiration(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<DaysToExpirationData[], Error>({
-    queryKey: ['days-to-expiration', userId],
-    queryFn: () => PerformanceMetricsService.calculateDaysToExpiration(userId),
+    queryKey: ['days-to-expiration', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateDaysToExpiration(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

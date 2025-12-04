@@ -21,10 +21,10 @@ export interface ExpirationStatusData {
 /**
  * Hook to fetch options expiration status data
  */
-export function useExpirationStatus(userId: string) {
+export function useExpirationStatus(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<ExpirationStatusData, Error>({
-    queryKey: ['expiration-status', userId],
-    queryFn: () => PerformanceMetricsService.calculateExpirationStatus(userId),
+    queryKey: ['expiration-status', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateExpirationStatus(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

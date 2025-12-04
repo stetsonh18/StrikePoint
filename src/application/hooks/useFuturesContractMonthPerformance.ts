@@ -13,10 +13,10 @@ export interface FuturesContractMonthPerformanceData {
 /**
  * Hook to fetch futures contract month performance data
  */
-export function useFuturesContractMonthPerformance(userId: string) {
+export function useFuturesContractMonthPerformance(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<FuturesContractMonthPerformanceData[], Error>({
-    queryKey: ['futures-contract-month-performance', userId],
-    queryFn: () => PerformanceMetricsService.calculateFuturesContractMonthPerformance(userId),
+    queryKey: ['futures-contract-month-performance', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateFuturesContractMonthPerformance(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

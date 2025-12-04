@@ -161,29 +161,30 @@ export const queryKeys = {
    */
   analytics: {
     all: ['analytics'] as const,
-    winRate: (userId: string, assetType?: AssetType) =>
-      ['win-rate-metrics', userId, assetType] as const,
+    winRate: (userId: string, assetType?: AssetType, dateRange?: { startDate: string; endDate: string }) =>
+      ['win-rate-metrics', userId, assetType, dateRange] as const,
     dailyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
       ['daily-performance', userId, portfolioValue, unrealizedPL] as const,
     weeklyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
       ['weekly-performance', userId, portfolioValue, unrealizedPL] as const,
-    monthlyPerformance: (userId: string, assetType?: AssetType, months?: number) =>
-      ['monthly-performance', userId, assetType, months] as const,
+    monthlyPerformance: (userId: string, assetType?: AssetType, months?: number, dateRange?: { startDate: string; endDate: string }) =>
+      ['monthly-performance', userId, assetType, months, dateRange] as const,
     monthlyDashboard: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
       ['monthly-performance-dashboard', userId, portfolioValue, unrealizedPL] as const,
     yearlyPerformance: (userId: string, portfolioValue?: number, unrealizedPL?: number) =>
       ['yearly-performance', userId, portfolioValue, unrealizedPL] as const,
-    symbolPerformance: (userId: string, assetType?: AssetType, days?: number) =>
-      ['symbol-performance', userId, assetType, days] as const,
-    strategyPerformance: (userId: string) => ['strategy-performance', userId] as const,
-    entryTimePerformance: (userId: string, assetType: 'option' | 'futures') =>
-      ['entry-time-performance', userId, assetType] as const,
+    symbolPerformance: (userId: string, assetType?: AssetType, days?: number, dateRange?: { startDate: string; endDate: string }) =>
+      ['symbol-performance', userId, assetType, days, dateRange] as const,
+    strategyPerformance: (userId: string, dateRange?: { startDate: string; endDate: string }) =>
+      ['strategy-performance', userId, dateRange] as const,
+    entryTimePerformance: (userId: string, assetType: 'option' | 'futures', dateRange?: { startDate: string; endDate: string }) =>
+      ['entry-time-performance', userId, assetType, dateRange] as const,
     plOverTime: (userId: string, assetType?: AssetType, days?: number) =>
       ['pl-over-time', userId, assetType, days] as const,
-    last7DaysPL: (userId: string, assetType?: AssetType) =>
-      ['last-7-days-pl', userId, assetType] as const,
-    dailyPerformanceCalendar: (userId: string, assetType?: AssetType) =>
-      ['daily-performance-calendar', userId, assetType] as const,
+    last7DaysPL: (userId: string, assetType?: AssetType, dateRange?: { startDate: string; endDate: string }) =>
+      ['last-7-days-pl', userId, assetType, dateRange] as const,
+    dailyPerformanceCalendar: (userId: string, assetType?: AssetType, dateRange?: { startDate: string; endDate: string }) =>
+      ['daily-performance-calendar', userId, assetType, dateRange] as const,
     positionsByDate: (userId: string, date: string, assetType?: AssetType) =>
       ['positions-by-date', userId, date, assetType] as const,
   },

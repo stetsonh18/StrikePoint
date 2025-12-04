@@ -9,11 +9,12 @@ import type { AssetType } from '@/domain/types/asset.types';
 export function useMonthlyPerformance(
   userId: string,
   assetType?: AssetType,
-  months: number = 12 // Number of months to include
+  months: number = 12, // Number of months to include
+  dateRange?: { startDate: string; endDate: string }
 ) {
   return useQuery<MonthlyPerformance[], Error>({
-    queryKey: ['monthly-performance', userId, assetType, months],
-    queryFn: () => PerformanceMetricsService.calculateMonthlyPerformance(userId, assetType, months),
+    queryKey: ['monthly-performance', userId, assetType, months, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateMonthlyPerformance(userId, assetType, months, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

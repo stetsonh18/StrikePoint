@@ -14,10 +14,10 @@ export interface StrategyPerformanceData {
 /**
  * Hook to fetch strategy performance data
  */
-export function useStrategyPerformance(userId: string) {
+export function useStrategyPerformance(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<StrategyPerformanceData[], Error>({
-    queryKey: ['strategy-performance', userId],
-    queryFn: () => PerformanceMetricsService.calculateStrategyPerformance(userId),
+    queryKey: ['strategy-performance', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateStrategyPerformance(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

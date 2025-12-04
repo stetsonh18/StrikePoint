@@ -9,17 +9,18 @@ import type { AssetType } from '@/domain/types/asset.types';
 export function useAnalytics(
   userId: string,
   assetType?: AssetType,
+  dateRange?: { startDate: string; endDate: string },
   options?: Omit<UseQueryOptions<WinRateMetrics, Error>, 'queryKey' | 'queryFn' | 'enabled'>
 ) {
-  const queryKey = queryKeys.analytics.winRate(userId, assetType);
+  const queryKey = queryKeys.analytics.winRate(userId, assetType, dateRange);
 
   return useQuery<WinRateMetrics, Error>({
     queryKey,
     queryFn: () => {
       if (assetType) {
-        return PerformanceMetricsService.calculateWinRateByAssetType(userId, assetType);
+        return PerformanceMetricsService.calculateWinRateByAssetType(userId, assetType, dateRange);
       }
-      return PerformanceMetricsService.calculateWinRate(userId);
+      return PerformanceMetricsService.calculateWinRate(userId, dateRange);
     },
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute

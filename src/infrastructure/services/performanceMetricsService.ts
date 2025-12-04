@@ -542,21 +542,14 @@ export class PerformanceMetricsService {
   static async calculatePerformanceBySymbol(
     userId: string,
     assetType?: AssetType,
-    days?: number // Optional: filter by last N days
+    days?: number, // Optional: filter by last N days
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<SymbolPerformance[]> {
     const trades = await this.getNormalizedTrades(userId);
-    let realizedTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, days, dateRange);
+    let realizedTrades = dateFilteredTrades.filter(
       (trade) => (!assetType || trade.assetType === assetType) && this.isRealizedTrade(trade)
     );
-
-    if (days) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      realizedTrades = realizedTrades.filter((trade) => {
-        const closedDate = this.getTradeClosedDate(trade);
-        return closedDate ? closedDate >= cutoff : false;
-      });
-    }
 
     if (realizedTrades.length === 0) {
       return [];
@@ -609,10 +602,12 @@ export class PerformanceMetricsService {
   static async calculateMonthlyPerformance(
     userId: string,
     assetType?: AssetType,
-    months: number = 12 // Number of months to include
+    months: number = 12, // Number of months to include
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<MonthlyPerformance[]> {
     const trades = await this.getNormalizedTrades(userId);
-    const realizedTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const realizedTrades = dateFilteredTrades.filter(
       (trade) => (!assetType || trade.assetType === assetType) && this.isRealizedTrade(trade)
     );
 
@@ -840,10 +835,12 @@ export class PerformanceMetricsService {
    */
   static async calculateLast7DaysPL(
     userId: string,
-    assetType?: AssetType
+    assetType?: AssetType,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ date: string; pl: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const filteredTrades = this.filterTradesByAssetType(trades, assetType);
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const filteredTrades = this.filterTradesByAssetType(dateFilteredTrades, assetType);
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
     const openTrades = filteredTrades.filter((trade) => trade.status !== 'closed');
 
@@ -908,10 +905,12 @@ export class PerformanceMetricsService {
    */
   static async calculateDayOfWeekPerformance(
     userId: string,
-    assetType?: AssetType
+    assetType?: AssetType,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ dayOfWeek: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const realizedTrades = this.filterTradesByAssetType(trades, assetType).filter((trade) =>
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const realizedTrades = this.filterTradesByAssetType(dateFilteredTrades, assetType).filter((trade) =>
       this.isRealizedTrade(trade)
     );
 
@@ -1092,13 +1091,15 @@ export class PerformanceMetricsService {
    * Calculate options performance by type (Call vs Put)
    */
   static async calculateOptionsByType(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<{
     call: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
     put: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
   }> {
     const trades = await this.getNormalizedTrades(userId);
-    const optionTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const optionTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'option' && this.isRealizedTrade(trade)
     );
 
@@ -1140,13 +1141,15 @@ export class PerformanceMetricsService {
    * Calculate options expiration status (expired vs closed)
    */
   static async calculateExpirationStatus(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<{
     expired: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
     closed: { pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number };
   }> {
     const trades = await this.getNormalizedTrades(userId);
-    const optionTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const optionTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'option' && trade.expirationDate && this.isRealizedTrade(trade)
     );
 
@@ -1199,17 +1202,19 @@ export class PerformanceMetricsService {
    * Calculate options performance by days to expiration
    */
   static async calculateDaysToExpiration(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ dteBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
     const getLocalMidnight = (date: Date) =>
       new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    
+
     // Group by DTE bucket
     const bucketMap = new Map<string, NormalizedTrade[]>();
-    
+
     const trades = await this.getNormalizedTrades(userId);
-    trades
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    dateFilteredTrades
       .filter(
         (trade) =>
           trade.assetType === 'option' && trade.expirationDate && this.isRealizedTrade(trade)
@@ -1263,12 +1268,27 @@ export class PerformanceMetricsService {
    * Calculate strategy performance
    */
   static async calculateStrategyPerformance(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ strategyType: string; pl: number; winRate: number; profitOnRisk: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
-    const [allStrategies, allPositions] = await Promise.all([
+    const [allStrategies, allPositions, allTrades] = await Promise.all([
       StrategyRepository.getAll(userId),
       PositionRepository.getAll(userId),
+      this.getNormalizedTrades(userId),
     ]);
+
+    // Filter trades by date range to get valid strategy IDs and position IDs
+    const dateFilteredTrades = this.filterTradesByDateRange(allTrades, undefined, dateRange);
+    const validStrategyIds = new Set(
+      dateFilteredTrades
+        .filter((trade) => trade.assetType === 'option' && trade.strategyId && this.isRealizedTrade(trade))
+        .map((trade) => trade.strategyId!)
+    );
+    const validPositionIds = new Set(
+      dateFilteredTrades
+        .filter((trade) => trade.assetType === 'option' && !trade.strategyId && this.isRealizedTrade(trade))
+        .flatMap((trade) => trade.legs.map((leg) => leg.position_id).filter(Boolean))
+    );
 
     const strategyLookup = new Map(allStrategies.map((strategy) => [strategy.id, strategy]));
     const optionPositions = allPositions.filter((position) => position.asset_type === 'option');
@@ -1322,6 +1342,11 @@ export class PerformanceMetricsService {
         return;
       }
 
+      // Filter by date range if provided
+      if (dateRange && validStrategyIds.size > 0 && !validStrategyIds.has(strategyId)) {
+        return;
+      }
+
       const strategy = strategyLookup.get(strategyId);
       const strategyType = strategy?.strategy_type ?? 'single_option';
       const totalPL = positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
@@ -1334,7 +1359,14 @@ export class PerformanceMetricsService {
 
     // Fallback: closed single option trades that never linked to a strategy
     optionPositions
-      .filter((position) => !position.strategy_id && isLegClosed(position))
+      .filter((position) => {
+        if (position.strategy_id || !isLegClosed(position)) return false;
+        // Filter by date range if provided
+        if (dateRange && validPositionIds.size > 0 && !validPositionIds.has(position.id)) {
+          return false;
+        }
+        return true;
+      })
       .forEach((position) => {
         const pl = position.realized_pl || 0;
         const risk = Math.abs(position.total_cost_basis || 0);
@@ -1364,10 +1396,12 @@ export class PerformanceMetricsService {
    */
   static async calculateEntryTimePerformance(
     userId: string,
-    assetType: 'option' | 'futures'
+    assetType: 'option' | 'futures',
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ timeBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const filteredTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const filteredTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === assetType && this.isRealizedTrade(trade)
     );
 
@@ -1414,10 +1448,12 @@ export class PerformanceMetricsService {
    * Calculate entry time performance by strategy (for Options)
    */
   static async calculateEntryTimeByStrategy(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Record<string, Array<{ timeBucket: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>>> {
     const trades = await this.getNormalizedTrades(userId);
-    const optionTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const optionTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'option' && this.isRealizedTrade(trade)
     );
 
@@ -1615,10 +1651,12 @@ export class PerformanceMetricsService {
    */
   static async calculateDailyPerformanceCalendar(
     userId: string,
-    assetType?: AssetType
+    assetType?: AssetType,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ date: string; pl: number; trades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const realizedTrades = this.filterTradesByAssetType(trades, assetType).filter((trade) =>
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const realizedTrades = this.filterTradesByAssetType(dateFilteredTrades, assetType).filter((trade) =>
       this.isRealizedTrade(trade)
     );
 
@@ -1712,10 +1750,12 @@ export class PerformanceMetricsService {
    */
   static async calculateHoldingPeriodDistribution(
     userId: string,
-    assetType: 'stock' | 'crypto'
+    assetType: 'stock' | 'crypto',
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ period: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const filteredTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const filteredTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === assetType && this.isRealizedTrade(trade)
     );
 
@@ -1775,10 +1815,12 @@ export class PerformanceMetricsService {
    * Calculate futures contract month performance
    */
   static async calculateFuturesContractMonthPerformance(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ contractMonth: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const futuresTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const futuresTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'futures' && this.isRealizedTrade(trade)
     );
 
@@ -1818,10 +1860,12 @@ export class PerformanceMetricsService {
    * Calculate futures margin efficiency
    */
   static async calculateFuturesMarginEfficiency(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ symbol: string; pl: number; marginUsed: number; marginEfficiency: number; totalTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const futuresTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const futuresTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'futures' && this.isRealizedTrade(trade)
     );
 
@@ -1864,10 +1908,12 @@ export class PerformanceMetricsService {
    * Calculate crypto coin performance
    */
   static async calculateCryptoCoinPerformance(
-    userId: string
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
   ): Promise<Array<{ coin: string; pl: number; winRate: number; totalTrades: number; winningTrades: number; losingTrades: number }>> {
     const trades = await this.getNormalizedTrades(userId);
-    const cryptoTrades = trades.filter(
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const cryptoTrades = dateFilteredTrades.filter(
       (trade) => trade.assetType === 'crypto' && this.isRealizedTrade(trade)
     );
 

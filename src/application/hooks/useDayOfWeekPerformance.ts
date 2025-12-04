@@ -14,10 +14,10 @@ export interface DayOfWeekPerformance {
 /**
  * Hook to fetch P&L by day of week data
  */
-export function useDayOfWeekPerformance(userId: string, assetType?: AssetType) {
+export function useDayOfWeekPerformance(userId: string, assetType?: AssetType, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<DayOfWeekPerformance[], Error>({
-    queryKey: ['day-of-week-performance', userId, assetType],
-    queryFn: () => PerformanceMetricsService.calculateDayOfWeekPerformance(userId, assetType),
+    queryKey: ['day-of-week-performance', userId, assetType, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateDayOfWeekPerformance(userId, assetType, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

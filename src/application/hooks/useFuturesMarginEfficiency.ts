@@ -12,10 +12,10 @@ export interface FuturesMarginEfficiencyData {
 /**
  * Hook to fetch futures margin efficiency data
  */
-export function useFuturesMarginEfficiency(userId: string) {
+export function useFuturesMarginEfficiency(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<FuturesMarginEfficiencyData[], Error>({
-    queryKey: ['futures-margin-efficiency', userId],
-    queryFn: () => PerformanceMetricsService.calculateFuturesMarginEfficiency(userId),
+    queryKey: ['futures-margin-efficiency', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateFuturesMarginEfficiency(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

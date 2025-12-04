@@ -13,10 +13,10 @@ export interface CryptoCoinPerformanceData {
 /**
  * Hook to fetch crypto coin performance data
  */
-export function useCryptoCoinPerformance(userId: string) {
+export function useCryptoCoinPerformance(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<CryptoCoinPerformanceData[], Error>({
-    queryKey: ['crypto-coin-performance', userId],
-    queryFn: () => PerformanceMetricsService.calculateCryptoCoinPerformance(userId),
+    queryKey: ['crypto-coin-performance', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateCryptoCoinPerformance(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

@@ -21,10 +21,10 @@ export interface OptionsByTypeData {
 /**
  * Hook to fetch options performance by type (Call vs Put)
  */
-export function useOptionsByType(userId: string) {
+export function useOptionsByType(userId: string, dateRange?: { startDate: string; endDate: string }) {
   return useQuery<OptionsByTypeData, Error>({
-    queryKey: ['options-by-type', userId],
-    queryFn: () => PerformanceMetricsService.calculateOptionsByType(userId),
+    queryKey: ['options-by-type', userId, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateOptionsByType(userId, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

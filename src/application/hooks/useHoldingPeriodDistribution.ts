@@ -13,10 +13,10 @@ export interface HoldingPeriodDistributionData {
 /**
  * Hook to fetch holding period distribution data
  */
-export function useHoldingPeriodDistribution(userId: string, assetType: 'stock' | 'crypto') {
+export function useHoldingPeriodDistribution(userId: string, assetType: 'stock' | 'crypto', dateRange?: { startDate: string; endDate: string }) {
   return useQuery<HoldingPeriodDistributionData[], Error>({
-    queryKey: ['holding-period-distribution', userId, assetType],
-    queryFn: () => PerformanceMetricsService.calculateHoldingPeriodDistribution(userId, assetType),
+    queryKey: ['holding-period-distribution', userId, assetType, dateRange],
+    queryFn: () => PerformanceMetricsService.calculateHoldingPeriodDistribution(userId, assetType, dateRange),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });
