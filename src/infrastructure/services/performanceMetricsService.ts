@@ -1184,23 +1184,8 @@ export class PerformanceMetricsService {
         const dayDiff = (normalizedExpiration - normalizedOpened) / MS_PER_DAY;
         const daysToExp = Math.max(0, Math.round(dayDiff));
       
-        // Determine bucket
-        let bucket: string;
-        if (daysToExp === 0) {
-          bucket = '0 DTE';
-        } else if (daysToExp === 1) {
-          bucket = '1 DTE';
-        } else if (daysToExp >= 2 && daysToExp <= 3) {
-          bucket = '2-3 DTE';
-        } else if (daysToExp >= 4 && daysToExp <= 7) {
-          bucket = '4-7 DTE';
-        } else if (daysToExp >= 8 && daysToExp <= 14) {
-          bucket = '8-14 DTE';
-        } else if (daysToExp >= 15 && daysToExp <= 30) {
-          bucket = '15-30 DTE';
-        } else {
-          bucket = '30+ DTE';
-        }
+        // Cap at 30 days, group everything else as "30+"
+        const bucket = daysToExp <= 30 ? `${daysToExp}` : '30+';
         
         if (!bucketMap.has(bucket)) {
           bucketMap.set(bucket, []);
@@ -1225,12 +1210,11 @@ export class PerformanceMetricsService {
       };
     });
     
-    // Sort by DTE order
-    const bucketOrder = ['0 DTE', '1 DTE', '2-3 DTE', '4-7 DTE', '8-14 DTE', '15-30 DTE', '30+ DTE'];
+    // Sort numerically by DTE value, with "30+" at the end
     return result.sort((a, b) => {
-      const aIndex = bucketOrder.indexOf(a.dteBucket);
-      const bIndex = bucketOrder.indexOf(b.dteBucket);
-      return aIndex - bIndex;
+      if (a.dteBucket === '30+') return 1;
+      if (b.dteBucket === '30+') return -1;
+      return parseInt(a.dteBucket) - parseInt(b.dteBucket);
     });
   }
 

@@ -68,6 +68,12 @@ export const DaysToExpirationChart = ({ data, isLoading, showWinRate = false }: 
           dataKey="dteBucket"
           stroke="#94a3b8"
           style={{ fontSize: '12px' }}
+          label={{
+            value: 'Days to Expiration',
+            position: 'insideBottom',
+            offset: -5,
+            style: { fontSize: '12px', fill: '#94a3b8' }
+          }}
         />
         <YAxis
           tickFormatter={showWinRate ? (value) => `${value}%` : (value) => formatCurrency(value)}
