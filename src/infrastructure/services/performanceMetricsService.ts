@@ -209,6 +209,38 @@ export class PerformanceMetricsService {
     return trades.filter((trade) => trade.assetType === assetType);
   }
 
+  private static filterTradesByDateRange(
+    trades: NormalizedTrade[],
+    days?: number,
+    dateRange?: { startDate: string; endDate: string }
+  ): NormalizedTrade[] {
+    if (!days && !dateRange) {
+      return trades;
+    }
+
+    let startDate: Date;
+    let endDate: Date = new Date();
+
+    if (dateRange) {
+      // Custom date range has priority
+      startDate = new Date(dateRange.startDate);
+      endDate = new Date(dateRange.endDate);
+      // Set to end of day for endDate
+      endDate.setHours(23, 59, 59, 999);
+    } else if (days) {
+      // Preset timeframe
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+    } else {
+      return trades;
+    }
+
+    return trades.filter((trade) => {
+      const closedDate = this.getTradeClosedDate(trade);
+      return closedDate && closedDate >= startDate && closedDate <= endDate;
+    });
+  }
+
   private static getDate(value?: string | null): Date | null {
     if (!value) return null;
     const parsed = new Date(value);
@@ -236,14 +268,18 @@ export class PerformanceMetricsService {
    * Includes fully closed positions and partially closed positions (with realized P/L)
    * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
-  static async calculateWinRate(userId: string): Promise<WinRateMetrics> {
+  static async calculateWinRate(
+    userId: string,
+    dateRange?: { startDate: string; endDate: string }
+  ): Promise<WinRateMetrics> {
     const trades = await this.getNormalizedTrades(userId);
-    const realizedTrades = trades.filter((trade) => this.isRealizedTrade(trade));
+    const filteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
     const winningTrades = realizedTrades.filter((trade) => trade.realizedPL > 0);
     const losingTrades = realizedTrades.filter((trade) => trade.realizedPL < 0);
 
     const realizedPL = realizedTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
-    const unrealizedPL = trades
+    const unrealizedPL = filteredTrades
       .filter((trade) => trade.status !== 'closed')
       .reduce((sum, trade) => sum + trade.unrealizedPL, 0);
 
@@ -381,9 +417,14 @@ export class PerformanceMetricsService {
    * Includes fully closed positions and partially closed positions (with realized P/L)
    * For multi-leg strategies, counts the strategy as a single trade instead of counting individual legs
    */
-  static async calculateWinRateByAssetType(userId: string, assetType: AssetType): Promise<WinRateMetrics> {
+  static async calculateWinRateByAssetType(
+    userId: string,
+    assetType: AssetType,
+    dateRange?: { startDate: string; endDate: string }
+  ): Promise<WinRateMetrics> {
     const trades = await this.getNormalizedTrades(userId);
-    const filteredTrades = this.filterTradesByAssetType(trades, assetType);
+    const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
+    const filteredTrades = this.filterTradesByAssetType(dateFilteredTrades, assetType);
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
     const winningTrades = realizedTrades.filter((trade) => trade.realizedPL > 0);
     const losingTrades = realizedTrades.filter((trade) => trade.realizedPL < 0);

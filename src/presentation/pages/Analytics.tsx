@@ -48,9 +48,16 @@ import { useCryptoQuotes } from '@/application/hooks/useCryptoQuotes';
 import { useOptionQuotes } from '@/application/hooks/useOptionQuotes';
 import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import { MetricCard } from '@/presentation/components/MetricCard';
+import { CustomDateRangeModal } from '@/presentation/components/CustomDateRangeModal';
+import { DateRangeStorage } from '@/shared/utils/dateRangeStorage';
 
 type AnalyticsTab = 'all' | 'stocks' | 'options' | 'crypto' | 'futures';
-type TimePeriod = 7 | 30 | 90 | 365 | null; // null = all time
+type TimePeriod = 7 | 30 | 90 | 365 | null | 'custom'; // null = all time
+
+interface CustomDateRange {
+  startDate: string; // ISO format: "YYYY-MM-DD"
+  endDate: string;   // ISO format: "YYYY-MM-DD"
+}
 
 const TAB_TO_ASSET_TYPE: Record<AnalyticsTab, AssetType | undefined> = {
   all: undefined,
@@ -66,9 +73,15 @@ const TIME_PERIOD_OPTIONS: Array<{ value: TimePeriod; label: string }> = [
   { value: 90, label: 'Last 90 Days' },
   { value: 365, label: 'Last Year' },
   { value: null, label: 'All Time' },
+  { value: 'custom', label: 'Custom Range...' },
 ];
 
-const getTimePeriodLabel = (period: TimePeriod): string => {
+const getTimePeriodLabel = (period: TimePeriod, customRange: CustomDateRange | null): string => {
+  if (period === 'custom' && customRange) {
+    const start = new Date(customRange.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+    const end = new Date(customRange.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+    return `Custom (${start} - ${end})`;
+  }
   const match = TIME_PERIOD_OPTIONS.find((option) => option.value === period);
   return match?.label ?? 'All Time';
 };
@@ -79,9 +92,20 @@ export const Analytics = () => {
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('all');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>(30);
+  const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
+  const [showDateRangeModal, setShowDateRangeModal] = useState(false);
   const [showTimePeriodMenu, setShowTimePeriodMenu] = useState(false);
   const timePeriodMenuRef = useRef<HTMLDivElement>(null);
   
+  // Load custom date range from localStorage on mount
+  useEffect(() => {
+    const savedRange = DateRangeStorage.load();
+    if (savedRange) {
+      setTimePeriod('custom');
+      setCustomDateRange(savedRange);
+    }
+  }, []);
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -98,6 +122,26 @@ export const Analytics = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showTimePeriodMenu]);
+
+  // Handle time period change
+  const handleTimePeriodChange = (value: TimePeriod) => {
+    if (value === 'custom') {
+      setShowDateRangeModal(true);
+    } else {
+      setTimePeriod(value);
+      setCustomDateRange(null);
+      DateRangeStorage.clear();
+    }
+    setShowTimePeriodMenu(false);
+  };
+
+  // Handle custom range apply
+  const handleCustomRangeApply = (range: CustomDateRange) => {
+    setCustomDateRange(range);
+    setTimePeriod('custom');
+    DateRangeStorage.save(range);
+    setShowDateRangeModal(false);
+  };
   
   const assetType = TAB_TO_ASSET_TYPE[activeTab];
   const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType);
@@ -337,20 +381,17 @@ export const Analytics = () => {
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-xl font-medium transition-all touch-target w-full sm:w-auto"
           >
             <Calendar className="w-4 h-4" />
-            {getTimePeriodLabel(timePeriod)}
+            {getTimePeriodLabel(timePeriod, customDateRange)}
             <ChevronDown className={`w-4 h-4 transition-transform ${showTimePeriodMenu ? 'rotate-180' : ''}`} />
           </button>
           {showTimePeriodMenu && (
             <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden">
               {TIME_PERIOD_OPTIONS.map(({ value, label }) => {
-                const key = value === null ? 'all-time' : String(value);
+                const key = value === null ? 'all-time' : value === 'custom' ? 'custom' : String(value);
                 return (
                   <button
                     key={key}
-                    onClick={() => {
-                      setTimePeriod(value);
-                      setShowTimePeriodMenu(false);
-                    }}
+                    onClick={() => handleTimePeriodChange(value)}
                     className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                       timePeriod === value
                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
@@ -1334,6 +1375,14 @@ export const Analytics = () => {
           )}
         </div>
       </div>
+
+      {/* Custom Date Range Modal */}
+      <CustomDateRangeModal
+        isOpen={showDateRangeModal}
+        onClose={() => setShowDateRangeModal(false)}
+        onApply={handleCustomRangeApply}
+        initialRange={customDateRange || undefined}
+      />
     </div>
   );
 };
