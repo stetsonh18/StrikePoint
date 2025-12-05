@@ -439,9 +439,9 @@ export const DailyPerformanceCalendar = React.memo(({
                           <div>
                             <span className="text-slate-500 dark:text-slate-500">Closed: </span>
                             <span className="text-slate-700 dark:text-slate-300">
-                              {new Date(position.closed_at).toLocaleTimeString('en-US', { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
+                              {new Date(position.closed_at).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
                               })}
                             </span>
                           </div>

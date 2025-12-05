@@ -286,6 +286,19 @@ export class PositionMatchingService {
       realizedPL = (openingPrice - closingPrice) * closingQuantity * multiplier;
     }
 
+    // Extract exit time from notes if available
+    // Format: "EXIT_TIME:HH:MM"
+    let closedAtTimestamp = tx.activity_date;
+    if (tx.notes) {
+      const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
+      if (exitTimeMatch) {
+        const [, hours, minutes] = exitTimeMatch;
+        const dateTime = new Date(tx.activity_date);
+        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        closedAtTimestamp = dateTime.toISOString();
+      }
+    }
+
     // Close the position (partial or full)
     await PositionRepository.closePosition(
       position.id,
@@ -293,7 +306,7 @@ export class PositionMatchingService {
       tx.id,
       tx.amount,
       realizedPL,
-      tx.activity_date
+      closedAtTimestamp
     );
 
     // Link transaction to position
@@ -486,6 +499,19 @@ export class PositionMatchingService {
     const priceDiff = sellingPrice - buyingPrice;
     const totalPL = priceDiff * sellingQuantity * multiplier;
 
+    // Extract exit time from notes if available
+    // Format: "EXIT_TIME:HH:MM"
+    let closedAtTimestamp = tx.activity_date;
+    if (tx.notes) {
+      const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
+      if (exitTimeMatch) {
+        const [, hours, minutes] = exitTimeMatch;
+        const dateTime = new Date(tx.activity_date);
+        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        closedAtTimestamp = dateTime.toISOString();
+      }
+    }
+
     // Close the position (partial or full)
     await PositionRepository.closePosition(
       position.id,
@@ -493,7 +519,7 @@ export class PositionMatchingService {
       tx.id,
       tx.amount,
       totalPL,
-      tx.activity_date
+      closedAtTimestamp
     );
 
     // Link transaction to position
@@ -636,6 +662,19 @@ export class PositionMatchingService {
     const proceeds = sellingPrice * sellingQuantity;
     const totalPL = proceeds - costBasis;
 
+    // Extract exit time from notes if available
+    // Format: "EXIT_TIME:HH:MM"
+    let closedAtTimestamp = tx.activity_date;
+    if (tx.notes) {
+      const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
+      if (exitTimeMatch) {
+        const [, hours, minutes] = exitTimeMatch;
+        const dateTime = new Date(tx.activity_date);
+        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        closedAtTimestamp = dateTime.toISOString();
+      }
+    }
+
     // Close the position (partial or full)
     await PositionRepository.closePosition(
       position.id,
@@ -643,7 +682,7 @@ export class PositionMatchingService {
       tx.id,
       tx.amount,
       totalPL,
-      tx.activity_date
+      closedAtTimestamp
     );
 
     // Link transaction to position
