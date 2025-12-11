@@ -26,11 +26,11 @@ interface WeekData {
   daysWithTrades: number;
 }
 
-export const DailyPerformanceCalendar = React.memo(({ 
-  data, 
-  isLoading, 
+export const DailyPerformanceCalendar = React.memo(({
+  data,
+  isLoading,
   userId,
-  assetType 
+  assetType
 }: DailyPerformanceCalendarProps) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export const DailyPerformanceCalendar = React.memo(({
 
     // Build calendar days
     const calendarDays: DayData[] = [];
-    
+
     // Add empty cells for days before the first day of the month
     for (let i = 0; i < firstDayOfWeek; i++) {
       calendarDays.push({
@@ -91,7 +91,7 @@ export const DailyPerformanceCalendar = React.memo(({
       const date = new Date(currentYear, currentMonth, day);
       const dateStr = date.toISOString().split('T')[0];
       const dayData = dataMap.get(dateStr) || { pl: 0, trades: 0 };
-      
+
       calendarDays.push({
         date: dateStr,
         pl: dayData.pl,
@@ -104,10 +104,10 @@ export const DailyPerformanceCalendar = React.memo(({
     // Group into weeks
     const weeks: WeekData[] = [];
     let currentWeek: DayData[] = [];
-    
+
     calendarDays.forEach((day, index) => {
       currentWeek.push(day);
-      
+
       // Start new week on Saturday (dayOfWeek === 6) or at the end
       if (day.dayOfWeek === 6 || index === calendarDays.length - 1) {
         // Pad week to always have 7 days
@@ -120,7 +120,7 @@ export const DailyPerformanceCalendar = React.memo(({
             dayOfMonth: -1,
           });
         }
-        
+
         const weekTotal = currentWeek.reduce((sum, d) => sum + d.pl, 0);
         const daysWithTradesInWeek = currentWeek.filter((d) => d.trades > 0).length;
         weeks.push({
@@ -204,7 +204,7 @@ export const DailyPerformanceCalendar = React.memo(({
 
   const formatPositionSymbol = (position: Position): string => {
     if (position.asset_type === 'option') {
-      return `${position.symbol} ${position.strike_price}${position.option_type === 'call' ? 'C' : 'P'} ${position.expiration_date ? new Date(position.expiration_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}`;
+      return `${position.symbol} ${position.strike_price}${position.option_type === 'call' ? 'C' : 'P'} ${position.expiration_date ? new Date(position.expiration_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''}`;
     }
     return position.symbol;
   };
@@ -283,10 +283,10 @@ export const DailyPerformanceCalendar = React.memo(({
                           </td>
                         );
                       }
-                      
+
                       const hasTrades = day.trades > 0;
                       const isClickable = hasTrades;
-                      
+
                       return (
                         <td key={dayIndex} className="p-1.5">
                           <div
@@ -369,11 +369,11 @@ export const DailyPerformanceCalendar = React.memo(({
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                Trades on {selectedDate ? new Date(selectedDate).toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
+                Trades on {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
                 }) : ''}
               </h3>
               <button
@@ -410,19 +410,17 @@ export const DailyPerformanceCalendar = React.memo(({
                           </span>
                           {position.side && (
                             <span
-                              className={`text-xs px-2 py-1 rounded ${
-                                position.side === 'long'
-                                  ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
-                                  : 'bg-red-500/20 text-red-600 dark:text-red-400'
-                              }`}
+                              className={`text-xs px-2 py-1 rounded ${position.side === 'long'
+                                ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                                : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                                }`}
                             >
                               {position.side.toUpperCase()}
                             </span>
                           )}
                         </div>
-                        <div className={`text-lg font-semibold ${
-                          (position.realized_pl || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                        }`}>
+                        <div className={`text-lg font-semibold ${(position.realized_pl || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                          }`}>
                           {formatCurrency(position.realized_pl || 0)}
                         </div>
                       </div>

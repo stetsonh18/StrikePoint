@@ -27,6 +27,7 @@ export interface WinRateMetrics {
   averagePLPerTrade: number; // Average P&L per trade (realized)
   roi: number; // Return on Investment percentage
   currentBalance: number; // Current portfolio balance
+  totalFees: number; // Total trading fees
 }
 
 export interface SymbolPerformance {
@@ -318,22 +319,26 @@ export class PerformanceMetricsService {
       .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
     // Calculate current balance: Net cash flow + unrealized P&L
     // Net cash flow = sum of all cash transactions (excluding futures margin)
     const netCashFlow = cashTransactions
       .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
     // For current balance, we'll use a simplified calculation: net cash flow + unrealized PL
     // Full portfolio value would require market quotes, which is handled in the hook
     const currentBalance = netCashFlow + unrealizedPL;
-    
+
     // Calculate ROI relative to initial investment (matching ROI chart logic)
     const roi =
       initialInvestment > 0
         ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
         : 0;
+
+    // Calculate total fees from all transactions
+    const allTransactions = await TransactionRepository.getAll(userId);
+    const totalFees = allTransactions.reduce((sum, tx) => sum + (tx.fees || 0), 0);
 
     if (totalTrades === 0) {
       return {
@@ -355,6 +360,7 @@ export class PerformanceMetricsService {
         averagePLPerTrade: 0,
         roi: 0,
         currentBalance,
+        totalFees,
       };
     }
 
@@ -387,6 +393,7 @@ export class PerformanceMetricsService {
       averagePLPerTrade,
       roi,
       currentBalance,
+      totalFees,
     };
   }
 
@@ -469,17 +476,22 @@ export class PerformanceMetricsService {
       .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
     // Calculate current balance: Net cash flow + unrealized P&L
     const netCashFlow = cashTransactions
       .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     const currentBalance = netCashFlow + unrealizedPL;
-    
+
     const roi =
       initialInvestment > 0
         ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
         : 0;
+
+    // Calculate total fees from transactions filtered by asset type
+    const allTransactions = await TransactionRepository.getAll(userId);
+    const filteredTransactions = allTransactions.filter((tx) => tx.asset_type === assetType);
+    const totalFees = filteredTransactions.reduce((sum, tx) => sum + (tx.fees || 0), 0);
 
     if (totalTrades === 0) {
       return {
@@ -501,6 +513,7 @@ export class PerformanceMetricsService {
         averagePLPerTrade: 0,
         roi: 0,
         currentBalance,
+        totalFees,
       };
     }
 
@@ -533,6 +546,7 @@ export class PerformanceMetricsService {
       averagePLPerTrade,
       roi,
       currentBalance,
+      totalFees,
     };
   }
 
@@ -782,10 +796,10 @@ export class PerformanceMetricsService {
     // This ensures cumulative P&L never decreases when viewing limited time ranges
     const historicalRealizedPL = days
       ? await PositionRepository.getSumRealizedPLBeforeDate(
-          userId,
-          formatDateKey(rangeStartDate),
-          assetType
-        )
+        userId,
+        formatDateKey(rangeStartDate),
+        assetType
+      )
       : 0;
 
     // Query portfolio snapshots for the date range to get accurate unrealized P&L
@@ -984,7 +998,7 @@ export class PerformanceMetricsService {
 
     const dayMap = new Map<number, { pl: number; trades: NormalizedTrade[] }>();
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
+
     realizedTrades.forEach((trade) => {
       const dateKey = getTradeDateKey(trade);
       if (!dateKey) {
@@ -994,23 +1008,23 @@ export class PerformanceMetricsService {
       if (dayOfWeek === null) {
         return;
       }
-      
+
       if (!dayMap.has(dayOfWeek)) {
         dayMap.set(dayOfWeek, { pl: 0, trades: [] });
       }
-      
+
       const dayData = dayMap.get(dayOfWeek)!;
       dayData.pl += trade.realizedPL;
       dayData.trades.push(trade);
     });
-    
+
     // Convert to array and calculate win rates
     const result = Array.from(dayMap.entries())
       .map(([dayOfWeek, data]) => {
         const winningTrades = data.trades.filter((trade) => trade.realizedPL > 0);
         const losingTrades = data.trades.filter((trade) => trade.realizedPL < 0);
         const winRate = data.trades.length > 0 ? (winningTrades.length / data.trades.length) * 100 : 0;
-        
+
         return {
           dayOfWeek: dayNames[dayOfWeek],
           dayIndex: dayOfWeek,
@@ -1028,7 +1042,7 @@ export class PerformanceMetricsService {
         const bIndex = b.dayIndex === 0 ? 7 : b.dayIndex;
         return aIndex - bIndex;
       });
-    
+
     // Ensure all days are present (with 0 values)
     const allDays = dayNames.map((name, index) => {
       const existing = result.find((r) => r.dayOfWeek === name);
@@ -1043,7 +1057,7 @@ export class PerformanceMetricsService {
         losingTrades: 0,
       };
     });
-    
+
     // Re-sort to put Monday first
     return allDays.sort((a, b) => {
       const aIndex = a.dayIndex === 0 ? 7 : a.dayIndex;
@@ -1062,11 +1076,11 @@ export class PerformanceMetricsService {
   ): Promise<Array<{ date: string; drawdown: number; peak: number; current: number }>> {
     // Get P&L over time data
     const plData = await this.calculatePLOverTime(userId, assetType, days);
-    
+
     if (plData.length === 0) {
       return [];
     }
-    
+
     // Calculate drawdown
     let peak = 0;
     const result = plData.map((day) => {
@@ -1075,7 +1089,7 @@ export class PerformanceMetricsService {
         peak = current;
       }
       const drawdown = peak > 0 ? ((peak - current) / Math.abs(peak)) * 100 : 0;
-      
+
       return {
         date: day.date,
         drawdown,
@@ -1083,7 +1097,7 @@ export class PerformanceMetricsService {
         current,
       };
     });
-    
+
     return result;
   }
 
@@ -1229,16 +1243,16 @@ export class PerformanceMetricsService {
         const normalizedOpened = getLocalMidnight(openedDate);
         const dayDiff = (normalizedExpiration - normalizedOpened) / MS_PER_DAY;
         const daysToExp = Math.max(0, Math.round(dayDiff));
-      
+
         // Cap at 30 days, group everything else as "30+"
         const bucket = daysToExp <= 30 ? `${daysToExp}` : '30+';
-        
+
         if (!bucketMap.has(bucket)) {
           bucketMap.set(bucket, []);
         }
         bucketMap.get(bucket)!.push(trade);
       });
-    
+
     // Calculate metrics per bucket
     const result = Array.from(bucketMap.entries()).map(([bucket, tradesInBucket]) => {
       const winningTrades = tradesInBucket.filter((trade) => trade.realizedPL > 0);
@@ -1255,7 +1269,7 @@ export class PerformanceMetricsService {
         losingTrades: losingTrades.length,
       };
     });
-    
+
     // Sort numerically by DTE value, with "30+" at the end
     return result.sort((a, b) => {
       if (a.dteBucket === '30+') return 1;
@@ -1287,7 +1301,7 @@ export class PerformanceMetricsService {
     const validPositionIds = new Set(
       dateFilteredTrades
         .filter((trade) => trade.assetType === 'option' && !trade.strategyId && this.isRealizedTrade(trade))
-        .flatMap((trade) => trade.legs.map((leg) => leg.position_id).filter(Boolean))
+        .flatMap((trade) => trade.legs.map((leg) => leg.id).filter(Boolean))
     );
 
     const strategyLookup = new Map(allStrategies.map((strategy) => [strategy.id, strategy]));
@@ -1517,11 +1531,11 @@ export class PerformanceMetricsService {
     days?: number
   ): Promise<Array<{ date: string; balance: number; netCashFlow: number }>> {
     const allSnapshots = await PortfolioSnapshotRepository.getAll(userId);
-    
+
     if (allSnapshots.length === 0) {
       return [];
     }
-    
+
     // Filter by date range if specified
     let filteredSnapshots = allSnapshots;
     if (days) {
@@ -1529,17 +1543,17 @@ export class PerformanceMetricsService {
       const startDate = new Date(latestDate);
       startDate.setDate(startDate.getDate() - days);
       const startDateStr = startDate.toISOString().split('T')[0];
-      
+
       filteredSnapshots = allSnapshots.filter(
         (s) => s.snapshot_date >= startDateStr
       );
     }
-    
+
     // If asset type is specified, we need to filter by positions breakdown
     // For now, we'll use total portfolio value, but could filter by asset type breakdown
     const result = filteredSnapshots.map((s) => {
       let balance = s.portfolio_value;
-      
+
       // If asset type specified, use breakdown value
       if (assetType) {
         const breakdown = s.positions_breakdown;
@@ -1553,14 +1567,14 @@ export class PerformanceMetricsService {
           balance = breakdown.futures.value + s.net_cash_flow;
         }
       }
-      
+
       return {
         date: s.snapshot_date,
         balance,
         netCashFlow: s.net_cash_flow,
       };
     });
-    
+
     return result;
   }
 
@@ -1573,11 +1587,11 @@ export class PerformanceMetricsService {
     days?: number
   ): Promise<Array<{ date: string; roi: number; portfolioValue: number; netCashFlow: number }>> {
     const allSnapshots = await PortfolioSnapshotRepository.getAll(userId);
-    
+
     if (allSnapshots.length === 0) {
       return [];
     }
-    
+
     // Filter by date range if specified
     let filteredSnapshots = allSnapshots;
     if (days) {
@@ -1585,17 +1599,17 @@ export class PerformanceMetricsService {
       const startDate = new Date(latestDate);
       startDate.setDate(startDate.getDate() - days);
       const startDateStr = startDate.toISOString().split('T')[0];
-      
+
       filteredSnapshots = allSnapshots.filter(
         (s) => s.snapshot_date >= startDateStr
       );
     }
-    
+
     // Get initial net cash flow (first snapshot or earliest)
     const sortedSnapshots = [...filteredSnapshots].sort(
       (a, b) => a.snapshot_date.localeCompare(b.snapshot_date)
     );
-    
+
     // Determine initial investment (sum of deposits) to match ROI metric summary
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
     const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
@@ -1603,17 +1617,17 @@ export class PerformanceMetricsService {
       .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
     const fallbackInvestment =
       sortedSnapshots.find((snapshot) => snapshot.net_cash_flow !== 0)?.net_cash_flow ??
       sortedSnapshots[0]?.portfolio_value ??
       0;
-    
+
     const investmentBase = initialInvestmentFromDeposits || fallbackInvestment;
-    
+
     const result = sortedSnapshots.map((s) => {
       let portfolioValue = s.portfolio_value;
-      
+
       // If asset type specified, use breakdown value
       if (assetType) {
         const breakdown = s.positions_breakdown;
@@ -1627,13 +1641,13 @@ export class PerformanceMetricsService {
           portfolioValue = breakdown.futures.value + s.net_cash_flow;
         }
       }
-      
+
       // Calculate ROI relative to initial investment
       const roi =
         investmentBase !== 0
           ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
           : 0;
-      
+
       return {
         date: s.snapshot_date,
         roi,
@@ -1641,7 +1655,7 @@ export class PerformanceMetricsService {
         netCashFlow: s.net_cash_flow,
       };
     });
-    
+
     return result;
   }
 
@@ -1686,7 +1700,8 @@ export class PerformanceMetricsService {
         .filter((date): date is string => Boolean(date));
 
       const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
-      const dateKey = latestLegDate || (closedDate ? closedDate.toISOString().split('T')[0] : null);
+      // Revert: Prioritize latestLegDate (Transaction/Settlement) to match original behavior and user expectation
+      const dateKey = latestLegDate || (closedDate ? this.formatLocalDate(closedDate) : null);
 
       if (!dateKey) {
         return;
@@ -1711,6 +1726,17 @@ export class PerformanceMetricsService {
   }
 
   /**
+   * Format a Date object as local date string (YYYY-MM-DD)
+   */
+  /**
+   * Format a Date object as ISO date string (YYYY-MM-DD)
+   * Uses UTC components to ensure consistency across timezones
+   */
+  private static formatLocalDate(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+
+  /**
    * Get positions closed on a specific date
    */
   static async getPositionsByClosedDate(
@@ -1719,29 +1745,68 @@ export class PerformanceMetricsService {
     assetType?: AssetType
   ): Promise<Position[]> {
     const allPositions = await PositionRepository.getAll(userId);
-    
+
     // Filter by asset type if specified
-    const filteredPositions = assetType 
+    const filteredPositions = assetType
       ? allPositions.filter((p) => p.asset_type === assetType)
       : allPositions;
-    
+
     // Get positions closed on this date
     const dateStr = date.split('T')[0]; // Ensure we only use the date part
-    
+
+    // Helper to get transaction dates for accurate closure dates
+    const closingTransactionIdSet = new Set<string>();
+    filteredPositions.forEach((p) => {
+      (p.closing_transaction_ids || []).forEach((id) => {
+        if (id) {
+          closingTransactionIdSet.add(id);
+        }
+      });
+    });
+
+    const closingTransactionDates =
+      closingTransactionIdSet.size > 0
+        ? await TransactionRepository.getActivityDates(Array.from(closingTransactionIdSet))
+        : {};
+
     const positionsClosedOnDate = filteredPositions.filter((p) => {
+      // Logic from calculateDailyPerformanceCalendar
+      const legClosingDates = (p.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((d): d is string => Boolean(d));
+
+      const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
+
+      if (latestLegDate) {
+        // latestLegDate is likely YYYY-MM-DD from activity_date
+        const latestDateStr = latestLegDate.split('T')[0];
+        return latestDateStr === dateStr;
+      }
+
       if (!p.closed_at) return false;
-      const closedDate = new Date(p.closed_at).toISOString().split('T')[0];
+      const closedDate = this.formatLocalDate(new Date(p.closed_at));
       return closedDate === dateStr;
     });
-    
+
     // Also include partially closed positions (with realized P&L) that were updated on this date
     const partiallyClosedOnDate = filteredPositions.filter((p) => {
-      if (p.status !== 'open' || !p.realized_pl || p.realized_pl === 0) return false;
+      // Exclude if already included
+      if (positionsClosedOnDate.includes(p)) return false;
+
+      // If position is fully closed, it should only appear on its closed date (handled above)
+      // We don't want 'updated_at' to drag it to a different day
+      if (p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised') {
+        return false;
+      }
+
+      if (p.status !== 'open' && p.status !== 'partial') return false; // strict check
+      if (!p.realized_pl || p.realized_pl === 0) return false;
       if (p.current_quantity >= p.opening_quantity) return false;
-      const updatedDate = new Date(p.updated_at).toISOString().split('T')[0];
+
+      const updatedDate = this.formatLocalDate(new Date(p.updated_at));
       return updatedDate === dateStr;
     });
-    
+
     return [...positionsClosedOnDate, ...partiallyClosedOnDate];
   }
 
@@ -1797,7 +1862,7 @@ export class PerformanceMetricsService {
         const losingTrades = bucketTrades.filter((trade) => trade.realizedPL < 0);
         const pl = bucketTrades.reduce((sum, trade) => sum + trade.realizedPL, 0);
         const winRate = bucketTrades.length > 0 ? (winningTrades.length / bucketTrades.length) * 100 : 0;
-        
+
         return {
           period,
           pl,
