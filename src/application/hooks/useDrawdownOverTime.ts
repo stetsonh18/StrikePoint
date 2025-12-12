@@ -7,6 +7,8 @@ export interface DrawdownOverTimeData {
   drawdown: number;
   peak: number;
   current: number;
+  portfolioBalance: number;
+  peakBalance: number;
 }
 
 /**

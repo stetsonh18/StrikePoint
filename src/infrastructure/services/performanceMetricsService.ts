@@ -1073,7 +1073,7 @@ export class PerformanceMetricsService {
     userId: string,
     assetType?: AssetType,
     days?: number
-  ): Promise<Array<{ date: string; drawdown: number; peak: number; current: number }>> {
+  ): Promise<Array<{ date: string; drawdown: number; peak: number; current: number; portfolioBalance: number; peakBalance: number }>> {
     // Get P&L over time data
     const plData = await this.calculatePLOverTime(userId, assetType, days);
 
@@ -1081,20 +1081,43 @@ export class PerformanceMetricsService {
       return [];
     }
 
-    // Calculate drawdown
-    let peak = 0;
+    // Fetch starting capital from deposits
+    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+    const startingCapital = cashTransactions
+      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+      .filter((tx) => (tx.amount || 0) > 0)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    // If no deposits found, log warning and return empty array
+    if (startingCapital === 0) {
+      console.warn('No deposits found for user, cannot calculate meaningful drawdown');
+      return [];
+    }
+
+    // Calculate drawdown based on portfolio balance (capital + P&L)
+    let peakBalance = startingCapital;
     const result = plData.map((day) => {
-      const current = day.cumulativePL;
-      if (current > peak) {
-        peak = current;
+      const portfolioBalance = startingCapital + day.cumulativePL;
+
+      // Update peak if current balance exceeds it
+      if (portfolioBalance > peakBalance) {
+        peakBalance = portfolioBalance;
       }
-      const drawdown = peak > 0 ? ((peak - current) / Math.abs(peak)) * 100 : 0;
+
+      // Calculate drawdown as negative percentage when below peak
+      // 0% when at all-time high, negative when below peak
+      const drawdown = peakBalance > 0
+        ? ((portfolioBalance - peakBalance) / peakBalance) * 100
+        : 0;
 
       return {
         date: day.date,
         drawdown,
-        peak,
-        current,
+        peak: day.cumulativePL, // Keep for backward compatibility
+        current: day.cumulativePL, // Keep for backward compatibility
+        portfolioBalance,
+        peakBalance,
       };
     });
 

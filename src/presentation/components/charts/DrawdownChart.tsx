@@ -48,10 +48,10 @@ export const DrawdownChart = ({ data, isLoading }: DrawdownChartProps) => {
             Drawdown: {entry.drawdown.toFixed(2)}%
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            Peak: {formatCurrency(entry.peak)}
+            Peak Balance: {formatCurrency(entry.peakBalance)}
           </p>
           <p className="text-xs text-slate-500">
-            Current: {formatCurrency(entry.current)}
+            Current Balance: {formatCurrency(entry.portfolioBalance)}
           </p>
         </div>
       );
