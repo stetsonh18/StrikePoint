@@ -1700,7 +1700,7 @@ export class PerformanceMetricsService {
         .filter((date): date is string => Boolean(date));
 
       const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
-      // Revert: Prioritize latestLegDate (Transaction/Settlement) to match original behavior and user expectation
+      // Prioritize latestLegDate (Transaction/Settlement) to align with User's Calendar expectation
       const dateKey = latestLegDate || (closedDate ? this.formatLocalDate(closedDate) : null);
 
       if (!dateKey) {
@@ -1744,7 +1744,10 @@ export class PerformanceMetricsService {
     date: string,
     assetType?: AssetType
   ): Promise<Position[]> {
-    const allPositions = await PositionRepository.getAll(userId);
+    // Optimized fetch: Only get positions relevant to this date
+    // Note: This relies on the date string being YYYY-MM-DD.
+    const dateStr = date.split('T')[0];
+    const allPositions = await PositionRepository.getByActivityDate(userId, dateStr);
 
     // Filter by asset type if specified
     const filteredPositions = assetType
@@ -1752,7 +1755,7 @@ export class PerformanceMetricsService {
       : allPositions;
 
     // Get positions closed on this date
-    const dateStr = date.split('T')[0]; // Ensure we only use the date part
+    // dateStr is already defined above
 
     // Helper to get transaction dates for accurate closure dates
     const closingTransactionIdSet = new Set<string>();
@@ -1770,22 +1773,8 @@ export class PerformanceMetricsService {
         : {};
 
     const positionsClosedOnDate = filteredPositions.filter((p) => {
-      // Logic from calculateDailyPerformanceCalendar
-      const legClosingDates = (p.closing_transaction_ids || [])
-        .map((id) => (id ? closingTransactionDates[id] : undefined))
-        .filter((d): d is string => Boolean(d));
-
-      const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
-
-      if (latestLegDate) {
-        // latestLegDate is likely YYYY-MM-DD from activity_date
-        const latestDateStr = latestLegDate.split('T')[0];
-        return latestDateStr === dateStr;
-      }
-
-      if (!p.closed_at) return false;
-      const closedDate = this.formatLocalDate(new Date(p.closed_at));
-      return closedDate === dateStr;
+      const dateKey = this.determinePositionDate(p, closingTransactionDates);
+      return dateKey === dateStr;
     });
 
     // Also include partially closed positions (with realized P&L) that were updated on this date
@@ -1808,6 +1797,24 @@ export class PerformanceMetricsService {
     });
 
     return [...positionsClosedOnDate, ...partiallyClosedOnDate];
+  }
+
+  /**
+   * Helper to determine the effective date for a position based on transaction or close date
+   */
+  private static determinePositionDate(p: Position, closingTransactionDates: Record<string, string>): string | null {
+    const legClosingDates = (p.closing_transaction_ids || [])
+      .map((id) => (id ? closingTransactionDates[id] : undefined))
+      .filter((d): d is string => Boolean(d));
+
+    const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
+
+    if (latestLegDate) {
+      return latestLegDate.split('T')[0];
+    }
+
+    if (!p.closed_at) return null;
+    return this.formatLocalDate(new Date(p.closed_at));
   }
 
   /**

@@ -116,6 +116,51 @@ export class PositionRepository {
   }
 
   /**
+   * Get positions with activity (closed or updated) on a specific date
+   * This is an optimized query to avoid fetching all positions
+   */
+  static async getByActivityDate(userId: string, date: string): Promise<Position[]> {
+    const startDate = `${date}T00:00:00.000Z`;
+    const endDate = `${date}T23:59:59.999Z`;
+
+    // Fetch positions closed in this range
+    const closedQuery = supabase
+      .from('positions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('closed_at', startDate)
+      .lte('closed_at', endDate);
+
+    // Fetch positions updated in this range (potential partial closes)
+    const updatedQuery = supabase
+      .from('positions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('updated_at', startDate)
+      .lte('updated_at', endDate);
+
+    const [closedRes, updatedRes] = await Promise.all([closedQuery, updatedQuery]);
+
+    if (closedRes.error) {
+      const parsed = parseError(closedRes.error);
+      logErrorWithContext(closedRes.error, { context: 'PositionRepository.getByActivityDate (closed)', userId, date });
+      throw new Error(`Failed to fetch positions: ${parsed.message}`);
+    }
+    if (updatedRes.error) {
+      const parsed = parseError(updatedRes.error);
+      logErrorWithContext(updatedRes.error, { context: 'PositionRepository.getByActivityDate (updated)', userId, date });
+      throw new Error(`Failed to fetch positions: ${parsed.message}`);
+    }
+
+    // Merge and deduplicate
+    const positions = [...(closedRes.data || []), ...(updatedRes.data || [])];
+    const uniqueMap = new Map<string, Position>();
+    positions.forEach(p => uniqueMap.set(p.id, p));
+
+    return Array.from(uniqueMap.values());
+  }
+
+  /**
    * Get open positions view with strategy information
    */
   static async getOpenPositions(userId: string): Promise<OpenPositionView[]> {

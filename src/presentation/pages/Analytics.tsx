@@ -489,7 +489,7 @@ export const Analytics = () => {
         <div className="p-4 md:p-6">
           {isLoading ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="h-32 bg-slate-100 dark:bg-slate-800/30 rounded-xl animate-pulse" />
                 <div className="h-32 bg-slate-100 dark:bg-slate-800/30 rounded-xl animate-pulse" />
                 <div className="h-32 bg-slate-100 dark:bg-slate-800/30 rounded-xl animate-pulse" />
@@ -497,211 +497,249 @@ export const Analytics = () => {
             </div>
           ) : hasData ? (
             <>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                <MetricCard
-                  title="Average Win"
-                  value={formatValue(displayMetrics?.averageGain, true)}
-                  description="Average profit per winning trade"
-                  positive={displayMetrics?.averageGain !== undefined && displayMetrics.averageGain > 0}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Average Loss"
-                  value={formatValue(displayMetrics?.averageLoss, true)}
-                  description="Average loss per losing trade"
-                  positive={false}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Profit Factor"
-                  value={formatValue(displayMetrics?.profitFactor)}
-                  description="Ratio of gross profit to gross loss"
-                  positive={displayMetrics?.profitFactor !== undefined && displayMetrics.profitFactor >= 1}
-                  theme={theme}
-                />
+              {/* Performance Overview Section */}
+              <div className="mb-10">
+                <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-4 px-1 uppercase tracking-wide">Performance Overview</h3>
+                {activeTab === 'all' ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                      <MetricCard
+                        title="Total P/L"
+                        value={formatValue((displayMetrics?.realizedPL || 0) + (displayMetrics?.unrealizedPL || 0), true)}
+                        description="Realized + unrealized profit/loss"
+                        positive={((displayMetrics?.realizedPL || 0) + (displayMetrics?.unrealizedPL || 0)) >= 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Current Balance"
+                        value={formatValue(displayMetrics.currentBalance, true)}
+                        description="Current portfolio balance"
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="ROI"
+                        value={formatValue(displayMetrics.roi, false, true)}
+                        description="Return on investment"
+                        positive={displayMetrics.roi !== undefined && displayMetrics.roi >= 0}
+                        theme={theme}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      <MetricCard
+                        title="Win Rate"
+                        value={formatValue(displayMetrics?.winRate, false, true)}
+                        description={`${displayMetrics?.winningTrades || 0}W / ${displayMetrics?.losingTrades || 0}L`}
+                        positive={(displayMetrics?.winRate || 0) >= 50}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Total Trades"
+                        value={(displayMetrics?.totalTrades || 0).toString()}
+                        description={`${displayMetrics?.winningTrades || 0} wins, ${displayMetrics?.losingTrades || 0} losses`}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Profit Factor"
+                        value={formatValue(displayMetrics?.profitFactor)}
+                        description="Gross profit / gross loss"
+                        positive={displayMetrics?.profitFactor !== undefined && displayMetrics.profitFactor >= 1}
+                        theme={theme}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                      <MetricCard
+                        title="Total P/L"
+                        value={formatValue((displayMetrics?.realizedPL || 0) + (displayMetrics?.unrealizedPL || 0), true)}
+                        description="Realized + unrealized profit/loss"
+                        positive={((displayMetrics?.realizedPL || 0) + (displayMetrics?.unrealizedPL || 0)) >= 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="ROI"
+                        value={formatValue(displayMetrics.roi, false, true)}
+                        description="Return on investment"
+                        positive={displayMetrics.roi !== undefined && displayMetrics.roi >= 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Win Rate"
+                        value={formatValue(displayMetrics?.winRate, false, true)}
+                        description={`${displayMetrics?.winningTrades || 0}W / ${displayMetrics?.losingTrades || 0}L`}
+                        positive={(displayMetrics?.winRate || 0) >= 50}
+                        theme={theme}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <MetricCard
+                        title="Total Trades"
+                        value={(displayMetrics?.totalTrades || 0).toString()}
+                        description={`${displayMetrics?.winningTrades || 0} wins, ${displayMetrics?.losingTrades || 0} losses`}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Profit Factor"
+                        value={formatValue(displayMetrics?.profitFactor)}
+                        description="Gross profit / gross loss"
+                        positive={displayMetrics?.profitFactor !== undefined && displayMetrics.profitFactor >= 1}
+                        theme={theme}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                <MetricCard
-                  title="Win Rate"
-                  value={formatValue(displayMetrics?.winRate, false, true)}
-                  description={`${displayMetrics?.winningTrades || 0}/${displayMetrics?.losingTrades || 0} (W/L)`}
-                  positive={(displayMetrics?.winRate || 0) >= 50}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Total Trades"
-                  value={(displayMetrics?.totalTrades || 0).toString()}
-                  description={`${displayMetrics?.winningTrades || 0} winning, ${displayMetrics?.losingTrades || 0} losing`}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Total P/L"
-                  value={formatValue((displayMetrics?.totalGains || 0) - (displayMetrics?.totalLosses || 0), true)}
-                  description={`${formatCurrency(displayMetrics?.totalGains || 0)} gains, ${formatCurrency(displayMetrics?.totalLosses || 0)} losses`}
-                  positive={((displayMetrics?.totalGains || 0) - (displayMetrics?.totalLosses || 0)) >= 0}
-                  theme={theme}
-                />
-              </div>
-
-              {activeTab === 'futures' ? (
-                // Futures-specific layout
-                <>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+              {/* P&L Breakdown Section */}
+              {activeTab !== 'futures' && (
+                <div className="mb-10">
+                  <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-4 px-1 uppercase tracking-wide">P&L Breakdown</h3>
+                  <div className={`grid grid-cols-1 gap-4 ${activeTab === 'all' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-3'}`}>
                     <MetricCard
                       title="Realized P&L"
                       value={formatValue(displayMetrics.realizedPL, true)}
-                      description="Total realized profit/loss from closed positions"
-                      positive={displayMetrics.realizedPL !== undefined && displayMetrics.realizedPL >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="Avg P&L per Trade"
-                      value={formatValue(displayMetrics.averagePLPerTrade, true)}
-                      description="Average profit/loss per completed trade"
-                      positive={displayMetrics.averagePLPerTrade !== undefined && displayMetrics.averagePLPerTrade >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="ROI"
-                      value={formatValue(displayMetrics.roi, false, true)}
-                      description="Return on investment percentage"
-                      positive={displayMetrics.roi !== undefined && displayMetrics.roi >= 0}
-                      theme={theme}
-                    />
-                  </div>
-                </>
-              ) : activeTab === 'all' ? (
-                // All Assets tab layout
-                <>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <MetricCard
-                      title="Realized P&L"
-                      value={formatValue(displayMetrics.realizedPL, true)}
-                      description="Total realized profit/loss from closed positions"
+                      description="From closed positions"
                       positive={displayMetrics.realizedPL !== undefined && displayMetrics.realizedPL >= 0}
                       theme={theme}
                     />
                     <MetricCard
                       title="Unrealized P&L"
                       value={formatValue(displayMetrics.unrealizedPL, true)}
-                      description="Total unrealized profit/loss from open positions"
+                      description="From open positions"
                       positive={displayMetrics.unrealizedPL !== undefined && displayMetrics.unrealizedPL >= 0}
                       theme={theme}
                     />
-                    <MetricCard
-                      title="Current Balance"
-                      value={formatValue(displayMetrics.currentBalance, true)}
-                      description="Current portfolio balance"
-                      theme={theme}
-                    />
+                    {activeTab === 'all' ? (
+                      <MetricCard
+                        title="Total Fees"
+                        value={formatValue(displayMetrics.totalFees, true)}
+                        description="All trading fees paid"
+                        positive={false}
+                        theme={theme}
+                      />
+                    ) : (
+                      <MetricCard
+                        title="Avg P&L per Trade"
+                        value={formatValue(displayMetrics.averagePLPerTrade, true)}
+                        description="Average per completed trade"
+                        positive={displayMetrics.averagePLPerTrade !== undefined && displayMetrics.averagePLPerTrade >= 0}
+                        theme={theme}
+                      />
+                    )}
                   </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <MetricCard
-                      title="Avg P&L per Trade"
-                      value={formatValue(displayMetrics.averagePLPerTrade, true)}
-                      description="Average profit/loss per completed trade"
-                      positive={displayMetrics.averagePLPerTrade !== undefined && displayMetrics.averagePLPerTrade >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="ROI"
-                      value={formatValue(displayMetrics.roi, false, true)}
-                      description="Return on investment percentage"
-                      positive={displayMetrics.roi !== undefined && displayMetrics.roi >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="Net Gain"
-                      value={formatValue(displayMetrics.realizedPL + displayMetrics.unrealizedPL, true)}
-                      description="Total P&L (realized + unrealized)"
-                      positive={(displayMetrics.realizedPL + displayMetrics.unrealizedPL) >= 0}
-                      theme={theme}
-                    />
-                  </div>
-                </>
-              ) : (
-                // Other tabs layout (Options, Stocks, Crypto)
-                <>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <MetricCard
-                      title="Realized P&L"
-                      value={formatValue(displayMetrics.realizedPL, true)}
-                      description="Total realized profit/loss from closed positions"
-                      positive={displayMetrics.realizedPL !== undefined && displayMetrics.realizedPL >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="Unrealized P&L"
-                      value={formatValue(displayMetrics.unrealizedPL, true)}
-                      description="Total unrealized profit/loss from open positions"
-                      positive={displayMetrics.unrealizedPL !== undefined && displayMetrics.unrealizedPL >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="Net Gain"
-                      value={formatValue(displayMetrics.realizedPL + displayMetrics.unrealizedPL, true)}
-                      description="Total P&L (realized + unrealized)"
-                      positive={(displayMetrics.realizedPL + displayMetrics.unrealizedPL) >= 0}
-                      theme={theme}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <MetricCard
-                      title="Avg P&L per Trade"
-                      value={formatValue(displayMetrics.averagePLPerTrade, true)}
-                      description="Average profit/loss per completed trade"
-                      positive={displayMetrics.averagePLPerTrade !== undefined && displayMetrics.averagePLPerTrade >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="ROI"
-                      value={formatValue(displayMetrics.roi, false, true)}
-                      description="Return on investment percentage"
-                      positive={displayMetrics.roi !== undefined && displayMetrics.roi >= 0}
-                      theme={theme}
-                    />
-                    <MetricCard
-                      title="Avg Holding Period"
-                      value={formatValue(displayMetrics.averageHoldingPeriodDays)}
-                      description={`${displayMetrics.averageHoldingPeriodDays.toFixed(1)} days average`}
-                      theme={theme}
-                    />
-                  </div>
-                </>
+                </div>
               )}
 
-              <div className={`grid gap-6 mb-8 ${activeTab === 'futures' || activeTab === 'all' ? 'grid-cols-1 lg:grid-cols-4' : 'grid-cols-1 lg:grid-cols-3'}`}>
-                <MetricCard
-                  title="Largest Win"
-                  value={formatValue(displayMetrics.largestWin, true)}
-                  description="Biggest winning trade"
-                  positive={displayMetrics.largestWin !== undefined && displayMetrics.largestWin > 0}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Largest Loss"
-                  value={formatValue(displayMetrics.largestLoss, true)}
-                  description="Biggest losing trade"
-                  positive={false}
-                  theme={theme}
-                />
-                <MetricCard
-                  title="Expectancy"
-                  value={formatValue(displayMetrics.expectancy, true)}
-                  description="Expected value per trade"
-                  positive={displayMetrics.expectancy !== undefined && displayMetrics.expectancy >= 0}
-                  theme={theme}
-                />
-                {(activeTab === 'futures' || activeTab === 'all') && (
-                  <MetricCard
-                    title="Avg Holding Period"
-                    value={formatValue(displayMetrics.averageHoldingPeriodDays)}
-                    description={`${displayMetrics.averageHoldingPeriodDays.toFixed(1)} days average`}
-                    theme={theme}
-                  />
+              {/* Futures-specific ROI section */}
+              {activeTab === 'futures' && (
+                <div className="mb-10">
+                  <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-4 px-1 uppercase tracking-wide">Additional Metrics</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <MetricCard
+                      title="Realized P&L"
+                      value={formatValue(displayMetrics.realizedPL, true)}
+                      description="From closed positions"
+                      positive={displayMetrics.realizedPL !== undefined && displayMetrics.realizedPL >= 0}
+                      theme={theme}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Trade Statistics Section */}
+              <div className="mb-10">
+                <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-4 px-1 uppercase tracking-wide">Trade Statistics</h3>
+                {(activeTab === 'futures' || activeTab === 'all') ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                      <MetricCard
+                        title="Average Win"
+                        value={formatValue(displayMetrics?.averageGain, true)}
+                        description="Average profit per win"
+                        positive={displayMetrics?.averageGain !== undefined && displayMetrics.averageGain > 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Average Loss"
+                        value={formatValue(displayMetrics?.averageLoss, true)}
+                        description="Average loss per trade"
+                        positive={false}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Expectancy"
+                        value={formatValue(displayMetrics.expectancy, true)}
+                        description="Expected value per trade"
+                        positive={displayMetrics.expectancy !== undefined && displayMetrics.expectancy >= 0}
+                        theme={theme}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      <MetricCard
+                        title="Largest Win"
+                        value={formatValue(displayMetrics.largestWin, true)}
+                        description="Best single trade"
+                        positive={displayMetrics.largestWin !== undefined && displayMetrics.largestWin > 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Largest Loss"
+                        value={formatValue(displayMetrics.largestLoss, true)}
+                        description="Worst single trade"
+                        positive={false}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Avg Holding Period"
+                        value={formatValue(displayMetrics.averageHoldingPeriodDays)}
+                        description={`${displayMetrics.averageHoldingPeriodDays.toFixed(1)} days average`}
+                        theme={theme}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                      <MetricCard
+                        title="Average Win"
+                        value={formatValue(displayMetrics?.averageGain, true)}
+                        description="Average profit per win"
+                        positive={displayMetrics?.averageGain !== undefined && displayMetrics.averageGain > 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Average Loss"
+                        value={formatValue(displayMetrics?.averageLoss, true)}
+                        description="Average loss per trade"
+                        positive={false}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Expectancy"
+                        value={formatValue(displayMetrics.expectancy, true)}
+                        description="Expected value per trade"
+                        positive={displayMetrics.expectancy !== undefined && displayMetrics.expectancy >= 0}
+                        theme={theme}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <MetricCard
+                        title="Largest Win"
+                        value={formatValue(displayMetrics.largestWin, true)}
+                        description="Best single trade"
+                        positive={displayMetrics.largestWin !== undefined && displayMetrics.largestWin > 0}
+                        theme={theme}
+                      />
+                      <MetricCard
+                        title="Largest Loss"
+                        value={formatValue(displayMetrics.largestLoss, true)}
+                        description="Worst single trade"
+                        positive={false}
+                        theme={theme}
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 

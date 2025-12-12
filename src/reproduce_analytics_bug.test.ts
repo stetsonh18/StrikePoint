@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PerformanceMetricsService } from './src/infrastructure/services/performanceMetricsService';
-import { PositionRepository } from './src/infrastructure/repositories/position.repository';
-import { StrategyRepository } from './src/infrastructure/repositories/strategy.repository';
+import { PerformanceMetricsService } from './infrastructure/services/performanceMetricsService';
+import { PositionRepository } from './infrastructure/repositories/position.repository';
+import { StrategyRepository } from './infrastructure/repositories/strategy.repository';
 
 // Mock the repositories
-vi.mock('./src/infrastructure/repositories/position.repository', () => ({
+vi.mock('./infrastructure/repositories/position.repository', () => ({
     PositionRepository: {
         getAll: vi.fn(),
     },
 }));
 
-vi.mock('./src/infrastructure/repositories/strategy.repository', () => ({
+vi.mock('./infrastructure/repositories/strategy.repository', () => ({
     StrategyRepository: {
         getAll: vi.fn(),
     },

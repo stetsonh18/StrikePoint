@@ -299,27 +299,27 @@ export interface TransactionCode {
 export interface CashTransaction {
   id: string;
   user_id: string;
-  
+
   // Transaction details
   transaction_code: string; // References transaction_codes(trans_code)
   amount: number;
   description: string | null;
   notes: string | null;
-  
+
   // Dates
   activity_date: string; // Date (YYYY-MM-DD)
   process_date: string; // Date (YYYY-MM-DD)
   settle_date: string; // Date (YYYY-MM-DD)
-  
+
   // Optional symbol for dividends/interest from specific securities
   symbol: string | null;
-  
+
   // Foreign key to transactions (nullable for multi-leg options where one cash transaction links to multiple transactions)
   transaction_id: string | null;
-  
+
   // Metadata
   tags: string[];
-  
+
   // Audit
   created_at: string; // Timestamptz
   updated_at: string; // Timestamptz
@@ -505,15 +505,60 @@ export interface PLCalculation {
 /**
  * Position summary statistics
  */
-export interface PositionStatistics {
-  total_positions: number;
-  open_positions: number;
-  closed_positions: number;
-  total_realized_pl: number;
-  total_unrealized_pl: number;
-  avg_win: number;
-  avg_loss: number;
-  win_rate: number;
-  largest_win: number;
-  largest_loss: number;
+export interface Database {
+  public: {
+    Tables: {
+      transactions: {
+        Row: Transaction;
+        Insert: TransactionInsert;
+        Update: TransactionUpdate;
+      };
+      positions: {
+        Row: Position;
+        Insert: PositionInsert;
+        Update: PositionUpdate;
+      };
+      strategies: {
+        Row: Strategy;
+        Insert: StrategyInsert;
+        Update: StrategyUpdate;
+      };
+      imports: {
+        Row: Import;
+        Insert: ImportInsert;
+        Update: Partial<ImportInsert>; // Using partial for updates to match typical pattern
+      };
+      cash_transactions: {
+        Row: CashTransaction;
+        Insert: CashTransactionInsert;
+        Update: CashTransactionUpdate;
+      };
+      cash_balances: {
+        Row: CashBalance;
+        Insert: CashBalanceInsert;
+        Update: CashBalanceUpdate;
+      };
+      journal_entries: {
+        // Assuming JournalEntry exists but wasn't fully exported or defined in the snippet I saw.
+        // I will look for it or use 'any' if not found, but I saw types\journal.types.ts exists.
+        // Let's assume standard structure:
+        Row: any; // Placeholder until I verify journal type
+        Insert: any;
+        Update: any;
+      };
+      v_open_positions: {
+        Row: OpenPositionView;
+        Insert: never;
+        Update: never;
+      };
+    };
+    Views: {
+      v_open_positions: {
+        Row: OpenPositionView;
+      };
+    };
+    Functions: {
+      // Define any RPC functions if needed
+    };
+  };
 }

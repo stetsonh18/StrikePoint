@@ -1,5 +1,5 @@
 import { useMemo, memo, useCallback, useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, Activity, PieChart, Award, Newspaper, ExternalLink, LineChart, Bitcoin, Zap, FileText, Camera, BarChart3, ChevronDown, ChevronUp, Maximize2, Minimize2, Info } from 'lucide-react';
+import { TrendingUp, DollarSign, Activity, PieChart, Award, Newspaper, ExternalLink, LineChart, Bitcoin, Zap, FileText, Camera, BarChart3, Maximize2, Minimize2, Info } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuthStore } from '@/application/stores/auth.store';
@@ -269,11 +269,11 @@ export const Dashboard = () => {
   // But uses normalized counts for position display
   const assetBreakdown = useMemo(() => {
     return {
-      stocks: { count: normalizedAssetCounts.stocks, value: assetMetrics.stocks.marketValue },
-      options: { count: normalizedAssetCounts.options, value: assetMetrics.options.marketValue },
-      crypto: { count: normalizedAssetCounts.crypto, value: assetMetrics.crypto.marketValue },
-      futures: { count: normalizedAssetCounts.futures, value: assetMetrics.futures.marketValue },
-      cash: { count: 1, value: cashBalance },
+      stocks: { count: normalizedAssetCounts.stocks, value: assetMetrics.stocks.marketValue, pl: assetMetrics.stocks.unrealizedPL },
+      options: { count: normalizedAssetCounts.options, value: assetMetrics.options.marketValue, pl: assetMetrics.options.unrealizedPL },
+      crypto: { count: normalizedAssetCounts.crypto, value: assetMetrics.crypto.marketValue, pl: assetMetrics.crypto.unrealizedPL },
+      futures: { count: normalizedAssetCounts.futures, value: assetMetrics.futures.marketValue, pl: assetMetrics.futures.unrealizedPL },
+      cash: { count: 1, value: cashBalance, pl: 0 },
     };
   }, [assetMetrics, cashBalance, normalizedAssetCounts]);
 
@@ -671,6 +671,7 @@ export const Dashboard = () => {
             title="Stocks"
             count={assetBreakdown.stocks.count}
             value={assetBreakdown.stocks.value}
+            pl={assetBreakdown.stocks.pl}
             icon={LineChart}
             formatCurrency={formatCurrency}
           />
@@ -678,6 +679,7 @@ export const Dashboard = () => {
             title="Options"
             count={assetBreakdown.options.count}
             value={assetBreakdown.options.value}
+            pl={assetBreakdown.options.pl}
             icon={Zap}
             formatCurrency={formatCurrency}
           />
@@ -685,6 +687,7 @@ export const Dashboard = () => {
             title="Crypto"
             count={assetBreakdown.crypto.count}
             value={assetBreakdown.crypto.value}
+            pl={assetBreakdown.crypto.pl}
             icon={Bitcoin}
             formatCurrency={formatCurrency}
           />
@@ -692,6 +695,7 @@ export const Dashboard = () => {
             title="Futures"
             count={assetBreakdown.futures.count}
             value={assetBreakdown.futures.value}
+            pl={assetBreakdown.futures.pl}
             icon={Zap}
             formatCurrency={formatCurrency}
           />
@@ -699,6 +703,7 @@ export const Dashboard = () => {
             title="Cash"
             count={assetBreakdown.cash.count}
             value={assetBreakdown.cash.value}
+            pl={assetBreakdown.cash.pl}
             icon={DollarSign}
             formatCurrency={formatCurrency}
           />
@@ -954,10 +959,11 @@ interface AssetTypeCardProps {
   title: string;
   count: number;
   value: number;
+  pl: number;
   icon: React.ElementType;
 }
 
-const AssetTypeCard = memo(({ title, count, value, icon: Icon, formatCurrency }: AssetTypeCardProps & { formatCurrency: (amount: number) => string }) => (
+const AssetTypeCard = memo(({ title, count, value, pl, icon: Icon, formatCurrency }: AssetTypeCardProps & { formatCurrency: (amount: number) => string }) => (
   <div className="bg-slate-100 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-800/50 p-4 hover:border-slate-300 dark:hover:border-slate-700/50 transition-all">
     <div className="flex items-center justify-between mb-2">
       <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</p>
@@ -966,6 +972,9 @@ const AssetTypeCard = memo(({ title, count, value, icon: Icon, formatCurrency }:
       </div>
     </div>
     <p className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">{formatCurrency(value)}</p>
+    <div className={`text-xs font-medium mb-2 ${pl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+      {pl !== 0 ? `${pl >= 0 ? '+' : ''}${formatCurrency(pl)}` : '—'}
+    </div>
     <p className="text-xs text-slate-500 dark:text-slate-500">{count} {count === 1 ? 'position' : 'positions'}</p>
   </div>
 ));

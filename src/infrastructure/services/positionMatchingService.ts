@@ -38,9 +38,9 @@ export class PositionMatchingService {
       (t) => t.is_opening === false && !t.position_id && t.asset_type === 'option'
     );
 
-    logger.debug('Processing options transactions', { 
-      opening: openingOptionTxs.length, 
-      closing: closingOptionTxs.length 
+    logger.debug('Processing options transactions', {
+      opening: openingOptionTxs.length,
+      closing: closingOptionTxs.length
     });
 
     for (const openingTx of openingOptionTxs) {
@@ -177,13 +177,13 @@ export class PositionMatchingService {
         openedAtTimestamp = dateTime.toISOString();
       }
     }
-    
+
     const positionInsert: PositionInsert = {
       user_id: tx.user_id,
       strategy_id: null, // Will be set by strategy detection
       symbol: tx.underlying_symbol || tx.instrument || '',
-      asset_type: tx.asset_type === 'option' || tx.asset_type === 'stock' || tx.asset_type === 'crypto' || tx.asset_type === 'futures' 
-        ? tx.asset_type 
+      asset_type: tx.asset_type === 'option' || tx.asset_type === 'stock' || tx.asset_type === 'crypto' || tx.asset_type === 'futures'
+        ? tx.asset_type
         : 'stock',
       option_type: tx.option_type || null,
       strike_price: tx.strike_price || null,
@@ -361,7 +361,7 @@ export class PositionMatchingService {
     // Parse contract month from instrument field (e.g., "ESH25" -> "H25" or "MAR25")
     let contractMonth: string | null = null;
     let baseSymbol = tx.underlying_symbol || '';
-    
+
     // Try to parse from instrument field first (e.g., "ESH25")
     if (tx.instrument) {
       const parsed = parseContractSymbol(tx.instrument);
@@ -373,7 +373,7 @@ export class PositionMatchingService {
         contractMonth = monthName ? `${monthName.toUpperCase().slice(0, 3)}${year.slice(-2)}` : `${parsed.monthCode}${parsed.year}`;
       }
     }
-    
+
     // Fallback: try to parse from description if instrument parsing failed
     if (!contractMonth && tx.description) {
       const monthMatch = tx.description.match(/\b([A-Z]{3}\d{2,4})\b/);
@@ -387,7 +387,7 @@ export class PositionMatchingService {
     let tickSize: number | null = null;
     let tickValue: number | null = null;
     let marginRequirement: number | null = null;
-    
+
     if (baseSymbol) {
       try {
         const contractSpec = await FuturesContractSpecRepository.getBySymbol(baseSymbol, tx.user_id);
@@ -448,7 +448,7 @@ export class PositionMatchingService {
     // Parse contract month for futures and extract base symbol
     let contractMonth: string | null = null;
     let baseSymbol = tx.underlying_symbol || '';
-    
+
     if (assetType === 'futures') {
       // Try to parse from instrument field first (e.g., "ESH25")
       if (tx.instrument) {
@@ -461,7 +461,7 @@ export class PositionMatchingService {
           contractMonth = monthName ? `${monthName.toUpperCase().slice(0, 3)}${year.slice(-2)}` : `${parsed.monthCode}${parsed.year}`;
         }
       }
-      
+
       // Fallback: try to parse from description if instrument parsing failed
       if (!contractMonth && tx.description) {
         const monthMatch = tx.description.match(/\b([A-Z]{3}\d{2,4})\b/);
