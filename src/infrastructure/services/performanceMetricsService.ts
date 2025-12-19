@@ -85,15 +85,6 @@ export class PerformanceMetricsService {
       StrategyRepository.getAll(userId),
     ]);
 
-    // Debug logging for stock analytics
-    console.log('[Stock Analytics Debug] Positions loaded:', {
-      total: positions.length,
-      stock: positions.filter(p => p.asset_type === 'stock').length,
-      stockClosed: positions.filter(p => p.asset_type === 'stock' && p.status === 'closed').length,
-      stockWithPL: positions.filter(p => p.asset_type === 'stock' && p.realized_pl !== 0).length,
-      sampleStockPosition: positions.find(p => p.asset_type === 'stock'),
-    });
-
     const strategyMap = new Map(strategies.map((strategy) => [strategy.id, strategy]));
     const positionsByStrategyId = new Map<string, Position[]>();
     positions.forEach((position) => {
@@ -442,19 +433,6 @@ export class PerformanceMetricsService {
     const dateFilteredTrades = this.filterTradesByDateRange(trades, undefined, dateRange);
     const filteredTrades = this.filterTradesByAssetType(dateFilteredTrades, assetType);
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
-
-    // Debug logging for stock analytics
-    console.log('[Stock Analytics Debug] Trade filtering:', {
-      assetType,
-      dateRange,
-      allTrades: trades.length,
-      afterDateFilter: dateFilteredTrades.length,
-      afterAssetFilter: filteredTrades.length,
-      afterRealizedFilter: realizedTrades.length,
-      sampleFilteredTrade: filteredTrades[0],
-      sampleRealizedTrade: realizedTrades[0],
-    });
-
     const winningTrades = realizedTrades.filter((trade) => trade.realizedPL > 0);
     const losingTrades = realizedTrades.filter((trade) => trade.realizedPL < 0);
 
