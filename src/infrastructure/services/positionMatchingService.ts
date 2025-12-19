@@ -62,11 +62,21 @@ export class PositionMatchingService {
     }
 
     // Process STOCKS: Buy/Sell
+    // Support multiple transaction code formats from different brokers
+    const STOCK_BUY_CODES = ['BUY', 'Buy', 'STOCK_BUY', 'BTO'];
+    const STOCK_SELL_CODES = ['SELL', 'Sell', 'STOCK_SELL', 'STC'];
+
+    const isStockBuy = (code: string | null): boolean =>
+      code ? STOCK_BUY_CODES.some(c => code.toUpperCase().includes(c.toUpperCase())) : false;
+
+    const isStockSell = (code: string | null): boolean =>
+      code ? STOCK_SELL_CODES.some(c => code.toUpperCase().includes(c.toUpperCase())) : false;
+
     const stockBuys = transactions.filter(
-      (t) => t.transaction_code === 'Buy' && !t.position_id && t.asset_type === 'stock'
+      (t) => isStockBuy(t.transaction_code) && !t.position_id && t.asset_type === 'stock'
     );
     const stockSells = transactions.filter(
-      (t) => t.transaction_code === 'Sell' && !t.position_id && t.asset_type === 'stock'
+      (t) => isStockSell(t.transaction_code) && !t.position_id && t.asset_type === 'stock'
     );
 
     logger.debug('Processing stock transactions', { buys: stockBuys.length, sells: stockSells.length });

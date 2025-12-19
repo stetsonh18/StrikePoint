@@ -549,6 +549,21 @@ export const Analytics = () => {
                   </>
                 ) : (
                   <>
+                    {/* Debug panel for stock analytics (development only) */}
+                    {process.env.NODE_ENV === 'development' && activeTab === 'stocks' && (
+                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-4 rounded mb-4">
+                        <h4 className="text-sm font-semibold mb-2 text-yellow-900 dark:text-yellow-100">🐛 Stock Analytics Debug Info</h4>
+                        <div className="text-xs space-y-1 text-yellow-800 dark:text-yellow-200">
+                          <div>Time Period: {JSON.stringify({ timePeriod, dateRange })}</div>
+                          <div>Asset Type: {assetType}</div>
+                          <div>Metrics Loaded: {isLoading ? 'Loading...' : 'Loaded'}</div>
+                          <div>Total Trades: {displayMetrics?.totalTrades ?? 'N/A'}</div>
+                          <div>Realized P/L: {displayMetrics?.realizedPL ?? 'N/A'}</div>
+                          <div className="mt-2 font-semibold">💡 Check browser console for detailed logs</div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
                       <MetricCard
                         title="Total P/L"
