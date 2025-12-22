@@ -312,7 +312,7 @@ export class PerformanceMetricsService {
         ? holdingPeriods.reduce((sum, value) => sum + value, 0) / holdingPeriods.length
         : 0;
 
-    // Calculate initial investment (sum of deposits)
+    // Calculate initial investment (sum of deposits) - matching ROI chart logic
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
     const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
     const initialInvestment = cashTransactions
@@ -320,20 +320,27 @@ export class PerformanceMetricsService {
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-    // Calculate current balance: Net cash flow + unrealized P&L
-    // Net cash flow = sum of all cash transactions (excluding futures margin)
-    const netCashFlow = cashTransactions
-      .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-
-    // For current balance, we'll use a simplified calculation: net cash flow + unrealized PL
-    // Full portfolio value would require market quotes, which is handled in the hook
-    const currentBalance = netCashFlow + unrealizedPL;
+    // Get latest portfolio snapshot to use actual portfolio value (matching ROI chart logic)
+    const latestSnapshot = await PortfolioSnapshotRepository.getMostRecent(userId);
+    let portfolioValue = 0;
+    
+    if (latestSnapshot) {
+      portfolioValue = latestSnapshot.portfolio_value;
+    } else {
+      // Fallback to simplified calculation if no snapshot exists
+      const netCashFlow = cashTransactions
+        .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      portfolioValue = netCashFlow + unrealizedPL;
+    }
 
     // Calculate ROI relative to initial investment (matching ROI chart logic)
+    const investmentBase = initialInvestment || 
+      (latestSnapshot?.net_cash_flow ?? latestSnapshot?.portfolio_value ?? 0);
+    
     const roi =
-      initialInvestment > 0
-        ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
+      investmentBase !== 0
+        ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
         : 0;
 
     // Calculate total fees from all transactions
@@ -359,7 +366,7 @@ export class PerformanceMetricsService {
         unrealizedPL,
         averagePLPerTrade: 0,
         roi: 0,
-        currentBalance,
+        currentBalance: portfolioValue,
         totalFees,
       };
     }
@@ -392,7 +399,7 @@ export class PerformanceMetricsService {
       unrealizedPL,
       averagePLPerTrade,
       roi,
-      currentBalance,
+      currentBalance: portfolioValue,
       totalFees,
     };
   }
@@ -469,7 +476,7 @@ export class PerformanceMetricsService {
         ? holdingPeriods.reduce((sum, value) => sum + value, 0) / holdingPeriods.length
         : 0;
 
-    // Calculate initial investment (sum of deposits)
+    // Calculate initial investment (sum of deposits) - matching ROI chart logic
     const cashTransactions = await CashTransactionRepository.getByUserId(userId);
     const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
     const initialInvestment = cashTransactions
@@ -477,15 +484,39 @@ export class PerformanceMetricsService {
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-    // Calculate current balance: Net cash flow + unrealized P&L
-    const netCashFlow = cashTransactions
-      .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    const currentBalance = netCashFlow + unrealizedPL;
+    // Get latest portfolio snapshot to use actual portfolio value (matching ROI chart logic)
+    // For asset-specific calculations, use breakdown value from snapshot
+    const latestSnapshot = await PortfolioSnapshotRepository.getMostRecent(userId);
+    let portfolioValue = 0;
+    
+    if (latestSnapshot) {
+      const breakdown = latestSnapshot.positions_breakdown;
+      if (assetType === 'stock') {
+        portfolioValue = breakdown.stocks.value + latestSnapshot.net_cash_flow;
+      } else if (assetType === 'option') {
+        portfolioValue = breakdown.options.value + latestSnapshot.net_cash_flow;
+      } else if (assetType === 'crypto') {
+        portfolioValue = breakdown.crypto.value + latestSnapshot.net_cash_flow;
+      } else if (assetType === 'futures') {
+        portfolioValue = breakdown.futures.value + latestSnapshot.net_cash_flow;
+      } else {
+        portfolioValue = latestSnapshot.portfolio_value;
+      }
+    } else {
+      // Fallback to simplified calculation if no snapshot exists
+      const netCashFlow = cashTransactions
+        .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      portfolioValue = netCashFlow + unrealizedPL;
+    }
 
+    // Calculate ROI relative to initial investment (matching ROI chart logic)
+    const investmentBase = initialInvestment || 
+      (latestSnapshot?.net_cash_flow ?? latestSnapshot?.portfolio_value ?? 0);
+    
     const roi =
-      initialInvestment > 0
-        ? ((currentBalance - initialInvestment) / Math.abs(initialInvestment)) * 100
+      investmentBase !== 0
+        ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
         : 0;
 
     // Calculate total fees from transactions filtered by asset type
@@ -512,7 +543,7 @@ export class PerformanceMetricsService {
         unrealizedPL,
         averagePLPerTrade: 0,
         roi: 0,
-        currentBalance,
+        currentBalance: portfolioValue,
         totalFees,
       };
     }
@@ -545,7 +576,7 @@ export class PerformanceMetricsService {
       unrealizedPL,
       averagePLPerTrade,
       roi,
-      currentBalance,
+      currentBalance: portfolioValue,
       totalFees,
     };
   }
