@@ -476,47 +476,45 @@ export class PerformanceMetricsService {
         ? holdingPeriods.reduce((sum, value) => sum + value, 0) / holdingPeriods.length
         : 0;
 
-    // Calculate initial investment (sum of deposits) - matching ROI chart logic
-    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
-    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
-    const initialInvestment = cashTransactions
-      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
-      .filter((tx) => (tx.amount || 0) > 0)
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    // For asset-specific ROI, calculate based on cost basis of positions in that asset type
+    // Get all positions (open + closed) for this asset type to calculate total cost basis
+    const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
+    
+    // Calculate total cost basis: sum of absolute cost basis for all positions in this asset type
+    // This represents the total capital deployed in this asset type
+    const totalCostBasis = allPositionsForAssetType.reduce((sum, position) => {
+      return sum + Math.abs(position.total_cost_basis || 0);
+    }, 0);
 
-    // Get latest portfolio snapshot to use actual portfolio value (matching ROI chart logic)
-    // For asset-specific calculations, use breakdown value from snapshot
+    // Get latest portfolio snapshot to use actual portfolio value
+    // For asset-specific calculations, use breakdown value WITHOUT net_cash_flow
     const latestSnapshot = await PortfolioSnapshotRepository.getMostRecent(userId);
     let portfolioValue = 0;
     
     if (latestSnapshot) {
       const breakdown = latestSnapshot.positions_breakdown;
       if (assetType === 'stock') {
-        portfolioValue = breakdown.stocks.value + latestSnapshot.net_cash_flow;
+        portfolioValue = breakdown.stocks.value;
       } else if (assetType === 'option') {
-        portfolioValue = breakdown.options.value + latestSnapshot.net_cash_flow;
+        portfolioValue = breakdown.options.value;
       } else if (assetType === 'crypto') {
-        portfolioValue = breakdown.crypto.value + latestSnapshot.net_cash_flow;
+        portfolioValue = breakdown.crypto.value;
       } else if (assetType === 'futures') {
-        portfolioValue = breakdown.futures.value + latestSnapshot.net_cash_flow;
+        portfolioValue = breakdown.futures.value;
       } else {
+        // For overall portfolio, use full portfolio value
         portfolioValue = latestSnapshot.portfolio_value;
       }
     } else {
-      // Fallback to simplified calculation if no snapshot exists
-      const netCashFlow = cashTransactions
-        .filter((tx) => !['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE'].includes(tx.transaction_code || ''))
-        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-      portfolioValue = netCashFlow + unrealizedPL;
+      // Fallback: use just unrealized PL if no snapshot exists
+      portfolioValue = unrealizedPL;
     }
 
-    // Calculate ROI relative to initial investment (matching ROI chart logic)
-    const investmentBase = initialInvestment || 
-      (latestSnapshot?.net_cash_flow ?? latestSnapshot?.portfolio_value ?? 0);
-    
+    // For asset-specific ROI: ROI = (Realized P&L + Unrealized P&L) / Total Cost Basis
+    // This shows the return on capital actually deployed in this asset type
     const roi =
-      investmentBase !== 0
-        ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
+      totalCostBasis > 0
+        ? ((realizedPL + unrealizedPL) / totalCostBasis) * 100
         : 0;
 
     // Calculate total fees from transactions filtered by asset type
@@ -1664,43 +1662,72 @@ export class PerformanceMetricsService {
       (a, b) => a.snapshot_date.localeCompare(b.snapshot_date)
     );
 
-    // Determine initial investment (sum of deposits) to match ROI metric summary
-    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
-    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
-    const initialInvestmentFromDeposits = cashTransactions
-      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
-      .filter((tx) => (tx.amount || 0) > 0)
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    // For asset-specific ROI, calculate investment base from cost basis of positions
+    // For overall portfolio, use deposits as before
+    let investmentBase = 0;
+    
+    if (assetType) {
+      // Get all positions (open + closed) for this asset type to calculate total cost basis
+      const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
+      investmentBase = allPositionsForAssetType.reduce((sum, position) => {
+        return sum + Math.abs(position.total_cost_basis || 0);
+      }, 0);
+    } else {
+      // For overall portfolio, use deposits as investment base
+      const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+      const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+      const initialInvestmentFromDeposits = cashTransactions
+        .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+        .filter((tx) => (tx.amount || 0) > 0)
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-    const fallbackInvestment =
-      sortedSnapshots.find((snapshot) => snapshot.net_cash_flow !== 0)?.net_cash_flow ??
-      sortedSnapshots[0]?.portfolio_value ??
-      0;
+      const fallbackInvestment =
+        sortedSnapshots.find((snapshot) => snapshot.net_cash_flow !== 0)?.net_cash_flow ??
+        sortedSnapshots[0]?.portfolio_value ??
+        0;
 
-    const investmentBase = initialInvestmentFromDeposits || fallbackInvestment;
+      investmentBase = initialInvestmentFromDeposits || fallbackInvestment;
+    }
 
     const result = sortedSnapshots.map((s) => {
       let portfolioValue = s.portfolio_value;
 
-      // If asset type specified, use breakdown value
+      // If asset type specified, use breakdown value WITHOUT net_cash_flow
       if (assetType) {
         const breakdown = s.positions_breakdown;
         if (assetType === 'stock') {
-          portfolioValue = breakdown.stocks.value + s.net_cash_flow;
+          portfolioValue = breakdown.stocks.value;
         } else if (assetType === 'option') {
-          portfolioValue = breakdown.options.value + s.net_cash_flow;
+          portfolioValue = breakdown.options.value;
         } else if (assetType === 'crypto') {
-          portfolioValue = breakdown.crypto.value + s.net_cash_flow;
+          portfolioValue = breakdown.crypto.value;
         } else if (assetType === 'futures') {
-          portfolioValue = breakdown.futures.value + s.net_cash_flow;
+          portfolioValue = breakdown.futures.value;
         }
       }
 
-      // Calculate ROI relative to initial investment
-      const roi =
-        investmentBase !== 0
-          ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
-          : 0;
+      // Calculate ROI
+      // For asset-specific: We need (realizedPL + unrealizedPL) / costBasis
+      // portfolioValue = market value of open positions (includes unrealizedPL)
+      // We don't have realizedPL per snapshot per asset type, so we approximate:
+      // ROI = (portfolioValue - costBasis) / costBasis
+      // This works because portfolioValue ≈ costBasis + unrealizedPL for open positions
+      // Note: This doesn't include realizedPL from closed positions, but it's the best we can do with snapshot data
+      
+      let roi = 0;
+      if (assetType && investmentBase > 0) {
+        // For asset-specific: portfolioValue is market value of open positions
+        // investmentBase is total cost basis (open + closed positions)
+        // ROI = (portfolioValue - costBasis) / costBasis
+        // This approximates (unrealizedPL) / costBasis, missing realizedPL from closed positions
+        roi = ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100;
+      } else {
+        // For overall portfolio, use the original calculation
+        roi =
+          investmentBase !== 0
+            ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
+            : 0;
+      }
 
       return {
         date: s.snapshot_date,
