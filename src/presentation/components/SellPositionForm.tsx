@@ -93,16 +93,44 @@ export const SellPositionForm: React.FC<SellPositionFormProps> = ({
         quantity: quantityNum,
         price: priceNum,
         amount: priceNum * quantityNum, // Positive for sell (credit)
-        is_opening: null,
+        is_opening: false, // Sell is a closing transaction
         is_long: false, // Sell is not long
         option_type: null,
         strike_price: null,
         expiration_date: null,
-        position_id: position.id,
+        position_id: null, // Let position matching service link this transaction to the position
         strategy_id: null,
       } satisfies Omit<TransactionInsert, 'import_id'>;
 
-      await TransactionService.createManualTransaction(transactionData);
+      const createdTransaction = await TransactionService.createManualTransaction(transactionData);
+
+      // Wait a moment for position matching to complete, then verify the position was closed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verify the transaction was matched and position was closed
+      const { TransactionRepository, PositionRepository } = await import('@/infrastructure/repositories');
+      const updatedTransaction = await TransactionRepository.getById(createdTransaction.id);
+      
+      if (updatedTransaction?.position_id) {
+        const matchedPosition = await PositionRepository.getById(updatedTransaction.position_id);
+        if (matchedPosition && matchedPosition.status !== 'closed' && matchedPosition.current_quantity === 0) {
+          // Position quantity is 0 but status wasn't updated - fix it
+          await PositionRepository.updateStatus(updatedTransaction.position_id, 'closed', updatedTransaction.activity_date);
+        }
+      } else {
+        // Transaction wasn't matched - try to match it manually
+        const { PositionMatchingService } = await import('@/infrastructure/services/positionMatchingService');
+        try {
+          await PositionMatchingService.matchTransactions(userId);
+          // Check again after matching
+          const recheckTransaction = await TransactionRepository.getById(createdTransaction.id);
+          if (!recheckTransaction?.position_id) {
+            throw new Error('Failed to match sell transaction to position. Please check that you have an open position for this stock.');
+          }
+        } catch (matchError) {
+          throw new Error(`Transaction created but position matching failed: ${matchError instanceof Error ? matchError.message : 'Unknown error'}`);
+        }
+      }
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['positions'] });
