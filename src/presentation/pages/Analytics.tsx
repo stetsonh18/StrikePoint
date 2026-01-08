@@ -50,6 +50,7 @@ import { buildTradierOptionSymbol } from '@/shared/utils/positionTransformers';
 import { MetricCard } from '@/presentation/components/MetricCard';
 import { CustomDateRangeModal } from '@/presentation/components/CustomDateRangeModal';
 import { DateRangeStorage } from '@/shared/utils/dateRangeStorage';
+import { usePortfolioValue } from '@/application/hooks/usePortfolioValue';
 
 type AnalyticsTab = 'all' | 'stocks' | 'options' | 'crypto' | 'futures';
 type TimePeriod = 7 | 30 | 90 | 365 | null | 'custom'; // null = all time
@@ -166,6 +167,7 @@ export const Analytics = () => {
   const assetType = TAB_TO_ASSET_TYPE[activeTab];
   const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType, dateRange);
   const { data: allPositions } = usePositions(userId);
+  const { portfolioValue: realtimePortfolioValue } = usePortfolioValue(userId);
   
   // Log for debugging
   useEffect(() => {
@@ -177,6 +179,8 @@ export const Analytics = () => {
         totalTrades: metrics.totalTrades,
         realizedPL: metrics.realizedPL,
         unrealizedPL: metrics.unrealizedPL,
+        roi: metrics.roi,
+        currentBalance: metrics.currentBalance,
         assetType,
       });
     }
@@ -311,14 +315,18 @@ export const Analytics = () => {
     return totalUnrealizedPL;
   }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, metrics]);
   
-  // Override metrics with calculated unrealized P&L
+  // Override metrics with calculated unrealized P&L and real-time portfolio value
   const metricsWithUnrealizedPL = useMemo(() => {
     if (!metrics) return metrics;
+    // For "All Assets" tab, use real-time portfolio value from usePortfolioValue
+    // For asset-specific tabs, use the value from metrics (which is specific to that asset type)
+    const currentBalance = activeTab === 'all' ? realtimePortfolioValue : metrics.currentBalance;
     return {
       ...metrics,
       unrealizedPL: calculatedUnrealizedPL,
+      currentBalance,
     };
-  }, [metrics, calculatedUnrealizedPL]);
+  }, [metrics, calculatedUnrealizedPL, activeTab, realtimePortfolioValue]);
   const { data: symbolPerformance = [], isLoading: isLoadingSymbols } = useSymbolPerformance(
     userId,
     assetType,
@@ -360,10 +368,11 @@ export const Analytics = () => {
     assetType,
     (timePeriod !== null && timePeriod !== 'custom') ? timePeriod : undefined
   );
+  // Calendar should show all historical data (no date range filter) so users can navigate months
   const { data: dailyCalendarData = [], isLoading: isLoadingDailyCalendar } = useDailyPerformanceCalendar(
     userId,
     activeTab === 'all' ? undefined : assetType,
-    dateRange
+    undefined // Don't filter calendar by date range
   );
   const { data: stocksHoldingPeriodData = [], isLoading: isLoadingStocksHoldingPeriod } = useHoldingPeriodDistribution(userId, 'stock', dateRange);
   const { data: cryptoHoldingPeriodData = [], isLoading: isLoadingCryptoHoldingPeriod } = useHoldingPeriodDistribution(userId, 'crypto', dateRange);

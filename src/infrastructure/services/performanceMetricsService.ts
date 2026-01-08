@@ -87,29 +87,47 @@ export class PerformanceMetricsService {
 
     const strategyMap = new Map(strategies.map((strategy) => [strategy.id, strategy]));
     const positionsByStrategyId = new Map<string, Position[]>();
-    positions.forEach((position) => {
-      if (!position.strategy_id) {
+    const positionIdMap = new Map<string, Position>(positions.map(p => [p.id, p]));
+    const usedPositionIds = new Set<string>();
+
+    // For each strategy, collect ALL positions from strategy.legs
+    // This ensures multi-leg strategies are grouped as single trades
+    strategies.forEach((strategy) => {
+      if (!strategy.legs || strategy.legs.length === 0) {
         return;
       }
-      if (!positionsByStrategyId.has(position.strategy_id)) {
-        positionsByStrategyId.set(position.strategy_id, []);
+      
+      const strategyPositions: Position[] = [];
+      const addedPositionIds = new Set<string>();
+      
+      strategy.legs.forEach((leg) => {
+        if (leg.position_id) {
+          const position = positionIdMap.get(leg.position_id);
+          if (position && !addedPositionIds.has(position.id)) {
+            strategyPositions.push(position);
+            addedPositionIds.add(position.id);
+            usedPositionIds.add(position.id);
+          }
+        }
+      });
+      
+      if (strategyPositions.length > 0) {
+        positionsByStrategyId.set(strategy.id, strategyPositions);
       }
-      positionsByStrategyId.get(position.strategy_id)!.push(position);
     });
 
-    const usedPositionIds = new Set<string>();
     const trades: NormalizedTrade[] = [];
 
+    // Create trades for each strategy using positions from strategy.legs
     positionsByStrategyId.forEach((groupPositions, strategyId) => {
-      groupPositions.forEach((position) => usedPositionIds.add(position.id));
       trades.push(this.buildNormalizedTrade(groupPositions, strategyMap.get(strategyId)));
     });
 
-    positions
-      .filter((position) => !usedPositionIds.has(position.id))
-      .forEach((position) => {
-        trades.push(this.buildNormalizedTrade([position]));
-      });
+    // Create standalone trades for positions not part of any strategy
+    const standalonePositions = positions.filter((position) => !usedPositionIds.has(position.id));
+    standalonePositions.forEach((position) => {
+      trades.push(this.buildNormalizedTrade([position]));
+    });
 
     return trades;
   }
@@ -123,7 +141,11 @@ export class PerformanceMetricsService {
     const updatedAt = strategy?.updated_at || this.getLatestDate(positions.map((p) => p.updated_at));
     const expirationDate =
       strategy?.expiration_date || positions.find((p) => p.expiration_date)?.expiration_date || null;
-    const realizedPL = positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
+    // For strategies, use the strategy's realized_pl (it's the correct combined value)
+    // For individual positions, sum their realized_pl
+    const realizedPL = strategy?.realized_pl !== undefined && strategy.realized_pl !== null
+      ? strategy.realized_pl
+      : positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
     const unrealizedPL = positions.reduce((sum, position) => sum + (position.unrealized_pl || 0), 0);
     const status = this.inferTradeStatus(positions, strategy);
     const direction = strategy?.direction || primaryPosition.side || null;
@@ -334,14 +356,24 @@ export class PerformanceMetricsService {
       portfolioValue = netCashFlow + unrealizedPL;
     }
 
-    // Calculate ROI relative to initial investment (matching ROI chart logic)
-    const investmentBase = initialInvestment || 
+    // Calculate ROI relative to initial investment
+    // ROI = (Current Portfolio Value + Withdrawals - Deposits) / Deposits
+    // Using snapshot's net_cash_flow: net_cash_flow = deposits - withdrawals
+    // So: portfolioValue - net_cash_flow = portfolioValue - deposits + withdrawals
+    const investmentBase = initialInvestment ||
       (latestSnapshot?.net_cash_flow ?? latestSnapshot?.portfolio_value ?? 0);
-    
-    const roi =
-      investmentBase !== 0
-        ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
-        : 0;
+
+    // Calculate ROI using a simpler, more direct approach
+    // ROI = (Total P&L) / Initial Investment * 100
+    // Total P&L = Realized P&L + Unrealized P&L
+    let roi = 0;
+    if (initialInvestment > 0) {
+      const totalPL = realizedPL + unrealizedPL;
+      roi = (totalPL / Math.abs(initialInvestment)) * 100;
+    } else if (portfolioValue > 0 && investmentBase !== 0) {
+      // Fallback calculation if no deposits recorded
+      roi = ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100;
+    }
 
     // Calculate total fees from all transactions
     const allTransactions = await TransactionRepository.getAll(userId);
@@ -365,7 +397,7 @@ export class PerformanceMetricsService {
         realizedPL: 0,
         unrealizedPL,
         averagePLPerTrade: 0,
-        roi: 0,
+        roi, // Use calculated ROI instead of hardcoding to 0
         currentBalance: portfolioValue,
         totalFees,
       };
@@ -540,7 +572,7 @@ export class PerformanceMetricsService {
         realizedPL: 0,
         unrealizedPL,
         averagePLPerTrade: 0,
-        roi: 0,
+        roi, // Use calculated ROI instead of hardcoding to 0
         currentBalance: portfolioValue,
         totalFees,
       };
@@ -1662,31 +1694,104 @@ export class PerformanceMetricsService {
       (a, b) => a.snapshot_date.localeCompare(b.snapshot_date)
     );
 
-    // For asset-specific ROI, calculate investment base from cost basis of positions
+    // For asset-specific ROI, calculate based on all positions (open + closed)
+    // and get total realized P&L and total cost basis
     // For overall portfolio, use deposits as before
     let investmentBase = 0;
-    
+    let totalRealizedPL = 0;
+    let totalCostBasis = 0; // Total amount invested (for calculating ROI when positions are closed)
+
     if (assetType) {
-      // Get all positions (open + closed) for this asset type to calculate total cost basis
+      // Get all positions for this asset type
       const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
-      investmentBase = allPositionsForAssetType.reduce((sum, position) => {
+
+      // Calculate total cost basis (all positions, open and closed)
+      totalCostBasis = allPositionsForAssetType.reduce((sum, position) => {
         return sum + Math.abs(position.total_cost_basis || 0);
       }, 0);
+
+      // Investment base = cost basis of OPEN positions (for current unrealized P&L calc)
+      const openPositions = allPositionsForAssetType.filter(p => p.status === 'open');
+      investmentBase = openPositions.reduce((sum, position) => {
+        return sum + Math.abs(position.total_cost_basis || 0);
+      }, 0);
+
+      // Get total realized P&L from CLOSED positions (that aren't part of a strategy)
+      const closedPositions = allPositionsForAssetType.filter(p =>
+        (p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised') &&
+        !p.strategy_id // Exclude positions that are part of a strategy to avoid double-counting
+      );
+      totalRealizedPL = closedPositions.reduce((sum, position) => {
+        return sum + (position.realized_pl || 0);
+      }, 0);
+
+      // Get realized P&L from closed strategies
+      // Note: Strategies are typically for options, but we check positions to be sure
+      const allStrategies = await StrategyRepository.getAll(userId);
+      const closedStrategies = allStrategies.filter(s =>
+        s.status === 'closed' || s.status === 'expired' || s.status === 'assigned'
+      );
+
+      // For each closed strategy, check if its positions match the asset type
+      for (const strategy of closedStrategies) {
+        const strategyPositions = allPositionsForAssetType.filter(p => p.strategy_id === strategy.id);
+        if (strategyPositions.length > 0) {
+          // This strategy has positions of the requested asset type
+          totalRealizedPL += strategy.realized_pl || 0;
+        }
+      }
     } else {
-      // For overall portfolio, use deposits as investment base
+      // For overall portfolio, use net cash flow (deposits - withdrawals) as investment base
       const cashTransactions = await CashTransactionRepository.getByUserId(userId);
       const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
-      const initialInvestmentFromDeposits = cashTransactions
+      const withdrawalCodes = ['WITHDRAWAL', 'WITHDRAW', 'WDR', 'ACH_OUT'];
+
+      const totalDeposits = cashTransactions
         .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
         .filter((tx) => (tx.amount || 0) > 0)
         .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-      const fallbackInvestment =
-        sortedSnapshots.find((snapshot) => snapshot.net_cash_flow !== 0)?.net_cash_flow ??
-        sortedSnapshots[0]?.portfolio_value ??
-        0;
+      const totalWithdrawals = cashTransactions
+        .filter((tx) => withdrawalCodes.includes(tx.transaction_code || ''))
+        .filter((tx) => (tx.amount || 0) < 0) // Withdrawals are negative
+        .reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
 
-      investmentBase = initialInvestmentFromDeposits || fallbackInvestment;
+      // Calculate total realized P&L from all closed positions and strategies
+      const allPositions = await PositionRepository.getAll(userId);
+      const closedPositions = allPositions.filter(p =>
+        (p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised') &&
+        !p.strategy_id // Exclude positions that are part of a strategy to avoid double-counting
+      );
+      totalRealizedPL = closedPositions.reduce((sum, position) => {
+        return sum + (position.realized_pl || 0);
+      }, 0);
+
+      // Get realized P&L from closed strategies
+      const allStrategies = await StrategyRepository.getAll(userId);
+      const closedStrategies = allStrategies.filter(s =>
+        s.status === 'closed' || s.status === 'expired' || s.status === 'assigned'
+      );
+      totalRealizedPL += closedStrategies.reduce((sum, strategy) => {
+        return sum + (strategy.realized_pl || 0);
+      }, 0);
+
+      // Use initial investment (deposits only) as the investment base
+      // This matches the stat card calculation exactly
+      investmentBase = totalDeposits;
+    }
+
+    // For the latest snapshot, get normalized trades to match statcard calculation
+    const latestSnapshotDate = sortedSnapshots.length > 0 ? sortedSnapshots[sortedSnapshots.length - 1].snapshot_date : null;
+    let latestRealizedPL = 0;
+    let latestUnrealizedPL = 0;
+    
+    if (latestSnapshotDate && !assetType) {
+      const allTrades = await this.getNormalizedTrades(userId);
+      const realizedTrades = allTrades.filter(t => this.isRealizedTrade(t));
+      const openTrades = allTrades.filter(t => t.status !== 'closed');
+      
+      latestRealizedPL = realizedTrades.reduce((sum, t) => sum + t.realizedPL, 0);
+      latestUnrealizedPL = openTrades.reduce((sum, t) => sum + t.unrealizedPL, 0);
     }
 
     const result = sortedSnapshots.map((s) => {
@@ -1707,26 +1812,40 @@ export class PerformanceMetricsService {
       }
 
       // Calculate ROI
-      // For asset-specific: We need (realizedPL + unrealizedPL) / costBasis
-      // portfolioValue = market value of open positions (includes unrealizedPL)
-      // We don't have realizedPL per snapshot per asset type, so we approximate:
-      // ROI = (portfolioValue - costBasis) / costBasis
-      // This works because portfolioValue ≈ costBasis + unrealizedPL for open positions
-      // Note: This doesn't include realizedPL from closed positions, but it's the best we can do with snapshot data
-      
+      // For asset-specific: ROI = (realizedPL + unrealizedPL) / totalCostBasis
+      // For overall portfolio: ROI = Total P&L / Initial Investment * 100
+
       let roi = 0;
-      if (assetType && investmentBase > 0) {
-        // For asset-specific: portfolioValue is market value of open positions
-        // investmentBase is total cost basis (open + closed positions)
-        // ROI = (portfolioValue - costBasis) / costBasis
-        // This approximates (unrealizedPL) / costBasis, missing realizedPL from closed positions
-        roi = ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100;
+      if (assetType) {
+        if (totalCostBasis > 0) {
+          // ROI = (realized P&L from closed + unrealized P&L from open) / total cost basis
+          const unrealizedPL = investmentBase > 0 ? (portfolioValue - investmentBase) : 0;
+          const totalPL = totalRealizedPL + unrealizedPL;
+          roi = (totalPL / Math.abs(totalCostBasis)) * 100;
+        }
       } else {
-        // For overall portfolio, use the original calculation
-        roi =
-          investmentBase !== 0
-            ? ((portfolioValue - investmentBase) / Math.abs(investmentBase)) * 100
-            : 0;
+        // For overall portfolio: ROI = (Realized P&L + Unrealized P&L) / Initial Investment * 100
+        // This MUST match the statcard calculation exactly
+        // For the latest snapshot, use the same method as statcard (normalized trades)
+        // For historical snapshots, use portfolio value (which includes all P&L up to that date)
+        
+        if (investmentBase !== 0) {
+          // Check if this is the latest snapshot
+          const isLatestSnapshot = s.snapshot_date === latestSnapshotDate;
+          
+          if (isLatestSnapshot && latestSnapshotDate) {
+            // For latest snapshot, use normalized trades to match statcard exactly
+            const totalPL = latestRealizedPL + latestUnrealizedPL;
+            roi = (totalPL / Math.abs(investmentBase)) * 100;
+          } else {
+            // For historical snapshots, use the snapshot's stored realized and unrealized PL
+            // This matches the same formula as statcard: (Realized PL + Unrealized PL) / Deposits
+            const snapshotRealizedPL = s.total_realized_pl || 0;
+            const snapshotUnrealizedPL = s.total_unrealized_pl || 0;
+            const totalPL = snapshotRealizedPL + snapshotUnrealizedPL;
+            roi = (totalPL / Math.abs(investmentBase)) * 100;
+          }
+        }
       }
 
       return {
@@ -1774,15 +1893,24 @@ export class PerformanceMetricsService {
 
     realizedTrades.forEach((trade) => {
       const closedDate = this.getTradeClosedDate(trade);
+      
+      let dateKey: string | null = null;
+      
+      // For strategies that have been manually corrected with fix-strategy-dates.sql,
+      // prioritize the strategy's closed_at date over transaction dates
+      if (trade.strategyId && trade.closedAt) {
+        // Strategy with a closed_at date - use it directly (it's been corrected)
+        dateKey = this.formatLocalDate(new Date(trade.closedAt));
+      } else {
+        // For individual positions or strategies without closed_at, use transaction dates
+        const legClosingDates = trade.legs
+          .flatMap((leg) => leg.closing_transaction_ids || [])
+          .map((id) => (id ? closingTransactionDates[id] : undefined))
+          .filter((date): date is string => Boolean(date));
 
-      const legClosingDates = trade.legs
-        .flatMap((leg) => leg.closing_transaction_ids || [])
-        .map((id) => (id ? closingTransactionDates[id] : undefined))
-        .filter((date): date is string => Boolean(date));
-
-      const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
-      // Prioritize latestLegDate (Transaction/Settlement) to align with User's Calendar expectation
-      const dateKey = latestLegDate || (closedDate ? this.formatLocalDate(closedDate) : null);
+        const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
+        dateKey = latestLegDate || (closedDate ? this.formatLocalDate(closedDate) : null);
+      }
 
       if (!dateKey) {
         return;
@@ -1807,6 +1935,63 @@ export class PerformanceMetricsService {
   }
 
   /**
+   * Calculate correct snapshot values for a given date
+   * This helps fix incorrect historical snapshots
+   */
+  static async calculateSnapshotValuesForDate(
+    userId: string,
+    snapshotDate: string
+  ): Promise<{
+    totalRealizedPL: number;
+    totalUnrealizedPL: number;
+    portfolioValue: number;
+    roi: number;
+  }> {
+    // Get all normalized trades
+    const allTrades = await this.getNormalizedTrades(userId);
+    
+    // Filter trades closed on or before the snapshot date
+    const snapshotDateObj = new Date(snapshotDate);
+    snapshotDateObj.setHours(23, 59, 59, 999); // End of day
+    
+    const closedTradesUpToDate = allTrades.filter((trade) => {
+      if (!this.isRealizedTrade(trade)) return false;
+      const closedDate = this.getTradeClosedDate(trade);
+      return closedDate && closedDate <= snapshotDateObj;
+    });
+    
+    // Calculate realized PL from closed trades
+    const totalRealizedPL = closedTradesUpToDate.reduce((sum, trade) => sum + trade.realizedPL, 0);
+    
+    // For unrealized PL, we need to get positions that were open on that date
+    // This is tricky because we don't have historical position states
+    // So we'll use the snapshot's portfolio_value to derive it
+    const snapshot = await PortfolioSnapshotRepository.getByDate(userId, snapshotDate);
+    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+    const totalDeposits = cashTransactions
+      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+      .filter((tx) => (tx.amount || 0) > 0)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    
+    // Portfolio Value = Deposits + Realized PL + Unrealized PL
+    // So: Unrealized PL = Portfolio Value - Deposits - Realized PL
+    const portfolioValue = snapshot?.portfolio_value || 0;
+    const totalUnrealizedPL = portfolioValue - totalDeposits - totalRealizedPL;
+    
+    // Calculate ROI
+    const totalPL = totalRealizedPL + totalUnrealizedPL;
+    const roi = totalDeposits > 0 ? (totalPL / Math.abs(totalDeposits)) * 100 : 0;
+    
+    return {
+      totalRealizedPL,
+      totalUnrealizedPL,
+      portfolioValue,
+      roi,
+    };
+  }
+
+  /**
    * Format a Date object as local date string (YYYY-MM-DD)
    */
   /**
@@ -1819,6 +2004,8 @@ export class PerformanceMetricsService {
 
   /**
    * Get positions closed on a specific date
+   * Note: For multi-leg strategies, this returns individual positions.
+   * To see strategies grouped, the UI should filter positions by strategy_id.
    */
   static async getPositionsByClosedDate(
     userId: string,
@@ -1877,7 +2064,44 @@ export class PerformanceMetricsService {
       return updatedDate === dateStr;
     });
 
-    return [...positionsClosedOnDate, ...partiallyClosedOnDate];
+    // Get all strategies and check if any were closed on this date
+    // We need to include positions that are part of strategies closed on this date
+    const allStrategies = await StrategyRepository.getAll(userId);
+    console.log('[getPositionsByClosedDate] All strategies:', allStrategies.length);
+    const strategiesClosedOnDate = allStrategies.filter((strategy) => {
+      if (!strategy.closed_at) return false;
+      const strategyClosedDate = this.formatLocalDate(new Date(strategy.closed_at));
+      console.log('[getPositionsByClosedDate] Strategy closed date:', strategyClosedDate, 'vs', dateStr, strategy.id);
+      return strategyClosedDate === dateStr;
+    });
+    console.log('[getPositionsByClosedDate] Strategies closed on', dateStr, ':', strategiesClosedOnDate.length);
+
+    // Get all position IDs that are part of strategies closed on this date
+    const strategyPositionIds = new Set<string>();
+    strategiesClosedOnDate.forEach((strategy) => {
+      strategy.legs.forEach((leg) => {
+        if (leg.position_id) {
+          strategyPositionIds.add(leg.position_id);
+        }
+      });
+    });
+
+    // Fetch positions that are part of strategies closed on this date
+    const strategyPositions = await Promise.all(
+      Array.from(strategyPositionIds).map((id) => PositionRepository.getById(id))
+    );
+    const validStrategyPositions = strategyPositions.filter((p): p is Position => p !== null);
+
+    // Filter by asset type if specified
+    const filteredStrategyPositions = assetType
+      ? validStrategyPositions.filter((p) => p.asset_type === assetType)
+      : validStrategyPositions;
+
+    // Combine all positions, removing duplicates
+    const allClosedPositions = [...positionsClosedOnDate, ...partiallyClosedOnDate, ...filteredStrategyPositions];
+    const uniquePositions = Array.from(new Map(allClosedPositions.map((p) => [p.id, p])).values());
+
+    return uniquePositions;
   }
 
   /**

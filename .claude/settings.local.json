@@ -15,7 +15,10 @@
       "Bash(node check-all-positions.js:*)",
       "Bash(node check-strategies.js:*)",
       "Bash(git commit:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(node check-today-performance.js:*)",
+      "Bash(npx tsx:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

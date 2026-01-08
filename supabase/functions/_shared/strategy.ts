@@ -102,7 +102,22 @@ export async function fetchPortfolioContext(
 
       const costBasis = Math.abs(Number(position.total_cost_basis) || 0);
       const unrealized = Number(position.unrealized_pl) || 0;
-      const marketValue = costBasis + unrealized;
+      const isLong = position.side === 'long';
+      
+      // Calculate market value based on position side
+      // For short positions (stocks, crypto, options): negative market value (liability)
+      // For long positions: positive market value (asset)
+      // For futures: only use unrealized P&L (margin-based)
+      let marketValue: number;
+      if (assetType === 'futures') {
+        marketValue = unrealized;
+      } else if (!isLong && (assetType === 'stock' || assetType === 'crypto' || assetType === 'option')) {
+        // Short positions: negative market value (liability)
+        marketValue = -costBasis + unrealized;
+      } else {
+        // Long positions: positive market value (asset)
+        marketValue = costBasis + unrealized;
+      }
 
       exposure.marketValue += marketValue;
       exposure.unrealizedPL += unrealized;

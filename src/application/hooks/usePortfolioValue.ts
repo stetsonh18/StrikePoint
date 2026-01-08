@@ -192,13 +192,27 @@ export function usePortfolioValue(userId: string): PortfolioValue {
 
       if (position.asset_type === 'stock' && position.symbol) {
         const quote = stockQuotes[position.symbol];
+        const isLong = position.side === 'long';
         let marketValue = costBasis + storedUnrealizedPL;
         let unrealizedPL = storedUnrealizedPL;
 
         if (quote && position.current_quantity) {
           const currentPrice = quote.price;
-          marketValue = currentPrice * position.current_quantity;
-          unrealizedPL = marketValue - costBasis;
+          const rawMarketValue = currentPrice * position.current_quantity;
+          
+          // For short positions: market value is negative (liability)
+          // For long positions: market value is positive (asset)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
+          
+          // Calculate unrealized P&L
+          // Long: P&L = marketValue - costBasis
+          // Short: P&L = costBasis - marketValue (since marketValue is negative, this becomes costBasis - (-rawMarketValue) = costBasis + rawMarketValue)
+          // But we need: P&L = costBasis - rawMarketValue (what you received minus what you'd pay to close)
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
+        } else {
+          // Fallback: use stored unrealized P&L
+          // For short positions, market value should be negative
+          marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
         }
 
         metrics.stocks.count++;
@@ -210,13 +224,26 @@ export function usePortfolioValue(userId: string): PortfolioValue {
       if (position.asset_type === 'crypto' && position.symbol) {
         const symbol = position.symbol.toUpperCase();
         const quote = cryptoQuotes[symbol];
+        const isLong = position.side === 'long';
         let marketValue = costBasis + storedUnrealizedPL;
         let unrealizedPL = storedUnrealizedPL;
 
         if (quote && position.current_quantity) {
           const currentPrice = quote.current_price;
-          marketValue = currentPrice * position.current_quantity;
-          unrealizedPL = marketValue - costBasis;
+          const rawMarketValue = currentPrice * position.current_quantity;
+          
+          // For short positions: market value is negative (liability)
+          // For long positions: market value is positive (asset)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
+          
+          // Calculate unrealized P&L
+          // Long: P&L = marketValue - costBasis
+          // Short: P&L = costBasis - rawMarketValue (what you received minus what you'd pay to close)
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
+        } else {
+          // Fallback: use stored unrealized P&L
+          // For short positions, market value should be negative
+          marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
         }
 
         metrics.crypto.count++;

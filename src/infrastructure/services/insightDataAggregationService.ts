@@ -154,6 +154,9 @@ export class InsightDataAggregationService {
       } else if (assetType === 'option' && !isLong) {
         // Short options: treat as liability (negative market value)
         marketValue = -costBasis + unrealizedPL;
+      } else if (!isLong && (assetType === 'stock' || assetType === 'crypto')) {
+        // Short stocks/crypto: treat as liability (negative market value)
+        marketValue = -costBasis + unrealizedPL;
       } else {
         // Long positions (stocks, options, crypto): asset value
         marketValue = costBasis + unrealizedPL;

@@ -97,7 +97,7 @@ export const SellCryptoPositionForm: React.FC<SellCryptoPositionFormProps> = ({
         option_type: null,
         strike_price: null,
         expiration_date: null,
-        position_id: position.id,
+        position_id: null, // Let position matching service link this transaction to the position
         strategy_id: null,
       } satisfies Omit<TransactionInsert, 'import_id'>;
 

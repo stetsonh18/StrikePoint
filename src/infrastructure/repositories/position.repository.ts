@@ -1,6 +1,7 @@
 import { supabase } from '../api/supabase';
 import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import { CashTransactionRepository } from './cashTransaction.repository';
+import { StrategyRepository } from './strategy.repository';
 import type {
   Position,
   PositionInsert,
@@ -311,11 +312,106 @@ export class PositionRepository {
     };
 
     if (newStatus === 'closed') {
-      updates.closed_at = closingDate ? new Date(closingDate).toISOString() : new Date().toISOString();
+      // Handle closing date/timestamp properly to avoid timezone issues
+      // If closingDate is already an ISO timestamp, use it as-is
+      // If it's a date-only string (YYYY-MM-DD), append time to preserve the date
+      if (closingDate) {
+        if (closingDate.includes('T')) {
+          // Already an ISO timestamp, use as-is
+          updates.closed_at = closingDate;
+        } else {
+          // Date-only string (YYYY-MM-DD), append end-of-day time to preserve the date
+          updates.closed_at = `${closingDate}T23:59:59.999Z`;
+        }
+      } else {
+        updates.closed_at = new Date().toISOString();
+      }
       updates.unrealized_pl = 0; // No unrealized P/L when position is fully closed
     }
 
-    return this.update(id, updates);
+    const updatedPosition = await this.update(id, updates);
+
+    // Check if this position is part of a strategy and update the strategy if all legs are now closed
+    if (updatedPosition.strategy_id) {
+      await this.checkAndUpdateStrategy(updatedPosition.strategy_id);
+    }
+
+    return updatedPosition;
+  }
+
+  /**
+   * Check if all positions in a strategy are closed and update the strategy accordingly
+   */
+  private static async checkAndUpdateStrategy(strategyId: string): Promise<void> {
+    try {
+      // Get all positions for this strategy
+      const { data: positions, error } = await supabase
+        .from('positions')
+        .select('*')
+        .eq('strategy_id', strategyId);
+
+      if (error) {
+        logErrorWithContext(error, { context: 'PositionRepository.checkAndUpdateStrategy', strategyId });
+        return; // Don't throw, just log and continue
+      }
+
+      if (!positions || positions.length === 0) {
+        return;
+      }
+
+      // Check if all positions are closed
+      const allClosed = positions.every(
+        (p) => p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised'
+      );
+
+      if (allClosed) {
+        // Calculate total realized P&L from all positions
+        const totalRealizedPL = positions.reduce((sum, p) => sum + (p.realized_pl || 0), 0);
+
+        // Get the latest closed_at timestamp from all positions
+        // Important: We use the position's closed_at timestamp as-is, which comes from
+        // the transaction's activity_date. This preserves the correct date/time.
+        const closedAtDates = positions
+          .map((p) => p.closed_at)
+          .filter((date): date is string => date !== null);
+
+        let latestClosedAt: string;
+        if (closedAtDates.length > 0) {
+          latestClosedAt = closedAtDates.reduce((latest, current) =>
+            new Date(current) > new Date(latest) ? current : latest
+          );
+        } else {
+          // Fallback to current time if no closed_at dates found
+          latestClosedAt = new Date().toISOString();
+        }
+
+        // Calculate total opening and closing costs
+        const totalOpeningCost = positions.reduce((sum, p) => sum + Math.abs(p.total_cost_basis || 0), 0);
+        const totalClosingProceeds = positions.reduce((sum, p) => sum + Math.abs(p.total_closing_amount || 0), 0);
+
+        // Determine strategy status based on position statuses
+        const hasExpired = positions.some((p) => p.status === 'expired');
+        const hasAssigned = positions.some((p) => p.status === 'assigned');
+        const hasExercised = positions.some((p) => p.status === 'exercised');
+
+        let strategyStatus: 'closed' | 'expired' | 'assigned' = 'closed';
+        if (hasExpired) strategyStatus = 'expired';
+        else if (hasAssigned || hasExercised) strategyStatus = 'assigned'; // Treat exercised as assigned
+
+        // Update the strategy
+        await StrategyRepository.update(strategyId, {
+          status: strategyStatus,
+          realized_pl: totalRealizedPL,
+          unrealized_pl: 0,
+          closed_at: latestClosedAt,
+          total_opening_cost: totalOpeningCost,
+          total_closing_proceeds: totalClosingProceeds,
+        });
+      }
+    } catch (error) {
+      logErrorWithContext(error, { context: 'PositionRepository.checkAndUpdateStrategy', strategyId });
+      // Don't throw - we don't want to fail position updates if strategy update fails
+    }
   }
 
   /**
@@ -325,10 +421,28 @@ export class PositionRepository {
     const updates: PositionUpdate = { status };
 
     if (status === 'closed' || status === 'assigned' || status === 'exercised' || status === 'expired') {
-      updates.closed_at = closedAt ? new Date(closedAt).toISOString() : new Date().toISOString();
+      // Handle closing date/timestamp properly to avoid timezone issues
+      if (closedAt) {
+        if (closedAt.includes('T')) {
+          // Already an ISO timestamp, use as-is
+          updates.closed_at = closedAt;
+        } else {
+          // Date-only string (YYYY-MM-DD), append end-of-day time to preserve the date
+          updates.closed_at = `${closedAt}T23:59:59.999Z`;
+        }
+      } else {
+        updates.closed_at = new Date().toISOString();
+      }
     }
 
-    return this.update(id, updates);
+    const updatedPosition = await this.update(id, updates);
+
+    // Check if this position is part of a strategy and update the strategy if all legs are now closed
+    if (updatedPosition.strategy_id) {
+      await this.checkAndUpdateStrategy(updatedPosition.strategy_id);
+    }
+
+    return updatedPosition;
   }
 
   /**
@@ -528,14 +642,22 @@ export class PositionRepository {
     userId: string,
     startDate: string,
     endDate: string
-  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at'>[]> {
+  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at' | 'strategy_id'>[]> {
+    // Extract date part from ISO strings to ensure proper date comparison
+    // This handles cases where timestamps might have timezone offsets
+    const startDateOnly = startDate.split('T')[0]; // YYYY-MM-DD
+    const endDateOnly = endDate.split('T')[0]; // YYYY-MM-DD
+    
+    // Query using date range with proper time boundaries
+    // Use date_trunc to compare dates properly in PostgreSQL
     const { data, error } = await supabase
       .from('positions')
-      .select('id, realized_pl, closed_at')
+      .select('id, realized_pl, closed_at, strategy_id')
       .eq('user_id', userId)
       .in('status', ['closed', 'expired', 'assigned', 'exercised'])
-      .gte('closed_at', startDate)
-      .lte('closed_at', endDate);
+      .not('closed_at', 'is', null)
+      .gte('closed_at', `${startDateOnly}T00:00:00.000Z`)
+      .lte('closed_at', `${endDateOnly}T23:59:59.999Z`);
 
     if (error) {
       const parsed = parseError(error);

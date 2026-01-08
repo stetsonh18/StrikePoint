@@ -170,6 +170,36 @@ export class StrategyRepository {
   }
 
   /**
+   * Get realized P&L for strategies closed within a date range
+   */
+  static async getRealizedPLByDateRange(
+    userId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<Pick<Strategy, 'id' | 'realized_pl' | 'closed_at'>[]> {
+    // Extract date part from ISO strings to ensure proper date comparison
+    const startDateOnly = startDate.split('T')[0]; // YYYY-MM-DD
+    const endDateOnly = endDate.split('T')[0]; // YYYY-MM-DD
+    
+    const { data, error } = await supabase
+      .from('strategies')
+      .select('id, realized_pl, closed_at')
+      .eq('user_id', userId)
+      .in('status', ['closed', 'expired', 'assigned', 'exercised'])
+      .not('closed_at', 'is', null)
+      .gte('closed_at', `${startDateOnly}T00:00:00.000Z`)
+      .lte('closed_at', `${endDateOnly}T23:59:59.999Z`);
+
+    if (error) {
+      const parsed = parseError(error);
+      logErrorWithContext(error, { context: 'StrategyRepository.getRealizedPLByDateRange', userId, startDate, endDate });
+      throw new Error(`Failed to fetch strategy realized P&L: ${parsed.message}`, { cause: error });
+    }
+
+    return data || [];
+  }
+
+  /**
    * Update status
    */
   static async updateStatus(id: string, status: StrategyStatus): Promise<Strategy> {

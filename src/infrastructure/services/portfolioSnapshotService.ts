@@ -181,25 +181,37 @@ export class PortfolioSnapshotService {
       // Calculate market value and unrealized P&L based on asset type
       if (assetType === 'stock' && position.symbol) {
         const quote = stockQuotes[position.symbol];
+        const isLong = position.side === 'long';
         if (quote && position.current_quantity && quote.price > 0) {
-          marketValue = quote.price * position.current_quantity;
-          unrealizedPL = marketValue - costBasis;
+          const rawMarketValue = quote.price * position.current_quantity;
+          // For short positions: market value is negative (liability)
+          // For long positions: market value is positive (asset)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
+          // Calculate unrealized P&L
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
         } else {
           // Fallback to stored unrealized_pl or calculate from average price
           const storedUnrealizedPL = position.unrealized_pl || 0;
-          marketValue = costBasis + storedUnrealizedPL;
+          // For short positions, market value should be negative
+          marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
           unrealizedPL = storedUnrealizedPL;
         }
         positionsBreakdown.stocks.value += marketValue;
       } else if (assetType === 'crypto' && position.symbol) {
         const quote = cryptoQuotes[position.symbol.toUpperCase()];
+        const isLong = position.side === 'long';
         if (quote && position.current_quantity && quote.current_price > 0) {
-          marketValue = quote.current_price * position.current_quantity;
-          unrealizedPL = marketValue - costBasis;
+          const rawMarketValue = quote.current_price * position.current_quantity;
+          // For short positions: market value is negative (liability)
+          // For long positions: market value is positive (asset)
+          marketValue = isLong ? rawMarketValue : -rawMarketValue;
+          // Calculate unrealized P&L
+          unrealizedPL = isLong ? rawMarketValue - costBasis : costBasis - rawMarketValue;
         } else {
           // Fallback to stored unrealized_pl
           const storedUnrealizedPL = position.unrealized_pl || 0;
-          marketValue = costBasis + storedUnrealizedPL;
+          // For short positions, market value should be negative
+          marketValue = isLong ? costBasis + storedUnrealizedPL : -costBasis + storedUnrealizedPL;
           unrealizedPL = storedUnrealizedPL;
         }
         positionsBreakdown.crypto.value += marketValue;
