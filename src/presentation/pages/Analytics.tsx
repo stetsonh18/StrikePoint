@@ -247,6 +247,8 @@ export const Analytics = () => {
     let totalUnrealizedPL = 0;
     
     openPositions.forEach((position) => {
+      let positionUnrealizedPL = position.unrealized_pl || 0; // Default to stored value
+      
       // For stocks, calculate dynamically if we have current quotes
       if (position.asset_type === 'stock' && position.symbol) {
         const quote = stockQuotes[position.symbol];
@@ -254,27 +256,31 @@ export const Analytics = () => {
           const currentPrice = quote.price;
           const marketValue = currentPrice * position.current_quantity;
           const costBasis = Math.abs(position.total_cost_basis || 0);
-          const calculatedUnrealizedPL = marketValue - costBasis;
-          totalUnrealizedPL += calculatedUnrealizedPL;
-          return;
+          const isLong = position.side === 'long';
+          
+          // Calculate P&L correctly for long vs short
+          positionUnrealizedPL = isLong
+            ? marketValue - costBasis
+            : costBasis - marketValue;
         }
       }
-      
       // For crypto, calculate dynamically if we have current quotes
-      if (position.asset_type === 'crypto' && position.symbol) {
+      else if (position.asset_type === 'crypto' && position.symbol) {
         const quote = cryptoQuotes[position.symbol.toUpperCase()];
         if (quote && position.current_quantity && position.average_opening_price) {
           const currentPrice = quote.current_price;
           const marketValue = currentPrice * position.current_quantity;
           const costBasis = Math.abs(position.total_cost_basis || 0);
-          const calculatedUnrealizedPL = marketValue - costBasis;
-          totalUnrealizedPL += calculatedUnrealizedPL;
-          return;
+          const isLong = position.side === 'long';
+          
+          // Calculate P&L correctly for long vs short
+          positionUnrealizedPL = isLong
+            ? marketValue - costBasis
+            : costBasis - marketValue;
         }
       }
-      
       // For options, calculate dynamically if we have option quotes
-      if (position.asset_type === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
+      else if (position.asset_type === 'option' && position.symbol && position.expiration_date && position.strike_price && position.option_type) {
         try {
           const tradierSymbol = buildTradierOptionSymbol(
             position.symbol,
@@ -295,38 +301,64 @@ export const Analytics = () => {
             const isLong = position.side === 'long';
             
             // Calculate P&L correctly for long vs short
-            const calculatedUnrealizedPL = isLong
+            positionUnrealizedPL = isLong
               ? marketValue - costBasis
               : costBasis - marketValue;
-            
-            totalUnrealizedPL += calculatedUnrealizedPL;
-            return;
           }
         } catch {
-          // Skip invalid option symbols
+          // If symbol building fails, use stored unrealized_pl (already set above)
         }
       }
+      // For futures and other asset types, use stored unrealized_pl (already set above)
       
-      // For futures, or if no quote available, use stored unrealized_pl
-      const storedUnrealizedPL = position.unrealized_pl || 0;
-      totalUnrealizedPL += storedUnrealizedPL;
+      totalUnrealizedPL += positionUnrealizedPL;
     });
     
     return totalUnrealizedPL;
   }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, metrics]);
   
+  // Calculate total cost basis for asset-specific ROI recalculation
+  const totalCostBasis = useMemo(() => {
+    if (!allPositions || activeTab === 'all') return 0;
+    // For asset-specific tabs, calculate total cost basis from all positions (open + closed) of that asset type
+    const costBasis = allPositions
+      .filter((p) => p.asset_type === assetType)
+      .reduce((sum, position) => sum + Math.abs(position.total_cost_basis || 0), 0);
+
+    return costBasis;
+  }, [allPositions, activeTab, assetType]);
+
   // Override metrics with calculated unrealized P&L and real-time portfolio value
   const metricsWithUnrealizedPL = useMemo(() => {
     if (!metrics) return metrics;
     // For "All Assets" tab, use real-time portfolio value from usePortfolioValue
     // For asset-specific tabs, use the value from metrics (which is specific to that asset type)
     const currentBalance = activeTab === 'all' ? realtimePortfolioValue : metrics.currentBalance;
+    
+    // Recalculate ROI for asset-specific tabs using the updated unrealized P&L
+    let recalculatedROI = metrics.roi;
+    if (activeTab !== 'all') {
+      if (totalCostBasis > 0) {
+        // ROI = (Realized P&L + Unrealized P&L) / Total Cost Basis * 100
+        recalculatedROI = ((metrics.realizedPL + calculatedUnrealizedPL) / totalCostBasis) * 100;
+
+        // Handle edge cases: NaN or Infinity
+        if (isNaN(recalculatedROI) || !isFinite(recalculatedROI)) {
+          recalculatedROI = 0;
+        }
+      } else {
+        // If totalCostBasis is 0, ROI should be 0 (no investment)
+        recalculatedROI = 0;
+      }
+    }
+    
     return {
       ...metrics,
       unrealizedPL: calculatedUnrealizedPL,
       currentBalance,
+      roi: recalculatedROI,
     };
-  }, [metrics, calculatedUnrealizedPL, activeTab, realtimePortfolioValue]);
+  }, [metrics, calculatedUnrealizedPL, activeTab, realtimePortfolioValue, totalCostBasis]);
   const { data: symbolPerformance = [], isLoading: isLoadingSymbols } = useSymbolPerformance(
     userId,
     assetType,
