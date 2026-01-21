@@ -315,7 +315,9 @@ export class PortfolioSnapshotService {
       }, 0);
 
       // Calculate portfolio value
-      const portfolioValue = netCashFlow + totalMarketValue;
+      // Portfolio value = cash flow + realized P&L from closed trades + market value of open positions
+      // This ensures net_cash_flow remains constant (deposits-withdrawals) while portfolio_value reflects actual value
+      const portfolioValue = netCashFlow + totalRealizedPL + totalMarketValue;
 
       // Create snapshot DTO
       const snapshotDto: CreatePortfolioSnapshotDto = {

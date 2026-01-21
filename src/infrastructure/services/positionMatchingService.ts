@@ -303,8 +303,9 @@ export class PositionMatchingService {
       const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
       if (exitTimeMatch) {
         const [, hours, minutes] = exitTimeMatch;
-        const dateTime = new Date(tx.activity_date);
-        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        // Parse activity_date as local date components to avoid timezone conversion
+        const [year, month, day] = tx.activity_date.split('-').map(Number);
+        const dateTime = new Date(year, month - 1, day, parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
         closedAtTimestamp = dateTime.toISOString();
       }
     }
@@ -516,8 +517,9 @@ export class PositionMatchingService {
       const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
       if (exitTimeMatch) {
         const [, hours, minutes] = exitTimeMatch;
-        const dateTime = new Date(tx.activity_date);
-        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        // Parse activity_date as local date components to avoid timezone conversion
+        const [year, month, day] = tx.activity_date.split('-').map(Number);
+        const dateTime = new Date(year, month - 1, day, parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
         closedAtTimestamp = dateTime.toISOString();
       }
     }
@@ -679,8 +681,9 @@ export class PositionMatchingService {
       const exitTimeMatch = tx.notes.match(/EXIT_TIME:(\d{2}):(\d{2})/);
       if (exitTimeMatch) {
         const [, hours, minutes] = exitTimeMatch;
-        const dateTime = new Date(tx.activity_date);
-        dateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        // Parse activity_date as local date components to avoid timezone conversion
+        const [year, month, day] = tx.activity_date.split('-').map(Number);
+        const dateTime = new Date(year, month - 1, day, parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
         closedAtTimestamp = dateTime.toISOString();
       }
     }

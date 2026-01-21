@@ -97,7 +97,7 @@ export const Analytics = () => {
   const [showDateRangeModal, setShowDateRangeModal] = useState(false);
   const [showTimePeriodMenu, setShowTimePeriodMenu] = useState(false);
   const timePeriodMenuRef = useRef<HTMLDivElement>(null);
-  
+
   // Load custom date range from localStorage on mount
   useEffect(() => {
     const savedRange = DateRangeStorage.load();
@@ -168,7 +168,7 @@ export const Analytics = () => {
   const { data: metrics, isLoading, error: metricsError } = useAnalytics(userId, assetType, dateRange);
   const { data: allPositions } = usePositions(userId);
   const { portfolioValue: realtimePortfolioValue } = usePortfolioValue(userId);
-  
+
   // Log for debugging
   useEffect(() => {
     if (metricsError) {
@@ -185,7 +185,7 @@ export const Analytics = () => {
       });
     }
   }, [metrics, metricsError, assetType]);
-  
+
   // Get open positions filtered by asset type
   const openPositions = useMemo(() => {
     if (!allPositions) return [];
@@ -193,7 +193,7 @@ export const Analytics = () => {
       (p) => p.status === 'open' && (!assetType || p.asset_type === assetType)
     );
   }, [allPositions, assetType]);
-  
+
   // Get symbols for quotes
   const stockSymbols = useMemo(() => {
     const symbols = new Set<string>();
@@ -204,7 +204,7 @@ export const Analytics = () => {
     });
     return Array.from(symbols);
   }, [openPositions]);
-  
+
   const cryptoSymbols = useMemo(() => {
     const symbols = new Set<string>();
     openPositions.forEach((p) => {
@@ -214,7 +214,7 @@ export const Analytics = () => {
     });
     return Array.from(symbols);
   }, [openPositions]);
-  
+
   const optionSymbols = useMemo(() => {
     const symbols: string[] = [];
     openPositions.forEach((p) => {
@@ -234,21 +234,21 @@ export const Analytics = () => {
     });
     return symbols;
   }, [openPositions]);
-  
+
   // Fetch quotes
   const { data: stockQuotes = {} } = useStockQuotes(stockSymbols, stockSymbols.length > 0);
   const { data: cryptoQuotes = {} } = useCryptoQuotes(cryptoSymbols, cryptoSymbols.length > 0);
   const { data: optionQuotes = {} } = useOptionQuotes(optionSymbols, optionSymbols.length > 0);
-  
+
   // Calculate unrealized P&L dynamically using real-time quotes
   const calculatedUnrealizedPL = useMemo(() => {
     if (!openPositions || openPositions.length === 0) return metrics?.unrealizedPL || 0;
-    
+
     let totalUnrealizedPL = 0;
-    
+
     openPositions.forEach((position) => {
       let positionUnrealizedPL = position.unrealized_pl || 0; // Default to stored value
-      
+
       // For stocks, calculate dynamically if we have current quotes
       if (position.asset_type === 'stock' && position.symbol) {
         const quote = stockQuotes[position.symbol];
@@ -257,7 +257,7 @@ export const Analytics = () => {
           const marketValue = currentPrice * position.current_quantity;
           const costBasis = Math.abs(position.total_cost_basis || 0);
           const isLong = position.side === 'long';
-          
+
           // Calculate P&L correctly for long vs short
           positionUnrealizedPL = isLong
             ? marketValue - costBasis
@@ -272,7 +272,7 @@ export const Analytics = () => {
           const marketValue = currentPrice * position.current_quantity;
           const costBasis = Math.abs(position.total_cost_basis || 0);
           const isLong = position.side === 'long';
-          
+
           // Calculate P&L correctly for long vs short
           positionUnrealizedPL = isLong
             ? marketValue - costBasis
@@ -288,18 +288,18 @@ export const Analytics = () => {
             position.option_type as 'call' | 'put',
             position.strike_price
           );
-          
+
           const quote = optionQuotes[tradierSymbol];
-          
+
           if (quote && position.current_quantity) {
             const currentPrice = quote.last ||
               (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : position.average_opening_price || 0);
-            
+
             const multiplier = position.multiplier || 100;
             const marketValue = position.current_quantity * multiplier * currentPrice;
             const costBasis = Math.abs(position.total_cost_basis || 0);
             const isLong = position.side === 'long';
-            
+
             // Calculate P&L correctly for long vs short
             positionUnrealizedPL = isLong
               ? marketValue - costBasis
@@ -310,20 +310,24 @@ export const Analytics = () => {
         }
       }
       // For futures and other asset types, use stored unrealized_pl (already set above)
-      
+
       totalUnrealizedPL += positionUnrealizedPL;
     });
-    
+
     return totalUnrealizedPL;
   }, [openPositions, stockQuotes, cryptoQuotes, optionQuotes, metrics]);
-  
+
   // Calculate total cost basis for asset-specific ROI recalculation
   const totalCostBasis = useMemo(() => {
     if (!allPositions || activeTab === 'all') return 0;
     // For asset-specific tabs, calculate total cost basis from all positions (open + closed) of that asset type
     const costBasis = allPositions
       .filter((p) => p.asset_type === assetType)
-      .reduce((sum, position) => sum + Math.abs(position.total_cost_basis || 0), 0);
+      .reduce((sum, position) => {
+        const multiplier = position.multiplier || (position.asset_type === 'option' ? 100 : 1);
+        const costBasis = position.opening_quantity * position.average_opening_price * multiplier;
+        return sum + costBasis;
+      }, 0);
 
     return costBasis;
   }, [allPositions, activeTab, assetType]);
@@ -334,24 +338,26 @@ export const Analytics = () => {
     // For "All Assets" tab, use real-time portfolio value from usePortfolioValue
     // For asset-specific tabs, use the value from metrics (which is specific to that asset type)
     const currentBalance = activeTab === 'all' ? realtimePortfolioValue : metrics.currentBalance;
-    
+
     // Recalculate ROI for asset-specific tabs using the updated unrealized P&L
     let recalculatedROI = metrics.roi;
     if (activeTab !== 'all') {
-      if (totalCostBasis > 0) {
-        // ROI = (Realized P&L + Unrealized P&L) / Total Cost Basis * 100
-        recalculatedROI = ((metrics.realizedPL + calculatedUnrealizedPL) / totalCostBasis) * 100;
+      const investmentBasis = metrics.initialInvestment || totalCostBasis;
+
+      if (investmentBasis > 0) {
+        // ROI = (Realized P&L + Unrealized P&L) / Investment Basis * 100
+        recalculatedROI = ((metrics.realizedPL + calculatedUnrealizedPL) / investmentBasis) * 100;
 
         // Handle edge cases: NaN or Infinity
         if (isNaN(recalculatedROI) || !isFinite(recalculatedROI)) {
           recalculatedROI = 0;
         }
       } else {
-        // If totalCostBasis is 0, ROI should be 0 (no investment)
+        // If investmentBasis is 0, ROI should be 0 (no investment)
         recalculatedROI = 0;
       }
     }
-    
+
     return {
       ...metrics,
       unrealizedPL: calculatedUnrealizedPL,
@@ -424,7 +430,7 @@ export const Analytics = () => {
   // Show analytics if there are closed trades OR open positions
   // This ensures users see analytics even if they only have open positions
   const hasData = displayMetrics && (
-    (displayMetrics.totalTrades > 0) || 
+    (displayMetrics.totalTrades > 0) ||
     (openPositions && openPositions.length > 0)
   );
 
@@ -456,11 +462,10 @@ export const Analytics = () => {
                   <button
                     key={key}
                     onClick={() => handleTimePeriodChange(value)}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                      timePeriod === value
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
-                    }`}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${timePeriod === value
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                      }`}
                   >
                     {label}
                   </button>
@@ -476,51 +481,46 @@ export const Analytics = () => {
         <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-800/50 scrollbar-hide">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
-              activeTab === 'all'
-                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
-            }`}
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${activeTab === 'all'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
+              }`}
           >
             All Assets
           </button>
           <button
             onClick={() => setActiveTab('stocks')}
-            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
-              activeTab === 'stocks'
-                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
-            }`}
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${activeTab === 'stocks'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
+              }`}
           >
             Stocks
           </button>
           <button
             onClick={() => setActiveTab('options')}
-            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
-              activeTab === 'options'
-                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
-            }`}
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${activeTab === 'options'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
+              }`}
           >
             Options
           </button>
           <button
             onClick={() => setActiveTab('crypto')}
-            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
-              activeTab === 'crypto'
-                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
-            }`}
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${activeTab === 'crypto'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
+              }`}
           >
             Crypto
           </button>
           <button
             onClick={() => setActiveTab('futures')}
-            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${
-              activeTab === 'futures'
-                ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
-            }`}
+            className={`px-4 md:px-6 py-3 font-medium transition-all whitespace-nowrap touch-target ${activeTab === 'futures'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500/50'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300'
+              }`}
           >
             Futures
           </button>
@@ -1340,11 +1340,10 @@ export const Analytics = () => {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-1">
                               <span className="font-semibold text-slate-900 dark:text-slate-100">{symbol.symbol}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                symbol.winRate >= 50
-                                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                                  : 'bg-red-500/20 text-red-600 dark:text-red-400'
-                              }`}>
+                              <span className={`text-xs px-2 py-0.5 rounded ${symbol.winRate >= 50
+                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                                }`}>
                                 {symbol.winRate.toFixed(1)}% WR
                               </span>
                             </div>
@@ -1353,9 +1352,8 @@ export const Analytics = () => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className={`font-semibold ${
-                              symbol.totalPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                            }`}>
+                            <div className={`font-semibold ${symbol.totalPL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                              }`}>
                               {formatCurrency(symbol.totalPL)}
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-500">
@@ -1394,7 +1392,7 @@ export const Analytics = () => {
                             const maxPL = Math.max(...monthlyPerformance.map(m => Math.abs(m.totalPL)), 1);
                             const barWidth = (Math.abs(month.totalPL) / maxPL) * 100;
                             const isPositive = month.totalPL >= 0;
-                            
+
                             return (
                               <div key={month.month} className="flex items-center gap-3">
                                 <div className="w-20 text-xs text-slate-600 dark:text-slate-400 text-right">
@@ -1402,18 +1400,16 @@ export const Analytics = () => {
                                 </div>
                                 <div className="flex-1 relative h-8 bg-slate-200 dark:bg-slate-800/50 rounded-lg overflow-hidden">
                                   <div
-                                    className={`absolute top-0 left-0 h-full transition-all ${
-                                      isPositive ? 'bg-emerald-500/30' : 'bg-red-500/30'
-                                    }`}
+                                    className={`absolute top-0 left-0 h-full transition-all ${isPositive ? 'bg-emerald-500/30' : 'bg-red-500/30'
+                                      }`}
                                     style={{ width: `${barWidth}%` }}
                                   />
                                   <div className="absolute inset-0 flex items-center justify-between px-3">
                                     <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                                       {month.totalTrades} trades
                                     </span>
-                                    <span className={`text-xs font-semibold ${
-                                      isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                                    }`}>
+                                    <span className={`text-xs font-semibold ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                                      }`}>
                                       {formatCurrency(month.totalPL)}
                                     </span>
                                   </div>
@@ -1428,9 +1424,9 @@ export const Analytics = () => {
                             <div className="text-xs text-slate-500 dark:text-slate-500 mb-1">Best Month</div>
                             <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                               {monthlyPerformance.length > 0
-                                ? monthlyPerformance.reduce((best, m) => 
-                                    m.totalPL > best.totalPL ? m : best
-                                  ).monthLabel
+                                ? monthlyPerformance.reduce((best, m) =>
+                                  m.totalPL > best.totalPL ? m : best
+                                ).monthLabel
                                 : '—'}
                             </div>
                           </div>
@@ -1438,9 +1434,9 @@ export const Analytics = () => {
                             <div className="text-xs text-slate-500 dark:text-slate-500 mb-1">Worst Month</div>
                             <div className="text-sm font-semibold text-red-600 dark:text-red-400">
                               {monthlyPerformance.length > 0
-                                ? monthlyPerformance.reduce((worst, m) => 
-                                    m.totalPL < worst.totalPL ? m : worst
-                                  ).monthLabel
+                                ? monthlyPerformance.reduce((worst, m) =>
+                                  m.totalPL < worst.totalPL ? m : worst
+                                ).monthLabel
                                 : '—'}
                             </div>
                           </div>
@@ -1449,8 +1445,8 @@ export const Analytics = () => {
                             <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                               {monthlyPerformance.length > 0
                                 ? formatCurrency(
-                                    monthlyPerformance.reduce((sum, m) => sum + m.totalPL, 0) / monthlyPerformance.length
-                                  )
+                                  monthlyPerformance.reduce((sum, m) => sum + m.totalPL, 0) / monthlyPerformance.length
+                                )
                                 : '—'}
                             </div>
                           </div>

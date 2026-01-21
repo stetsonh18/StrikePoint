@@ -21,7 +21,7 @@ export function useDailyPerformanceCalendar(
     queryKey: ['daily-performance-calendar', userId, assetType, dateRange],
     queryFn: () => PerformanceMetricsService.calculateDailyPerformanceCalendar(userId, assetType, dateRange),
     enabled: !!userId,
-    staleTime: 60 * 1000, // Cache for 1 minute
+    staleTime: 0, // Always fetch fresh data
   });
 }
 

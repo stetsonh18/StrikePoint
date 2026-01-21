@@ -56,7 +56,9 @@ export const DailyPerformanceCalendar = React.memo(({
     // Create a map of date -> P&L and trades (filter by selected month)
     const dataMap = new Map<string, { pl: number; trades: number }>();
     data.forEach((entry) => {
-      const entryDate = new Date(entry.date + 'T00:00:00'); // Add time to avoid timezone issues
+      // Parse date string as local date (YYYY-MM-DD format)
+      const [year, month, day] = entry.date.split('-').map(Number);
+      const entryDate = new Date(year, month - 1, day);
       if (entryDate.getFullYear() === currentYear && entryDate.getMonth() === currentMonth) {
         dataMap.set(entry.date, { pl: entry.pl, trades: entry.trades });
       }
@@ -369,12 +371,16 @@ export const DailyPerformanceCalendar = React.memo(({
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                Trades on {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }) : ''}
+                Trades on {selectedDate ? (() => {
+                  const [year, month, day] = selectedDate.split('-').map(Number);
+                  const date = new Date(year, month - 1, day);
+                  return date.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  });
+                })() : ''}
               </h3>
               <button
                 onClick={() => {

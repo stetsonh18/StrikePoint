@@ -28,6 +28,7 @@ export interface WinRateMetrics {
   roi: number; // Return on Investment percentage
   currentBalance: number; // Current portfolio balance
   totalFees: number; // Total trading fees
+  initialInvestment: number; // Initial investment (sum of deposits)
 }
 
 export interface SymbolPerformance {
@@ -96,10 +97,10 @@ export class PerformanceMetricsService {
       if (!strategy.legs || strategy.legs.length === 0) {
         return;
       }
-      
+
       const strategyPositions: Position[] = [];
       const addedPositionIds = new Set<string>();
-      
+
       strategy.legs.forEach((leg) => {
         if (leg.position_id) {
           const position = positionIdMap.get(leg.position_id);
@@ -110,7 +111,7 @@ export class PerformanceMetricsService {
           }
         }
       });
-      
+
       if (strategyPositions.length > 0) {
         positionsByStrategyId.set(strategy.id, strategyPositions);
       }
@@ -345,7 +346,7 @@ export class PerformanceMetricsService {
     // Get latest portfolio snapshot to use actual portfolio value (matching ROI chart logic)
     const latestSnapshot = await PortfolioSnapshotRepository.getMostRecent(userId);
     let portfolioValue = 0;
-    
+
     if (latestSnapshot) {
       portfolioValue = latestSnapshot.portfolio_value;
     } else {
@@ -400,6 +401,7 @@ export class PerformanceMetricsService {
         roi, // Use calculated ROI instead of hardcoding to 0
         currentBalance: portfolioValue,
         totalFees,
+        initialInvestment: Math.abs(investmentBase),
       };
     }
 
@@ -433,6 +435,7 @@ export class PerformanceMetricsService {
       roi,
       currentBalance: portfolioValue,
       totalFees,
+      initialInvestment: Math.abs(investmentBase),
     };
   }
 
@@ -511,18 +514,32 @@ export class PerformanceMetricsService {
     // For asset-specific ROI, calculate based on cost basis of positions in that asset type
     // Get all positions (open + closed) for this asset type to calculate total cost basis
     const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
-    
+
     // Calculate total cost basis: sum of absolute cost basis for all positions in this asset type
     // This represents the total capital deployed in this asset type
     const totalCostBasis = allPositionsForAssetType.reduce((sum, position) => {
-      return sum + Math.abs(position.total_cost_basis || 0);
+      const multiplier = position.multiplier || (position.asset_type === 'option' ? 100 : 1);
+      const costBasis = position.opening_quantity * position.average_opening_price * multiplier;
+      return sum + costBasis;
     }, 0);
+
+    // Calculate initial investment (sum of deposits) - matching ROI chart logic
+    const cashTransactions = await CashTransactionRepository.getByUserId(userId);
+    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+    const initialInvestment = cashTransactions
+      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+      .filter((tx) => (tx.amount || 0) > 0)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
     // Get latest portfolio snapshot to use actual portfolio value
     // For asset-specific calculations, use breakdown value WITHOUT net_cash_flow
     const latestSnapshot = await PortfolioSnapshotRepository.getMostRecent(userId);
+
+    const investmentBase = initialInvestment ||
+      (latestSnapshot?.net_cash_flow ?? latestSnapshot?.portfolio_value ?? 0);
+
     let portfolioValue = 0;
-    
+
     if (latestSnapshot) {
       const breakdown = latestSnapshot.positions_breakdown;
       if (assetType === 'stock') {
@@ -575,6 +592,7 @@ export class PerformanceMetricsService {
         roi, // Use calculated ROI instead of hardcoding to 0
         currentBalance: portfolioValue,
         totalFees,
+        initialInvestment: Math.abs(investmentBase),
       };
     }
 
@@ -608,6 +626,7 @@ export class PerformanceMetricsService {
       roi,
       currentBalance: portfolioValue,
       totalFees,
+      initialInvestment: Math.abs(investmentBase),
     };
   }
 
@@ -1784,12 +1803,12 @@ export class PerformanceMetricsService {
     const latestSnapshotDate = sortedSnapshots.length > 0 ? sortedSnapshots[sortedSnapshots.length - 1].snapshot_date : null;
     let latestRealizedPL = 0;
     let latestUnrealizedPL = 0;
-    
+
     if (latestSnapshotDate && !assetType) {
       const allTrades = await this.getNormalizedTrades(userId);
       const realizedTrades = allTrades.filter(t => this.isRealizedTrade(t));
       const openTrades = allTrades.filter(t => t.status !== 'closed');
-      
+
       latestRealizedPL = realizedTrades.reduce((sum, t) => sum + t.realizedPL, 0);
       latestUnrealizedPL = openTrades.reduce((sum, t) => sum + t.unrealizedPL, 0);
     }
@@ -1828,11 +1847,11 @@ export class PerformanceMetricsService {
         // This MUST match the statcard calculation exactly
         // For the latest snapshot, use the same method as statcard (normalized trades)
         // For historical snapshots, use portfolio value (which includes all P&L up to that date)
-        
+
         if (investmentBase !== 0) {
           // Check if this is the latest snapshot
           const isLatestSnapshot = s.snapshot_date === latestSnapshotDate;
-          
+
           if (isLatestSnapshot && latestSnapshotDate) {
             // For latest snapshot, use normalized trades to match statcard exactly
             const totalPL = latestRealizedPL + latestUnrealizedPL;
@@ -1893,9 +1912,9 @@ export class PerformanceMetricsService {
 
     realizedTrades.forEach((trade) => {
       const closedDate = this.getTradeClosedDate(trade);
-      
+
       let dateKey: string | null = null;
-      
+
       // For strategies that have been manually corrected with fix-strategy-dates.sql,
       // prioritize the strategy's closed_at date over transaction dates
       if (trade.strategyId && trade.closedAt) {
@@ -1949,20 +1968,20 @@ export class PerformanceMetricsService {
   }> {
     // Get all normalized trades
     const allTrades = await this.getNormalizedTrades(userId);
-    
+
     // Filter trades closed on or before the snapshot date
     const snapshotDateObj = new Date(snapshotDate);
     snapshotDateObj.setHours(23, 59, 59, 999); // End of day
-    
+
     const closedTradesUpToDate = allTrades.filter((trade) => {
       if (!this.isRealizedTrade(trade)) return false;
       const closedDate = this.getTradeClosedDate(trade);
       return closedDate && closedDate <= snapshotDateObj;
     });
-    
+
     // Calculate realized PL from closed trades
     const totalRealizedPL = closedTradesUpToDate.reduce((sum, trade) => sum + trade.realizedPL, 0);
-    
+
     // For unrealized PL, we need to get positions that were open on that date
     // This is tricky because we don't have historical position states
     // So we'll use the snapshot's portfolio_value to derive it
@@ -1973,16 +1992,16 @@ export class PerformanceMetricsService {
       .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
       .filter((tx) => (tx.amount || 0) > 0)
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
     // Portfolio Value = Deposits + Realized PL + Unrealized PL
     // So: Unrealized PL = Portfolio Value - Deposits - Realized PL
     const portfolioValue = snapshot?.portfolio_value || 0;
     const totalUnrealizedPL = portfolioValue - totalDeposits - totalRealizedPL;
-    
+
     // Calculate ROI
     const totalPL = totalRealizedPL + totalUnrealizedPL;
     const roi = totalDeposits > 0 ? (totalPL / Math.abs(totalDeposits)) * 100 : 0;
-    
+
     return {
       totalRealizedPL,
       totalUnrealizedPL,
@@ -1995,11 +2014,14 @@ export class PerformanceMetricsService {
    * Format a Date object as local date string (YYYY-MM-DD)
    */
   /**
-   * Format a Date object as ISO date string (YYYY-MM-DD)
-   * Uses UTC components to ensure consistency across timezones
+   * Format a Date object as ISO date string (YYYY-MM-DD) using local timezone
+   * This ensures that trades appear on the correct day in the user's timezone
    */
   private static formatLocalDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   /**
