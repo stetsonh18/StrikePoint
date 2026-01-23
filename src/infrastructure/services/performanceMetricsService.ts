@@ -54,6 +54,19 @@ export interface MonthlyPerformance {
 }
 
 type TradeStatus = 'open' | 'closed' | 'partial';
+export type PortfolioHistoryPeriod = '1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
+
+export interface PortfolioHistoryData {
+  date: string;
+  portfolioValue: number;
+  netCashFlow: number;
+  totalMarketValue: number;
+  realizedPL: number;
+  unrealizedPL: number;
+  dailyPLChange: number | null;
+  dailyPLPercent: number | null;
+  totalDeposits: number;
+}
 
 interface NormalizedTrade {
   id: string;
@@ -142,11 +155,18 @@ export class PerformanceMetricsService {
     const updatedAt = strategy?.updated_at || this.getLatestDate(positions.map((p) => p.updated_at));
     const expirationDate =
       strategy?.expiration_date || positions.find((p) => p.expiration_date)?.expiration_date || null;
-    // For strategies, use the strategy's realized_pl (it's the correct combined value)
-    // For individual positions, sum their realized_pl
-    const realizedPL = strategy?.realized_pl !== undefined && strategy.realized_pl !== null
-      ? strategy.realized_pl
-      : positions.reduce((sum, position) => sum + (position.realized_pl || 0), 0);
+    const positionsRealizedPL = positions.reduce(
+      (sum, position) => sum + this.getAdjustedPositionRealizedPL(position),
+      0
+    );
+    // For strategies, prefer the strategy's realized_pl when it is populated.
+    // If the strategy's realized_pl is 0 but legs show P&L (e.g., expired credit spreads),
+    // fall back to the legs' realized P&L to avoid missing profits.
+    const strategyRealizedPL = strategy?.realized_pl ?? null;
+    let realizedPL = positionsRealizedPL;
+    if (strategyRealizedPL !== null && (strategyRealizedPL !== 0 || positionsRealizedPL === 0)) {
+      realizedPL = strategyRealizedPL;
+    }
     const unrealizedPL = positions.reduce((sum, position) => sum + (position.unrealized_pl || 0), 0);
     const status = this.inferTradeStatus(positions, strategy);
     const direction = strategy?.direction || primaryPosition.side || null;
@@ -168,6 +188,24 @@ export class PerformanceMetricsService {
       status,
       legs: positions,
     };
+  }
+
+  private static getAdjustedPositionRealizedPL(position: Position): number {
+    let realizedPL = position.realized_pl || 0;
+
+    // Fix for expired options that were closed without realized P&L populated.
+    // Use total_cost_basis to reflect the net credit/debit on expiration.
+    if (
+      position.asset_type === 'option' &&
+      position.status === 'expired' &&
+      realizedPL === 0 &&
+      position.total_cost_basis &&
+      position.total_cost_basis !== 0
+    ) {
+      realizedPL = position.total_cost_basis;
+    }
+
+    return realizedPL;
   }
 
   private static getPrimaryAssetType(positions: Position[]): AssetType {
@@ -209,12 +247,14 @@ export class PerformanceMetricsService {
       return 'partial';
     }
 
-    const allClosed = positions.every((position) => position.status === 'closed');
-    if (allClosed) {
+    // Check if all positions are in a finalized state (closed, expired, assigned, exercised)
+    const finalizedStatuses = ['closed', 'expired', 'assigned', 'exercised'];
+    const allFinalized = positions.every((position) => finalizedStatuses.includes(position.status));
+    if (allFinalized) {
       return 'closed';
     }
-    const someClosed = positions.some((position) => position.status === 'closed');
-    if (someClosed) {
+    const someFinalized = positions.some((position) => finalizedStatuses.includes(position.status));
+    if (someFinalized) {
       return 'partial';
     }
     return 'open';
@@ -758,8 +798,10 @@ export class PerformanceMetricsService {
   static async calculatePLOverTime(
     userId: string,
     assetType?: AssetType,
-    days?: number
+    days?: number,
+    options?: { useSnapshotsForUnrealized?: boolean }
   ): Promise<Array<{ date: string; cumulativePL: number; realizedPL: number; unrealizedPL: number }>> {
+    const useSnapshotsForUnrealized = options?.useSnapshotsForUnrealized ?? true;
     const trades = await this.getNormalizedTrades(userId);
     const filteredTrades = this.filterTradesByAssetType(trades, assetType);
     const realizedTrades = filteredTrades.filter((trade) => this.isRealizedTrade(trade));
@@ -882,21 +924,23 @@ export class PerformanceMetricsService {
       )
       : 0;
 
-    // Query portfolio snapshots for the date range to get accurate unrealized P&L
-    const snapshots = await PortfolioSnapshotRepository.getDateRange(
-      userId,
-      formatDateKey(rangeStartDate),
-      formatDateKey(rangeEndDate)
-    );
-
-    // Create a map of snapshot unrealized P&L by date
     const snapshotUnrealizedMap = new Map<string, number>();
-    snapshots.forEach((snapshot) => {
-      const dateKey = snapshot.snapshot_date;
-      // Only use snapshot for unrealized P&L (not realized)
-      // TODO: Future enhancement - add per-asset unrealized P&L to snapshot schema
-      snapshotUnrealizedMap.set(dateKey, snapshot.total_unrealized_pl);
-    });
+    if (useSnapshotsForUnrealized) {
+      // Query portfolio snapshots for the date range to get accurate unrealized P&L
+      const snapshots = await PortfolioSnapshotRepository.getDateRange(
+        userId,
+        formatDateKey(rangeStartDate),
+        formatDateKey(rangeEndDate)
+      );
+
+      // Create a map of snapshot unrealized P&L by date
+      snapshots.forEach((snapshot) => {
+        const dateKey = snapshot.snapshot_date;
+        // Only use snapshot for unrealized P&L (not realized)
+        // TODO: Future enhancement - add per-asset unrealized P&L to snapshot schema
+        snapshotUnrealizedMap.set(dateKey, snapshot.total_unrealized_pl);
+      });
+    }
 
     let cumulativeRealized = historicalRealizedPL;
     let cumulativeUnrealized = 0;
@@ -1633,50 +1677,46 @@ export class PerformanceMetricsService {
     assetType?: AssetType,
     days?: number
   ): Promise<Array<{ date: string; balance: number; netCashFlow: number }>> {
-    const allSnapshots = await PortfolioSnapshotRepository.getAll(userId);
+    const [plOverTime, cashTransactions] = await Promise.all([
+      this.calculatePLOverTime(userId, assetType, days, { useSnapshotsForUnrealized: false }),
+      CashTransactionRepository.getByUserId(userId),
+    ]);
 
-    if (allSnapshots.length === 0) {
+    const dailyCashFlowMap = this.buildDailyCashFlowMap(cashTransactions);
+    const plMap = new Map(plOverTime.map((entry) => [entry.date, entry]));
+    const allDates = new Set<string>([
+      ...plOverTime.map((entry) => entry.date),
+      ...dailyCashFlowMap.keys(),
+    ]);
+
+    if (allDates.size === 0) {
       return [];
     }
 
-    // Filter by date range if specified
-    let filteredSnapshots = allSnapshots;
-    if (days) {
-      const latestDate = new Date(allSnapshots[allSnapshots.length - 1].snapshot_date);
-      const startDate = new Date(latestDate);
-      startDate.setDate(startDate.getDate() - days);
-      const startDateStr = startDate.toISOString().split('T')[0];
+    const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+    const latestDate = sortedDates[sortedDates.length - 1];
+    const startDate = days
+      ? this.addDaysString(latestDate, -(days - 1))
+      : sortedDates[0];
 
-      filteredSnapshots = allSnapshots.filter(
-        (s) => s.snapshot_date >= startDateStr
-      );
-    }
+    let runningPL = 0;
+    let runningCashFlow = 0;
+    const result: Array<{ date: string; balance: number; netCashFlow: number }> = [];
 
-    // If asset type is specified, we need to filter by positions breakdown
-    // For now, we'll use total portfolio value, but could filter by asset type breakdown
-    const result = filteredSnapshots.map((s) => {
-      let balance = s.portfolio_value;
-
-      // If asset type specified, use breakdown value
-      if (assetType) {
-        const breakdown = s.positions_breakdown;
-        if (assetType === 'stock') {
-          balance = breakdown.stocks.value + s.net_cash_flow;
-        } else if (assetType === 'option') {
-          balance = breakdown.options.value + s.net_cash_flow;
-        } else if (assetType === 'crypto') {
-          balance = breakdown.crypto.value + s.net_cash_flow;
-        } else if (assetType === 'futures') {
-          balance = breakdown.futures.value + s.net_cash_flow;
-        }
+    for (const date of this.iterateDateRange(startDate, latestDate)) {
+      const plEntry = plMap.get(date);
+      if (plEntry) {
+        runningPL = plEntry.cumulativePL;
       }
 
-      return {
-        date: s.snapshot_date,
-        balance,
-        netCashFlow: s.net_cash_flow,
-      };
-    });
+      runningCashFlow += dailyCashFlowMap.get(date) ?? 0;
+
+      result.push({
+        date,
+        balance: runningCashFlow + runningPL,
+        netCashFlow: runningCashFlow,
+      });
+    }
 
     return result;
   }
@@ -1689,191 +1729,158 @@ export class PerformanceMetricsService {
     assetType?: AssetType,
     days?: number
   ): Promise<Array<{ date: string; roi: number; portfolioValue: number; netCashFlow: number }>> {
-    const allSnapshots = await PortfolioSnapshotRepository.getAll(userId);
+    const [plOverTime, cashTransactions] = await Promise.all([
+      this.calculatePLOverTime(userId, assetType, days, { useSnapshotsForUnrealized: false }),
+      CashTransactionRepository.getByUserId(userId),
+    ]);
 
-    if (allSnapshots.length === 0) {
+    const dailyCashFlowMap = this.buildDailyCashFlowMap(cashTransactions);
+    const plMap = new Map(plOverTime.map((entry) => [entry.date, entry]));
+    const allDates = new Set<string>([
+      ...plOverTime.map((entry) => entry.date),
+      ...dailyCashFlowMap.keys(),
+    ]);
+
+    if (allDates.size === 0) {
       return [];
     }
 
-    // Filter by date range if specified
-    let filteredSnapshots = allSnapshots;
-    if (days) {
-      const latestDate = new Date(allSnapshots[allSnapshots.length - 1].snapshot_date);
-      const startDate = new Date(latestDate);
-      startDate.setDate(startDate.getDate() - days);
-      const startDateStr = startDate.toISOString().split('T')[0];
+    const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+    const latestDate = sortedDates[sortedDates.length - 1];
+    const startDate = days
+      ? this.addDaysString(latestDate, -(days - 1))
+      : sortedDates[0];
 
-      filteredSnapshots = allSnapshots.filter(
-        (s) => s.snapshot_date >= startDateStr
-      );
-    }
-
-    // Get initial net cash flow (first snapshot or earliest)
-    const sortedSnapshots = [...filteredSnapshots].sort(
-      (a, b) => a.snapshot_date.localeCompare(b.snapshot_date)
-    );
-
-    // For asset-specific ROI, calculate based on all positions (open + closed)
-    // and get total realized P&L and total cost basis
-    // For overall portfolio, use deposits as before
     let investmentBase = 0;
-    let totalRealizedPL = 0;
-    let totalCostBasis = 0; // Total amount invested (for calculating ROI when positions are closed)
-
     if (assetType) {
-      // Get all positions for this asset type
       const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
-
-      // Calculate total cost basis (all positions, open and closed)
-      totalCostBasis = allPositionsForAssetType.reduce((sum, position) => {
+      investmentBase = allPositionsForAssetType.reduce((sum, position) => {
         return sum + Math.abs(position.total_cost_basis || 0);
       }, 0);
-
-      // Investment base = cost basis of OPEN positions (for current unrealized P&L calc)
-      const openPositions = allPositionsForAssetType.filter(p => p.status === 'open');
-      investmentBase = openPositions.reduce((sum, position) => {
-        return sum + Math.abs(position.total_cost_basis || 0);
-      }, 0);
-
-      // Get total realized P&L from CLOSED positions (that aren't part of a strategy)
-      const closedPositions = allPositionsForAssetType.filter(p =>
-        (p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised') &&
-        !p.strategy_id // Exclude positions that are part of a strategy to avoid double-counting
-      );
-      totalRealizedPL = closedPositions.reduce((sum, position) => {
-        return sum + (position.realized_pl || 0);
-      }, 0);
-
-      // Get realized P&L from closed strategies
-      // Note: Strategies are typically for options, but we check positions to be sure
-      const allStrategies = await StrategyRepository.getAll(userId);
-      const closedStrategies = allStrategies.filter(s =>
-        s.status === 'closed' || s.status === 'expired' || s.status === 'assigned'
-      );
-
-      // For each closed strategy, check if its positions match the asset type
-      for (const strategy of closedStrategies) {
-        const strategyPositions = allPositionsForAssetType.filter(p => p.strategy_id === strategy.id);
-        if (strategyPositions.length > 0) {
-          // This strategy has positions of the requested asset type
-          totalRealizedPL += strategy.realized_pl || 0;
-        }
-      }
     } else {
-      // For overall portfolio, use net cash flow (deposits - withdrawals) as investment base
-      const cashTransactions = await CashTransactionRepository.getByUserId(userId);
       const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
-      const withdrawalCodes = ['WITHDRAWAL', 'WITHDRAW', 'WDR', 'ACH_OUT'];
-
-      const totalDeposits = cashTransactions
+      investmentBase = cashTransactions
         .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
         .filter((tx) => (tx.amount || 0) > 0)
         .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-
-      const totalWithdrawals = cashTransactions
-        .filter((tx) => withdrawalCodes.includes(tx.transaction_code || ''))
-        .filter((tx) => (tx.amount || 0) < 0) // Withdrawals are negative
-        .reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
-
-      // Calculate total realized P&L from all closed positions and strategies
-      const allPositions = await PositionRepository.getAll(userId);
-      const closedPositions = allPositions.filter(p =>
-        (p.status === 'closed' || p.status === 'expired' || p.status === 'assigned' || p.status === 'exercised') &&
-        !p.strategy_id // Exclude positions that are part of a strategy to avoid double-counting
-      );
-      totalRealizedPL = closedPositions.reduce((sum, position) => {
-        return sum + (position.realized_pl || 0);
-      }, 0);
-
-      // Get realized P&L from closed strategies
-      const allStrategies = await StrategyRepository.getAll(userId);
-      const closedStrategies = allStrategies.filter(s =>
-        s.status === 'closed' || s.status === 'expired' || s.status === 'assigned'
-      );
-      totalRealizedPL += closedStrategies.reduce((sum, strategy) => {
-        return sum + (strategy.realized_pl || 0);
-      }, 0);
-
-      // Use initial investment (deposits only) as the investment base
-      // This matches the stat card calculation exactly
-      investmentBase = totalDeposits;
     }
 
-    // For the latest snapshot, get normalized trades to match statcard calculation
-    const latestSnapshotDate = sortedSnapshots.length > 0 ? sortedSnapshots[sortedSnapshots.length - 1].snapshot_date : null;
-    let latestRealizedPL = 0;
-    let latestUnrealizedPL = 0;
+    let runningPL = 0;
+    let runningCashFlow = 0;
+    const result: Array<{ date: string; roi: number; portfolioValue: number; netCashFlow: number }> = [];
 
-    if (latestSnapshotDate && !assetType) {
-      const allTrades = await this.getNormalizedTrades(userId);
-      const realizedTrades = allTrades.filter(t => this.isRealizedTrade(t));
-      const openTrades = allTrades.filter(t => t.status !== 'closed');
-
-      latestRealizedPL = realizedTrades.reduce((sum, t) => sum + t.realizedPL, 0);
-      latestUnrealizedPL = openTrades.reduce((sum, t) => sum + t.unrealizedPL, 0);
-    }
-
-    const result = sortedSnapshots.map((s) => {
-      let portfolioValue = s.portfolio_value;
-
-      // If asset type specified, use breakdown value WITHOUT net_cash_flow
-      if (assetType) {
-        const breakdown = s.positions_breakdown;
-        if (assetType === 'stock') {
-          portfolioValue = breakdown.stocks.value;
-        } else if (assetType === 'option') {
-          portfolioValue = breakdown.options.value;
-        } else if (assetType === 'crypto') {
-          portfolioValue = breakdown.crypto.value;
-        } else if (assetType === 'futures') {
-          portfolioValue = breakdown.futures.value;
-        }
+    for (const date of this.iterateDateRange(startDate, latestDate)) {
+      const plEntry = plMap.get(date);
+      if (plEntry) {
+        runningPL = plEntry.cumulativePL;
       }
 
-      // Calculate ROI
-      // For asset-specific: ROI = (realizedPL + unrealizedPL) / totalCostBasis
-      // For overall portfolio: ROI = Total P&L / Initial Investment * 100
+      runningCashFlow += dailyCashFlowMap.get(date) ?? 0;
+      const portfolioValue = runningCashFlow + runningPL;
+      const roi = investmentBase > 0 ? (runningPL / Math.abs(investmentBase)) * 100 : 0;
 
-      let roi = 0;
-      if (assetType) {
-        if (totalCostBasis > 0) {
-          // ROI = (realized P&L from closed + unrealized P&L from open) / total cost basis
-          const unrealizedPL = investmentBase > 0 ? (portfolioValue - investmentBase) : 0;
-          const totalPL = totalRealizedPL + unrealizedPL;
-          roi = (totalPL / Math.abs(totalCostBasis)) * 100;
-        }
-      } else {
-        // For overall portfolio: ROI = (Realized P&L + Unrealized P&L) / Initial Investment * 100
-        // This MUST match the statcard calculation exactly
-        // For the latest snapshot, use the same method as statcard (normalized trades)
-        // For historical snapshots, use portfolio value (which includes all P&L up to that date)
-
-        if (investmentBase !== 0) {
-          // Check if this is the latest snapshot
-          const isLatestSnapshot = s.snapshot_date === latestSnapshotDate;
-
-          if (isLatestSnapshot && latestSnapshotDate) {
-            // For latest snapshot, use normalized trades to match statcard exactly
-            const totalPL = latestRealizedPL + latestUnrealizedPL;
-            roi = (totalPL / Math.abs(investmentBase)) * 100;
-          } else {
-            // For historical snapshots, use the snapshot's stored realized and unrealized PL
-            // This matches the same formula as statcard: (Realized PL + Unrealized PL) / Deposits
-            const snapshotRealizedPL = s.total_realized_pl || 0;
-            const snapshotUnrealizedPL = s.total_unrealized_pl || 0;
-            const totalPL = snapshotRealizedPL + snapshotUnrealizedPL;
-            roi = (totalPL / Math.abs(investmentBase)) * 100;
-          }
-        }
-      }
-
-      return {
-        date: s.snapshot_date,
+      result.push({
+        date,
         roi,
         portfolioValue,
-        netCashFlow: s.net_cash_flow,
-      };
-    });
+        netCashFlow: runningCashFlow,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Calculate portfolio history without snapshots.
+   */
+  static async calculatePortfolioHistory(
+    userId: string,
+    timePeriod: PortfolioHistoryPeriod = '1M'
+  ): Promise<PortfolioHistoryData[]> {
+    const [plOverTime, cashTransactions] = await Promise.all([
+      this.calculatePLOverTime(userId, undefined, undefined, { useSnapshotsForUnrealized: false }),
+      CashTransactionRepository.getByUserId(userId),
+    ]);
+
+    const dailyCashFlowMap = this.buildDailyCashFlowMap(cashTransactions);
+    const contributionEvents = this.buildContributionEvents(cashTransactions);
+    const allDates = new Set<string>([
+      ...plOverTime.map((entry) => entry.date),
+      ...dailyCashFlowMap.keys(),
+    ]);
+
+    if (allDates.size === 0) {
+      return [];
+    }
+
+    const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+    const latestDate = sortedDates[sortedDates.length - 1];
+    const earliestDate = sortedDates[0];
+    let startDate = this.getStartDateForPeriod(latestDate, earliestDate, timePeriod);
+    if (startDate < earliestDate) {
+      startDate = earliestDate;
+    }
+
+    const plSeries = [...plOverTime].sort((a, b) => a.date.localeCompare(b.date));
+    const plMap = new Map(plSeries.map((entry) => [entry.date, entry]));
+
+    let runningPL = 0;
+    let runningRealized = 0;
+    let runningUnrealized = 0;
+    for (const entry of plSeries) {
+      if (entry.date >= startDate) {
+        break;
+      }
+      runningPL = entry.cumulativePL;
+      runningRealized = entry.realizedPL;
+      runningUnrealized = entry.unrealizedPL;
+    }
+
+    let runningCashFlow = this.sumCashFlowBeforeDate(dailyCashFlowMap, startDate);
+    let runningDeposits = this.sumContributionBeforeDate(contributionEvents, startDate);
+    let previousPortfolioValue: number | null = null;
+
+    const result: PortfolioHistoryData[] = [];
+    let contributionIndex = this.getContributionStartIndex(contributionEvents, startDate);
+
+    for (const date of this.iterateDateRange(startDate, latestDate)) {
+      const plEntry = plMap.get(date);
+      if (plEntry) {
+        runningPL = plEntry.cumulativePL;
+        runningRealized = plEntry.realizedPL;
+        runningUnrealized = plEntry.unrealizedPL;
+      }
+
+      runningCashFlow += dailyCashFlowMap.get(date) ?? 0;
+
+      while (contributionIndex < contributionEvents.length &&
+        contributionEvents[contributionIndex].date <= date) {
+        runningDeposits += contributionEvents[contributionIndex].amount;
+        contributionIndex++;
+      }
+
+      const portfolioValue = runningCashFlow + runningPL;
+      const dailyPLChange = previousPortfolioValue === null
+        ? null
+        : portfolioValue - previousPortfolioValue;
+      const dailyPLPercent = previousPortfolioValue
+        ? (dailyPLChange / Math.abs(previousPortfolioValue)) * 100
+        : null;
+
+      result.push({
+        date,
+        portfolioValue,
+        netCashFlow: runningCashFlow,
+        totalMarketValue: portfolioValue - runningCashFlow,
+        realizedPL: runningRealized,
+        unrealizedPL: runningUnrealized,
+        dailyPLChange,
+        dailyPLPercent,
+        totalDeposits: runningDeposits,
+      });
+
+      previousPortfolioValue = portfolioValue;
+    }
 
     return result;
   }
@@ -1915,20 +1922,21 @@ export class PerformanceMetricsService {
 
       let dateKey: string | null = null;
 
-      // For strategies that have been manually corrected with fix-strategy-dates.sql,
-      // prioritize the strategy's closed_at date over transaction dates
-      if (trade.strategyId && trade.closedAt) {
-        // Strategy with a closed_at date - use it directly (it's been corrected)
-        dateKey = this.formatLocalDate(new Date(trade.closedAt));
-      } else {
-        // For individual positions or strategies without closed_at, use transaction dates
-        const legClosingDates = trade.legs
-          .flatMap((leg) => leg.closing_transaction_ids || [])
-          .map((id) => (id ? closingTransactionDates[id] : undefined))
-          .filter((date): date is string => Boolean(date));
+      // Prioritize transaction activity_date (YYYY-MM-DD format, timezone-independent)
+      // over closed_at timestamps to avoid timezone conversion issues
+      const legClosingDates = trade.legs
+        .flatMap((leg) => leg.closing_transaction_ids || [])
+        .map((id) => (id ? closingTransactionDates[id] : undefined))
+        .filter((date): date is string => Boolean(date));
 
-        const latestLegDate = legClosingDates.length > 0 ? this.getLatestDate(legClosingDates) : null;
-        dateKey = latestLegDate || (closedDate ? this.formatLocalDate(closedDate) : null);
+      if (legClosingDates.length > 0) {
+        // Use transaction activity_date - already in YYYY-MM-DD format
+        dateKey = this.getLatestDate(legClosingDates);
+      } else if (trade.closedAt) {
+        // Fall back to closed_at - extract date portion without timezone conversion
+        dateKey = trade.closedAt.split('T')[0];
+      } else if (closedDate) {
+        dateKey = this.formatLocalDate(closedDate);
       }
 
       if (!dateKey) {
@@ -2024,6 +2032,162 @@ export class PerformanceMetricsService {
     return `${year}-${month}-${day}`;
   }
 
+  private static buildDailyCashFlowMap(transactions: Awaited<ReturnType<typeof CashTransactionRepository.getByUserId>>) {
+    const excludedCodes = new Set(['FUTURES_MARGIN', 'FUTURES_MARGIN_RELEASE']);
+    const cashFlowMap = new Map<string, number>();
+
+    const normalizeDate = (value?: string | null): string | null => {
+      if (!value) return null;
+      return value.split('T')[0];
+    };
+
+    transactions.forEach((tx) => {
+      if (excludedCodes.has(tx.transaction_code || '')) {
+        return;
+      }
+
+      const date =
+        normalizeDate(tx.activity_date) ||
+        normalizeDate(tx.process_date) ||
+        normalizeDate(tx.settle_date) ||
+        normalizeDate(tx.created_at) ||
+        normalizeDate(tx.updated_at);
+
+      if (!date) {
+        return;
+      }
+
+      const amount = tx.amount || 0;
+      if (amount === 0) {
+        return;
+      }
+
+      cashFlowMap.set(date, (cashFlowMap.get(date) ?? 0) + amount);
+    });
+
+    return cashFlowMap;
+  }
+
+  private static buildContributionEvents(transactions: Awaited<ReturnType<typeof CashTransactionRepository.getByUserId>>) {
+    const depositCodes = new Set(['DEPOSIT', 'DEP', 'ACH', 'ACH_IN', 'DCF', 'RTP', 'WIRE', 'WIRE_IN', 'TRANSFER_IN']);
+    const withdrawalCodes = new Set(['WITHDRAWAL', 'WD', 'WDRL', 'ACH_OUT', 'WIRE_OUT', 'WT', 'TRANSFER_OUT']);
+
+    const normalizeDate = (value?: string | null): string | null => {
+      if (!value) return null;
+      return value.split('T')[0];
+    };
+
+    return transactions
+      .map((tx) => {
+        const code = (tx.transaction_code || '').toUpperCase();
+        const date =
+          normalizeDate(tx.activity_date) ||
+          normalizeDate(tx.process_date) ||
+          normalizeDate(tx.settle_date) ||
+          normalizeDate(tx.created_at) ||
+          normalizeDate(tx.updated_at);
+        if (!date) {
+          return null;
+        }
+
+        const rawAmount = Math.abs(tx.amount || 0);
+        if (rawAmount === 0) {
+          return null;
+        }
+
+        if (depositCodes.has(code)) {
+          return { date, amount: rawAmount };
+        }
+
+        if (withdrawalCodes.has(code)) {
+          return { date, amount: -rawAmount };
+        }
+
+        return null;
+      })
+      .filter((event): event is { date: string; amount: number } => Boolean(event))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  private static sumCashFlowBeforeDate(cashFlowMap: Map<string, number>, date: string): number {
+    let total = 0;
+    cashFlowMap.forEach((amount, entryDate) => {
+      if (entryDate < date) {
+        total += amount;
+      }
+    });
+    return total;
+  }
+
+  private static sumContributionBeforeDate(contributions: Array<{ date: string; amount: number }>, date: string): number {
+    return contributions.reduce((sum, event) => (event.date < date ? sum + event.amount : sum), 0);
+  }
+
+  private static getContributionStartIndex(contributions: Array<{ date: string; amount: number }>, date: string): number {
+    let index = 0;
+    while (index < contributions.length && contributions[index].date < date) {
+      index += 1;
+    }
+    return index;
+  }
+
+  private static getStartDateForPeriod(
+    latestDate: string,
+    earliestDate: string,
+    timePeriod: PortfolioHistoryPeriod
+  ): string {
+    if (timePeriod === 'ALL') {
+      return earliestDate;
+    }
+
+    const [year, month, day] = latestDate.split('-').map((value) => parseInt(value, 10));
+    const start = new Date(year, (month || 1) - 1, day || 1);
+
+    switch (timePeriod) {
+      case '1D':
+        start.setDate(start.getDate() - 1);
+        break;
+      case '1W':
+        start.setDate(start.getDate() - 7);
+        break;
+      case '1M':
+        start.setMonth(start.getMonth() - 1);
+        break;
+      case '3M':
+        start.setMonth(start.getMonth() - 3);
+        break;
+      case '1Y':
+        start.setFullYear(start.getFullYear() - 1);
+        break;
+      default:
+        break;
+    }
+
+    return start.toISOString().split('T')[0];
+  }
+
+  private static addDaysString(dateString: string, amount: number): string {
+    const [year, month, day] = dateString.split('-').map((value) => parseInt(value, 10));
+    const date = new Date(year, (month || 1) - 1, day || 1);
+    date.setDate(date.getDate() + amount);
+    return date.toISOString().split('T')[0];
+  }
+
+  private static *iterateDateRange(startDate: string, endDate: string): Generator<string> {
+    const [startYear, startMonth, startDay] = startDate.split('-').map((value) => parseInt(value, 10));
+    const [endYear, endMonth, endDay] = endDate.split('-').map((value) => parseInt(value, 10));
+    let cursor = new Date(startYear, (startMonth || 1) - 1, startDay || 1);
+    const end = new Date(endYear, (endMonth || 1) - 1, endDay || 1);
+
+    while (cursor <= end) {
+      const year = cursor.getFullYear();
+      const month = String(cursor.getMonth() + 1).padStart(2, '0');
+      const day = String(cursor.getDate()).padStart(2, '0');
+      yield `${year}-${month}-${day}`;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
   /**
    * Get positions closed on a specific date
    * Note: For multi-leg strategies, this returns individual positions.
@@ -2082,7 +2246,8 @@ export class PerformanceMetricsService {
       if (!p.realized_pl || p.realized_pl === 0) return false;
       if (p.current_quantity >= p.opening_quantity) return false;
 
-      const updatedDate = this.formatLocalDate(new Date(p.updated_at));
+      // Extract date portion without timezone conversion
+      const updatedDate = p.updated_at.split('T')[0];
       return updatedDate === dateStr;
     });
 
@@ -2092,7 +2257,8 @@ export class PerformanceMetricsService {
     console.log('[getPositionsByClosedDate] All strategies:', allStrategies.length);
     const strategiesClosedOnDate = allStrategies.filter((strategy) => {
       if (!strategy.closed_at) return false;
-      const strategyClosedDate = this.formatLocalDate(new Date(strategy.closed_at));
+      // Extract date portion without timezone conversion
+      const strategyClosedDate = strategy.closed_at.split('T')[0];
       console.log('[getPositionsByClosedDate] Strategy closed date:', strategyClosedDate, 'vs', dateStr, strategy.id);
       return strategyClosedDate === dateStr;
     });
@@ -2141,7 +2307,8 @@ export class PerformanceMetricsService {
     }
 
     if (!p.closed_at) return null;
-    return this.formatLocalDate(new Date(p.closed_at));
+    // Extract date portion without timezone conversion
+    return p.closed_at.split('T')[0];
   }
 
   /**

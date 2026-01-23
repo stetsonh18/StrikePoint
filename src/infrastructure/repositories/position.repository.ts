@@ -433,6 +433,22 @@ export class PositionRepository {
       } else {
         updates.closed_at = new Date().toISOString();
       }
+
+      // For expired options, calculate realized P&L
+      // Short options: premium received (total_cost_basis, positive) becomes realized profit
+      // Long options: premium paid (total_cost_basis, negative) becomes realized loss
+      if (status === 'expired') {
+        const position = await this.getById(id);
+        if (position && position.asset_type === 'option') {
+          // For expired options, the realized P&L is the total cost basis
+          // Short: total_cost_basis is positive (credit received) = profit
+          // Long: total_cost_basis is negative (debit paid) = loss
+          updates.realized_pl = position.total_cost_basis || 0;
+          updates.unrealized_pl = 0;
+          updates.current_quantity = 0;
+          updates.total_closing_amount = 0; // Expired at $0
+        }
+      }
     }
 
     const updatedPosition = await this.update(id, updates);
@@ -642,7 +658,7 @@ export class PositionRepository {
     userId: string,
     startDate: string,
     endDate: string
-  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at' | 'strategy_id'>[]> {
+  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at' | 'strategy_id' | 'status' | 'asset_type' | 'total_cost_basis'>[]> {
     // Extract date part from ISO strings to ensure proper date comparison
     // This handles cases where timestamps might have timezone offsets
     const startDateOnly = startDate.split('T')[0]; // YYYY-MM-DD
@@ -652,7 +668,7 @@ export class PositionRepository {
     // Use date_trunc to compare dates properly in PostgreSQL
     const { data, error } = await supabase
       .from('positions')
-      .select('id, realized_pl, closed_at, strategy_id')
+      .select('id, realized_pl, closed_at, strategy_id, status, asset_type, total_cost_basis')
       .eq('user_id', userId)
       .in('status', ['closed', 'expired', 'assigned', 'exercised'])
       .not('closed_at', 'is', null)

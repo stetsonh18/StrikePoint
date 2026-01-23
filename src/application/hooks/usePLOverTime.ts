@@ -19,7 +19,9 @@ export function usePLOverTime(
 ) {
   return useQuery<PLOverTimeData[], Error>({
     queryKey: ['pl-over-time', userId, assetType, days],
-    queryFn: () => PerformanceMetricsService.calculatePLOverTime(userId, assetType, days),
+    queryFn: () => PerformanceMetricsService.calculatePLOverTime(userId, assetType, days, {
+      useSnapshotsForUnrealized: false,
+    }),
     enabled: !!userId,
     staleTime: 60 * 1000, // Cache for 1 minute
   });

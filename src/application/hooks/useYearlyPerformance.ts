@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { usePortfolioValue } from './usePortfolioValue';
-import { PositionRepository } from '@/infrastructure/repositories/position.repository';
+import { getRealizedPLForDateRange } from './utils/realizedPL';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
 import { getDateRangeForDays } from './utils/dateRange';
 
@@ -28,9 +28,7 @@ export function useYearlyPerformance(
     queryFn: async () => {
       const { start, end } = getDateRangeForDays(DAYS_IN_YEAR);
 
-      // Get realized P&L from positions closed in last 365 days
-      const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-      const realizedPL = realizedPositions.reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
+      const realizedPL = await getRealizedPLForDateRange(userId, start, end);
 
       // Yearly P&L = realized + unrealized (gross, no fee deduction)
       const yearlyPL = realizedPL + unrealizedPL;

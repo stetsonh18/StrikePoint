@@ -4,7 +4,8 @@ import { PositionRepository } from '@/infrastructure/repositories/position.repos
 import { StrategyRepository } from '@/infrastructure/repositories/strategy.repository';
 import { TransactionRepository } from '@/infrastructure/repositories/transaction.repository';
 import { queryKeys } from '@/infrastructure/api/queryKeys';
-import { getDateRangeForDays } from './utils/dateRange';
+import { getLocalDateRangeForDays, getLocalDateString } from './utils/dateRange';
+import { getAdjustedPositionRealizedPL, getRealizedPLForDateRange } from './utils/realizedPL';
 
 export interface DailyPerformance {
   dailyPL: number;
@@ -29,38 +30,13 @@ export function useDailyPerformance(
   return useQuery<DailyPerformance, Error>({
     queryKey,
     queryFn: async () => {
-      const { start, end } = getDateRangeForDays(DAYS_IN_DAY);
-      const todayDateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      const { start, end } = getLocalDateRangeForDays(DAYS_IN_DAY);
+      const todayDateStr = getLocalDateString(); // YYYY-MM-DD local date
 
-      // Get realized P&L from positions AND strategies closed today
-      // Multi-leg options store realized P&L on strategies, not individual positions
       let realizedPL = 0;
       
       try {
-        // Method 1: Get realized P&L from positions closed today (primary method)
-        const realizedPositions = await PositionRepository.getRealizedPLByDateRange(userId, start, end);
-        
-        // Method 1b: Get realized P&L from strategies closed today
-        // This is critical for multi-leg options where P&L is stored on the strategy
-        const realizedStrategies = await StrategyRepository.getRealizedPLByDateRange(userId, start, end);
-        const strategyPL = realizedStrategies.reduce((sum, strategy) => sum + Number(strategy.realized_pl || 0), 0);
-        
-        // Get strategy IDs that were closed today to avoid double-counting
-        const strategyIdsClosedToday = new Set(realizedStrategies.map(s => s.id));
-        
-        // Only count positions that are NOT part of a strategy closed today
-        // Positions that are part of a closed strategy are counted via the strategy's realized_pl
-        const positionPL = realizedPositions
-          .filter(position => {
-            // If position is not part of a strategy, include it
-            if (!position.strategy_id) return true;
-            // If position is part of a strategy, only include if the strategy wasn't closed today
-            // (Strategy's realized_pl already includes the position's P&L)
-            return !strategyIdsClosedToday.has(position.strategy_id);
-          })
-          .reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
-        
-        realizedPL = positionPL + strategyPL;
+        realizedPL = await getRealizedPLForDateRange(userId, start, end);
       } catch (error) {
         console.error('Error getting realized P&L from date range:', error);
       }
@@ -83,24 +59,39 @@ export function useDailyPerformance(
             return false;
           });
           
-          // Sum realized P&L from positions fully closed today
-          const positionPL = closedToday
-            .filter(p => p.current_quantity === 0) // Only fully closed positions
-            .reduce((sum, position) => sum + Number(position.realized_pl || 0), 0);
-          
-          // Get strategies closed today (fallback method)
+          const closedPositions = closedToday.filter((position) => position.current_quantity === 0);
+          const strategyPositionPLMap = new Map<string, number>();
+          closedPositions.forEach((position) => {
+            if (!position.strategy_id) return;
+            const adjustedPL = getAdjustedPositionRealizedPL(position);
+            strategyPositionPLMap.set(
+              position.strategy_id,
+              (strategyPositionPLMap.get(position.strategy_id) ?? 0) + adjustedPL
+            );
+          });
+
           const allStrategies = await StrategyRepository.getAll(userId);
-          const strategiesClosedToday = allStrategies.filter(s => {
-            const isClosed = ['closed', 'expired', 'assigned', 'exercised'].includes(s.status);
-            if (!isClosed || !s.closed_at) return false;
-            const closedAtDateStr = new Date(s.closed_at).toISOString().split('T')[0];
+          const strategiesClosedToday = allStrategies.filter((strategy) => {
+            const isClosed = ['closed', 'expired', 'assigned', 'exercised'].includes(strategy.status);
+            if (!isClosed || !strategy.closed_at) return false;
+            const closedAtDateStr = new Date(strategy.closed_at).toISOString().split('T')[0];
             return closedAtDateStr === todayDateStr;
           });
-          
-          const strategyPL = strategiesClosedToday.reduce((sum, strategy) => 
-            sum + Number(strategy.realized_pl || 0), 0
-          );
-          
+
+          const excludedStrategyIds = new Set<string>();
+          let strategyPL = 0;
+          strategiesClosedToday.forEach((strategy) => {
+            const strategyRealizedPL = Number(strategy.realized_pl || 0);
+            if (strategyRealizedPL !== 0) {
+              strategyPL += strategyRealizedPL;
+              excludedStrategyIds.add(strategy.id);
+            }
+          });
+
+          const positionPL = closedPositions
+            .filter((position) => !position.strategy_id || !excludedStrategyIds.has(position.strategy_id))
+            .reduce((sum, position) => sum + getAdjustedPositionRealizedPL(position), 0);
+
           realizedPL = positionPL + strategyPL;
         } catch (error) {
           console.error('Error getting realized P&L from activity date:', error);
@@ -133,8 +124,8 @@ export function useDailyPerformance(
             if (position && position.status !== 'open' && position.closed_at) {
               const closedAtDateStr = new Date(position.closed_at).toISOString().split('T')[0];
               if (closedAtDateStr === todayDateStr && position.current_quantity === 0) {
-                // Position was fully closed today, use its total realized_pl
-                realizedPL += Number(position.realized_pl || 0);
+                // Position was fully closed today, use its adjusted realized P&L
+                realizedPL += getAdjustedPositionRealizedPL(position);
               }
             }
           }

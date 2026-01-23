@@ -86,7 +86,7 @@ export const PortfolioPerformanceChart = React.memo<PortfolioPerformanceChartPro
       <div className="h-64 flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600 dark:text-slate-400 text-sm mb-2">No portfolio history available</p>
-          <p className="text-slate-500 dark:text-slate-500 text-xs">Generate a snapshot to see your portfolio performance over time</p>
+          <p className="text-slate-500 dark:text-slate-500 text-xs">Add trades or cash activity to populate the history chart</p>
         </div>
       </div>
     );
