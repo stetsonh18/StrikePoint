@@ -47,4 +47,3 @@ export function getLocalDateRangeForDays(lengthInDays: number): { start: string;
     end: end.toISOString(),
   };
 }
-

@@ -297,26 +297,29 @@ export class PerformanceMetricsService {
       return trades;
     }
 
-    let startDate: Date;
-    let endDate: Date = new Date();
+    let startDateKey: string;
+    let endDateKey: string;
 
     if (dateRange) {
       // Custom date range has priority
-      startDate = new Date(dateRange.startDate);
-      endDate = new Date(dateRange.endDate);
-      // Set to end of day for endDate
-      endDate.setHours(23, 59, 59, 999);
+      // Use date-only keys to avoid timezone shifts
+      startDateKey = dateRange.startDate;
+      endDateKey = dateRange.endDate;
     } else if (days) {
       // Preset timeframe
-      startDate = new Date();
+      const endDate = new Date();
+      const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
+
+      startDateKey = this.formatLocalDate(startDate);
+      endDateKey = this.formatLocalDate(endDate);
     } else {
       return trades;
     }
 
     return trades.filter((trade) => {
-      const closedDate = this.getTradeClosedDate(trade);
-      return closedDate && closedDate >= startDate && closedDate <= endDate;
+      const closedDateKey = this.getTradeClosedDateKey(trade);
+      return closedDateKey !== null && closedDateKey >= startDateKey && closedDateKey <= endDateKey;
     });
   }
 
@@ -326,9 +329,16 @@ export class PerformanceMetricsService {
       const trimmed = value.trim();
       if (!trimmed) return null;
 
-      // Normalize "YYYY-MM-DD HH:MM:SS+00" to ISO-like format.
+      // Normalize "YYYY-MM-DD HH:MM:SS+00" (or +0000) to ISO-like format.
       if (trimmed.includes(' ') && !trimmed.includes('T')) {
-        const normalized = trimmed.replace(' ', 'T');
+        let normalized = trimmed.replace(' ', 'T');
+        // Ensure timezone offsets include minutes (e.g. +00 -> +00:00, +0000 -> +00:00).
+        normalized = normalized.replace(/([+-]\d{2})(\d{2})?$/, (_match, hours, minutes) => {
+          if (minutes) {
+            return `${hours}:${minutes}`;
+          }
+          return `${hours}:00`;
+        });
         const parsedNormalized = new Date(normalized);
         if (!Number.isNaN(parsedNormalized.getTime())) {
           return parsedNormalized;
@@ -348,6 +358,22 @@ export class PerformanceMetricsService {
 
   private static getTradeClosedDate(trade: NormalizedTrade): Date | null {
     return this.getDate(trade.closedAt) || this.getDate(trade.updatedAt) || this.getDate(trade.openedAt);
+  }
+
+  private static getTradeClosedDateKey(trade: NormalizedTrade): string | null {
+    const normalize = (value?: string | null): string | null => {
+      if (!value) return null;
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const [datePart] = trimmed.split(/[T\s]/);
+      return datePart || null;
+    };
+
+    return (
+      normalize(trade.closedAt) ||
+      normalize(trade.updatedAt) ||
+      normalize(trade.openedAt)
+    );
   }
 
   private static getTradeOpenedDate(trade: NormalizedTrade): Date | null {
