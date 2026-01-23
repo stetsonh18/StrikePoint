@@ -1006,16 +1006,32 @@ export class PerformanceMetricsService {
     let cumulativeRealized = historicalRealizedPL;
     let cumulativeUnrealized = 0;
 
-    return filledDailyPL.map((day) => {
+    // When not using snapshots, get current unrealized P/L from open trades for the most recent date
+    let currentUnrealizedPL = 0;
+    if (!useSnapshotsForUnrealized && openTrades.length > 0) {
+      currentUnrealizedPL = openTrades.reduce((sum, trade) => sum + trade.unrealizedPL, 0);
+    }
+
+    return filledDailyPL.map((day, index) => {
       // Always accumulate realized P&L from trades (already working correctly)
       cumulativeRealized += day.dailyRealized;
 
       // For unrealized P&L: use snapshot if available, otherwise accumulate from trades
       const snapshotUnrealized = snapshotUnrealizedMap.get(day.date);
-      const unrealizedPL = snapshotUnrealized !== undefined ? snapshotUnrealized : cumulativeUnrealized + day.dailyUnrealized;
-
-      // Only update cumulative if not using snapshot
-      if (snapshotUnrealized === undefined) {
+      let unrealizedPL: number;
+      const isLastDate = index === filledDailyPL.length - 1;
+      
+      if (snapshotUnrealized !== undefined) {
+        // Use snapshot value
+        unrealizedPL = snapshotUnrealized;
+      } else if (!useSnapshotsForUnrealized && isLastDate && (day.date === todayKey || currentUnrealizedPL !== 0)) {
+        // For the most recent date when not using snapshots, use current unrealized P/L directly
+        // This ensures the most recent date always shows the current balance from open positions
+        unrealizedPL = currentUnrealizedPL;
+        cumulativeUnrealized = currentUnrealizedPL; // Update cumulative to current value
+      } else {
+        // For historical dates, accumulate from daily changes
+        unrealizedPL = cumulativeUnrealized + day.dailyUnrealized;
         cumulativeUnrealized += day.dailyUnrealized;
       }
 
@@ -1732,6 +1748,8 @@ export class PerformanceMetricsService {
 
   /**
    * Calculate balance over time from portfolio snapshots
+   * Balance = Net Cash Flow (all transactions) + Unrealized P/L only
+   * Note: Realized P/L is already reflected in cash transactions (buy/sell), so we don't add it again
    */
   static async calculateBalanceOverTime(
     userId: string,
@@ -1743,6 +1761,8 @@ export class PerformanceMetricsService {
       CashTransactionRepository.getByUserId(userId),
     ]);
 
+    // Use full cash flow map (all transactions including trades)
+    // Realized P/L is already in the cash flow from buy/sell transactions
     const dailyCashFlowMap = this.buildDailyCashFlowMap(cashTransactions);
     const plMap = new Map(plOverTime.map((entry) => [entry.date, entry]));
     const allDates = new Set<string>([
@@ -1760,21 +1780,21 @@ export class PerformanceMetricsService {
       ? this.addDaysString(latestDate, -(days - 1))
       : sortedDates[0];
 
-    let runningPL = 0;
     let runningCashFlow = 0;
     const result: Array<{ date: string; balance: number; netCashFlow: number }> = [];
 
     for (const date of this.iterateDateRange(startDate, latestDate)) {
       const plEntry = plMap.get(date);
-      if (plEntry) {
-        runningPL = plEntry.cumulativePL;
-      }
-
       runningCashFlow += dailyCashFlowMap.get(date) ?? 0;
+
+      // Balance = Net Cash Flow + Unrealized P/L only
+      // Realized P/L is already in cash flow from buy/sell transactions
+      const unrealizedPL = plEntry?.unrealizedPL ?? 0;
+      const balance = runningCashFlow + unrealizedPL;
 
       result.push({
         date,
-        balance: runningCashFlow + runningPL,
+        balance,
         netCashFlow: runningCashFlow,
       });
     }
@@ -1812,33 +1832,38 @@ export class PerformanceMetricsService {
       ? this.addDaysString(latestDate, -(days - 1))
       : sortedDates[0];
 
-    let investmentBase = 0;
-    if (assetType) {
-      const allPositionsForAssetType = await PositionRepository.getAll(userId, { asset_type: assetType });
-      investmentBase = allPositionsForAssetType.reduce((sum, position) => {
-        return sum + Math.abs(position.total_cost_basis || 0);
-      }, 0);
-    } else {
-      const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
-      investmentBase = cashTransactions
-        .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
-        .filter((tx) => (tx.amount || 0) > 0)
-        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    }
+    // For all ROI calculations: use total deposits as investment base
+    const depositCodes = ['DEPOSIT', 'ACH', 'DCF', 'RTP', 'DEP'];
+    const investmentBase = cashTransactions
+      .filter((tx) => depositCodes.includes(tx.transaction_code || ''))
+      .filter((tx) => (tx.amount || 0) > 0)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-    let runningPL = 0;
+    let runningRealized = 0;
+    let runningUnrealized = 0;
     let runningCashFlow = 0;
     const result: Array<{ date: string; roi: number; portfolioValue: number; netCashFlow: number }> = [];
 
     for (const date of this.iterateDateRange(startDate, latestDate)) {
       const plEntry = plMap.get(date);
       if (plEntry) {
-        runningPL = plEntry.cumulativePL;
+        runningRealized = plEntry.realizedPL;
+        runningUnrealized = plEntry.unrealizedPL;
       }
 
       runningCashFlow += dailyCashFlowMap.get(date) ?? 0;
-      const portfolioValue = runningCashFlow + runningPL;
-      const roi = investmentBase > 0 ? (runningPL / Math.abs(investmentBase)) * 100 : 0;
+      
+      // Portfolio Value = Net Cash Flow + Unrealized P/L only
+      // Realized P/L is already in cash flow from buy/sell transactions
+      const portfolioValue = runningCashFlow + runningUnrealized;
+
+      // Calculate ROI: (Realized P&L + Unrealized P&L) / Total Deposits * 100
+      // This formula works for both asset-specific and overall portfolio
+      // All ROI calculations use deposits as the denominator
+      let roi = 0;
+      if (investmentBase > 0) {
+        roi = ((runningRealized + runningUnrealized) / investmentBase) * 100;
+      }
 
       result.push({
         date,
@@ -1920,7 +1945,9 @@ export class PerformanceMetricsService {
         contributionIndex++;
       }
 
-      const portfolioValue = runningCashFlow + runningPL;
+      // Portfolio Value = Net Cash Flow + Unrealized P/L only
+      // Realized P/L is already reflected in cash flow from buy/sell transactions
+      const portfolioValue = runningCashFlow + runningUnrealized;
       const dailyPLChange = previousPortfolioValue === null
         ? null
         : portfolioValue - previousPortfolioValue;
@@ -1932,7 +1959,7 @@ export class PerformanceMetricsService {
         date,
         portfolioValue,
         netCashFlow: runningCashFlow,
-        totalMarketValue: portfolioValue - runningCashFlow,
+        totalMarketValue: runningUnrealized, // Market value is just unrealized P/L
         realizedPL: runningRealized,
         unrealizedPL: runningUnrealized,
         dailyPLChange,
@@ -2128,6 +2155,7 @@ export class PerformanceMetricsService {
 
     return cashFlowMap;
   }
+
 
   private static buildContributionEvents(transactions: Awaited<ReturnType<typeof CashTransactionRepository.getByUserId>>) {
     const depositCodes = new Set(['DEPOSIT', 'DEP', 'ACH', 'ACH_IN', 'DCF', 'RTP', 'WIRE', 'WIRE_IN', 'TRANSFER_IN']);
