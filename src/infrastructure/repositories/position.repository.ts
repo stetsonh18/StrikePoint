@@ -293,7 +293,7 @@ export class PositionRepository {
     const newQuantity = position.current_quantity - closingQuantity;
     const newStatus: PositionStatus = newQuantity <= 0 ? 'closed' : 'open';
     const newClosingAmount = position.total_closing_amount + closingAmount;
-    const newRealizedPL = position.realized_pl + realizedPL;
+    let newRealizedPL = position.realized_pl + realizedPL;
 
     // Calculate the proportional cost basis for the shares that were closed
     const closedCostBasis = (position.total_cost_basis / position.current_quantity) * closingQuantity;
@@ -326,6 +326,22 @@ export class PositionRepository {
       } else {
         updates.closed_at = new Date().toISOString();
       }
+      // For options that close at $0 (expired/closed worthless), ensure realized P&L reflects max gain/loss
+      if (
+        position.asset_type === 'option' &&
+        newClosingAmount === 0 &&
+        newRealizedPL === 0
+      ) {
+        const multiplier = position.multiplier || 100;
+        const fallbackCostBasis =
+          position.opening_quantity && position.average_opening_price
+            ? (position.side === 'short' ? 1 : -1) *
+              Math.abs(position.opening_quantity * position.average_opening_price * multiplier)
+            : 0;
+        newRealizedPL = position.total_cost_basis || fallbackCostBasis;
+        updates.realized_pl = newRealizedPL;
+      }
+
       updates.unrealized_pl = 0; // No unrealized P/L when position is fully closed
     }
 
@@ -440,10 +456,16 @@ export class PositionRepository {
       if (status === 'expired') {
         const position = await this.getById(id);
         if (position && position.asset_type === 'option') {
+          const multiplier = position.multiplier || 100;
+          const fallbackCostBasis =
+            position.opening_quantity && position.average_opening_price
+              ? (position.side === 'short' ? 1 : -1) *
+                Math.abs(position.opening_quantity * position.average_opening_price * multiplier)
+              : 0;
           // For expired options, the realized P&L is the total cost basis
           // Short: total_cost_basis is positive (credit received) = profit
           // Long: total_cost_basis is negative (debit paid) = loss
-          updates.realized_pl = position.total_cost_basis || 0;
+          updates.realized_pl = position.total_cost_basis || fallbackCostBasis || 0;
           updates.unrealized_pl = 0;
           updates.current_quantity = 0;
           updates.total_closing_amount = 0; // Expired at $0
@@ -658,7 +680,22 @@ export class PositionRepository {
     userId: string,
     startDate: string,
     endDate: string
-  ): Promise<Pick<Position, 'id' | 'realized_pl' | 'closed_at' | 'strategy_id' | 'status' | 'asset_type' | 'total_cost_basis'>[]> {
+  ): Promise<Pick<
+    Position,
+    'id'
+    | 'realized_pl'
+    | 'closed_at'
+    | 'strategy_id'
+    | 'status'
+    | 'asset_type'
+    | 'total_cost_basis'
+    | 'side'
+    | 'opening_quantity'
+    | 'average_opening_price'
+    | 'multiplier'
+    | 'current_quantity'
+    | 'total_closing_amount'
+  >[]> {
     // Extract date part from ISO strings to ensure proper date comparison
     // This handles cases where timestamps might have timezone offsets
     const startDateOnly = startDate.split('T')[0]; // YYYY-MM-DD
@@ -668,7 +705,7 @@ export class PositionRepository {
     // Use date_trunc to compare dates properly in PostgreSQL
     const { data, error } = await supabase
       .from('positions')
-      .select('id, realized_pl, closed_at, strategy_id, status, asset_type, total_cost_basis')
+      .select('id, realized_pl, closed_at, strategy_id, status, asset_type, total_cost_basis, side, opening_quantity, average_opening_price, multiplier, current_quantity, total_closing_amount')
       .eq('user_id', userId)
       .in('status', ['closed', 'expired', 'assigned', 'exercised'])
       .not('closed_at', 'is', null)

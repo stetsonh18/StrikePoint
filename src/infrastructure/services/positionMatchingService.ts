@@ -188,6 +188,18 @@ export class PositionMatchingService {
       }
     }
 
+    const optionMultiplier = tx.asset_type === 'option' ? 100 : 1;
+    const openingQuantity = Math.abs(tx.quantity || 0);
+    const openingPrice = Math.abs(tx.price || 0);
+    const computedOptionCostBasis =
+      tx.asset_type === 'option' && openingQuantity > 0 && openingPrice > 0
+        ? (tx.is_long ? -1 : 1) * (openingQuantity * openingPrice * optionMultiplier)
+        : null;
+    const totalCostBasis =
+      tx.asset_type === 'option' && (!tx.amount || tx.amount === 0)
+        ? computedOptionCostBasis
+        : tx.amount;
+
     const positionInsert: PositionInsert = {
       user_id: tx.user_id,
       strategy_id: null, // Will be set by strategy detection
@@ -204,10 +216,10 @@ export class PositionMatchingService {
       tick_value: null,
       margin_requirement: null,
       side: tx.is_long ? 'long' : 'short',
-      opening_quantity: Math.abs(tx.quantity || 0),
-      current_quantity: Math.abs(tx.quantity || 0),
-      average_opening_price: Math.abs(tx.price || 0),
-      total_cost_basis: tx.amount, // Positive for credit received, negative for debit paid
+      opening_quantity: openingQuantity,
+      current_quantity: openingQuantity,
+      average_opening_price: openingPrice,
+      total_cost_basis: totalCostBasis, // Positive for credit received, negative for debit paid
       total_closing_amount: 0,
       realized_pl: 0,
       unrealized_pl: 0,

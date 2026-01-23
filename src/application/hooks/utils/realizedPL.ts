@@ -3,21 +3,55 @@ import { StrategyRepository } from '@/infrastructure/repositories/strategy.repos
 import type { Position } from '@/domain/types';
 
 type RealizedPosition = Awaited<ReturnType<typeof PositionRepository.getRealizedPLByDateRange>>[number];
-type RealizedPositionLike = Pick<Position, 'realized_pl' | 'asset_type' | 'status' | 'total_cost_basis'> & {
+type RealizedPositionLike = Pick<
+  Position,
+  'realized_pl'
+  | 'asset_type'
+  | 'status'
+  | 'total_cost_basis'
+  | 'side'
+  | 'opening_quantity'
+  | 'average_opening_price'
+  | 'multiplier'
+  | 'current_quantity'
+  | 'total_closing_amount'
+> & {
   strategy_id?: string | null;
 };
 
+function getFallbackCostBasis(position: RealizedPositionLike): number | null {
+  const openingQuantity = position.opening_quantity ?? 0;
+  const averageOpeningPrice = position.average_opening_price ?? 0;
+  if (!openingQuantity || !averageOpeningPrice) {
+    return null;
+  }
+
+  const multiplier = Number(position.multiplier || 100);
+  const rawCostBasis = Math.abs(openingQuantity * averageOpeningPrice * multiplier);
+  return position.side === 'short' ? rawCostBasis : -rawCostBasis;
+}
+
 export function getAdjustedPositionRealizedPL(position: RealizedPositionLike): number {
-  let realizedPL = position.realized_pl || 0;
+  let realizedPL = Number(position.realized_pl || 0);
+
+  const isFinalizedStatus = position.status === 'expired' || position.status === 'closed';
+  const isFullyClosed = (position.current_quantity ?? 0) === 0;
+  const closingAmount = position.total_closing_amount ?? 0;
 
   if (
     position.asset_type === 'option' &&
-    position.status === 'expired' &&
-    realizedPL === 0 &&
-    position.total_cost_basis &&
-    position.total_cost_basis !== 0
+    isFinalizedStatus &&
+    isFullyClosed &&
+    closingAmount === 0 &&
+    realizedPL === 0
   ) {
-    realizedPL = position.total_cost_basis;
+    const fallbackCostBasis = getFallbackCostBasis(position);
+    const totalCostBasis = Number(position.total_cost_basis || 0);
+    if (totalCostBasis !== 0) {
+      realizedPL = totalCostBasis;
+    } else if (fallbackCostBasis !== null) {
+      realizedPL = fallbackCostBasis;
+    }
   }
 
   return realizedPL;

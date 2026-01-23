@@ -162,7 +162,9 @@ export class PerformanceMetricsService {
     // For strategies, prefer the strategy's realized_pl when it is populated.
     // If the strategy's realized_pl is 0 but legs show P&L (e.g., expired credit spreads),
     // fall back to the legs' realized P&L to avoid missing profits.
-    const strategyRealizedPL = strategy?.realized_pl ?? null;
+    const strategyRealizedPL = strategy?.realized_pl !== undefined && strategy?.realized_pl !== null
+      ? Number(strategy.realized_pl)
+      : null;
     let realizedPL = positionsRealizedPL;
     if (strategyRealizedPL !== null && (strategyRealizedPL !== 0 || positionsRealizedPL === 0)) {
       realizedPL = strategyRealizedPL;
@@ -191,18 +193,31 @@ export class PerformanceMetricsService {
   }
 
   private static getAdjustedPositionRealizedPL(position: Position): number {
-    let realizedPL = position.realized_pl || 0;
+    let realizedPL = Number(position.realized_pl || 0);
 
-    // Fix for expired options that were closed without realized P&L populated.
-    // Use total_cost_basis to reflect the net credit/debit on expiration.
+    const isFinalizedStatus = position.status === 'expired' || position.status === 'closed';
+    const isFullyClosed = (position.current_quantity ?? 0) === 0;
+    const closingAmount = Number(position.total_closing_amount ?? 0);
+
     if (
       position.asset_type === 'option' &&
-      position.status === 'expired' &&
-      realizedPL === 0 &&
-      position.total_cost_basis &&
-      position.total_cost_basis !== 0
+      isFinalizedStatus &&
+      isFullyClosed &&
+      closingAmount === 0 &&
+      realizedPL === 0
     ) {
-      realizedPL = position.total_cost_basis;
+      const totalCostBasis = Number(position.total_cost_basis || 0);
+      if (totalCostBasis !== 0) {
+        realizedPL = totalCostBasis;
+      } else {
+        const openingQuantity = Number(position.opening_quantity ?? 0);
+        const averageOpeningPrice = Number(position.average_opening_price ?? 0);
+        const multiplier = Number(position.multiplier || 100);
+        if (openingQuantity && averageOpeningPrice) {
+          const rawCostBasis = Math.abs(openingQuantity * averageOpeningPrice * multiplier);
+          realizedPL = position.side === 'short' ? rawCostBasis : -rawCostBasis;
+        }
+      }
     }
 
     return realizedPL;
@@ -307,6 +322,26 @@ export class PerformanceMetricsService {
 
   private static getDate(value?: string | null): Date | null {
     if (!value) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+
+      // Normalize "YYYY-MM-DD HH:MM:SS+00" to ISO-like format.
+      if (trimmed.includes(' ') && !trimmed.includes('T')) {
+        const normalized = trimmed.replace(' ', 'T');
+        const parsedNormalized = new Date(normalized);
+        if (!Number.isNaN(parsedNormalized.getTime())) {
+          return parsedNormalized;
+        }
+      }
+
+      // Date-only fallback: treat as UTC midnight to keep day alignment.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const parsedDateOnly = new Date(`${trimmed}T00:00:00Z`);
+        return Number.isNaN(parsedDateOnly.getTime()) ? null : parsedDateOnly;
+      }
+    }
+
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
@@ -2289,7 +2324,38 @@ export class PerformanceMetricsService {
     const allClosedPositions = [...positionsClosedOnDate, ...partiallyClosedOnDate, ...filteredStrategyPositions];
     const uniquePositions = Array.from(new Map(allClosedPositions.map((p) => [p.id, p])).values());
 
-    return uniquePositions;
+    return uniquePositions.map((position) => {
+      const fallbackCostBasis = (() => {
+        const openingQuantity = Number(position.opening_quantity ?? 0);
+        const averageOpeningPrice = Number(position.average_opening_price ?? 0);
+        if (!openingQuantity || !averageOpeningPrice) {
+          return null;
+        }
+        const multiplier = Number(position.multiplier || 100);
+        const rawCostBasis = Math.abs(openingQuantity * averageOpeningPrice * multiplier);
+        return position.side === 'short' ? rawCostBasis : -rawCostBasis;
+      })();
+
+      const isFinalizedStatus = position.status === 'expired' || position.status === 'closed';
+      const isFullyClosed = (position.current_quantity ?? 0) === 0;
+      const closingAmount = position.total_closing_amount ?? 0;
+
+      if (
+        position.asset_type === 'option' &&
+        isFinalizedStatus &&
+        isFullyClosed &&
+        closingAmount === 0 &&
+        (position.realized_pl === null || position.realized_pl === 0) &&
+        (Number(position.total_cost_basis || 0) !== 0 || fallbackCostBasis)
+      ) {
+        return {
+          ...position,
+          realized_pl: Number(position.total_cost_basis || 0) || fallbackCostBasis || 0,
+        };
+      }
+
+      return position;
+    });
   }
 
   /**
