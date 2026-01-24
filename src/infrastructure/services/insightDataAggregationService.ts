@@ -201,7 +201,12 @@ export class InsightDataAggregationService {
 
     const avgHoldingPeriod = recentClosedPositions.reduce((sum, p) => {
       if (!p.opened_at || !p.closed_at) return sum;
-      const days = (new Date(p.closed_at).getTime() - new Date(p.opened_at).getTime()) / (24 * 60 * 60 * 1000);
+      // Calculate calendar days (ignoring time of day) to avoid timezone issues
+      const opened = new Date(p.opened_at);
+      const closed = new Date(p.closed_at);
+      const openedUTC = Date.UTC(opened.getUTCFullYear(), opened.getUTCMonth(), opened.getUTCDate());
+      const closedUTC = Date.UTC(closed.getUTCFullYear(), closed.getUTCMonth(), closed.getUTCDate());
+      const days = Math.ceil((closedUTC - openedUTC) / (24 * 60 * 60 * 1000));
       return sum + days;
     }, 0) / (recentClosedPositions.length || 1);
 

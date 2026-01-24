@@ -323,6 +323,19 @@ export class PerformanceMetricsService {
     });
   }
 
+  /**
+   * Calculate calendar days between two dates (ignoring time of day)
+   * Normalizes both dates to UTC midnight before calculating difference
+   */
+  private static calculateCalendarDays(date1: Date, date2: Date): number {
+    // Normalize both dates to UTC midnight
+    const utc1 = Date.UTC(date1.getUTCFullYear(), date1.getUTCMonth(), date1.getUTCDate());
+    const utc2 = Date.UTC(date2.getUTCFullYear(), date2.getUTCMonth(), date2.getUTCDate());
+    // Calculate difference in milliseconds and convert to days
+    const diffMs = utc2 - utc1;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }
+
   private static getDate(value?: string | null): Date | null {
     if (!value) return null;
     if (typeof value === 'string') {
@@ -425,10 +438,7 @@ export class PerformanceMetricsService {
         if (!opened || !closed) {
           return null;
         }
-        return Math.max(
-          1,
-          Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24))
-        );
+        return Math.max(1, this.calculateCalendarDays(opened, closed));
       })
       .filter((value): value is number => value !== null);
     const averageHoldingPeriodDays =
@@ -601,10 +611,7 @@ export class PerformanceMetricsService {
         if (!opened || !closed) {
           return null;
         }
-        return Math.max(
-          1,
-          Math.ceil((closed.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24))
-        );
+        return Math.max(1, this.calculateCalendarDays(opened, closed));
       })
       .filter((value): value is number => value !== null);
     const averageHoldingPeriodDays =
@@ -2453,7 +2460,7 @@ export class PerformanceMetricsService {
       if (!openedDate || !closedDate) {
         return;
       }
-      const daysHeld = Math.ceil((closedDate.getTime() - openedDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysHeld = this.calculateCalendarDays(openedDate, closedDate);
 
       let period: string;
       if (daysHeld === 0) {
