@@ -107,8 +107,7 @@ export class TransactionService {
         // Process assignments and exercises
         await PositionMatchingService.processAssignmentsAndExercises(transaction.user_id);
 
-        // Process expirations
-        await PositionMatchingService.processExpirations(transaction.user_id);
+        // Expirations are now manual only - removed automatic expiration processing
       } catch (error) {
         logger.error('Error processing futures transaction', error);
         // Re-throw to ensure user knows about the issue
@@ -127,8 +126,7 @@ export class TransactionService {
         // Process assignments and exercises
         await PositionMatchingService.processAssignmentsAndExercises(transaction.user_id);
 
-        // Process expirations
-        await PositionMatchingService.processExpirations(transaction.user_id);
+        // Expirations are now manual only - removed automatic expiration processing
 
         // Detect strategies for options
         if (assetType === 'option') {
@@ -232,7 +230,7 @@ export class TransactionService {
         // Run position matching once for all transactions
         await PositionMatchingService.matchTransactions(userId, undefined);
         await PositionMatchingService.processAssignmentsAndExercises(userId);
-        await PositionMatchingService.processExpirations(userId);
+        // Expirations are now manual only - removed automatic expiration processing
 
         // Detect strategies for options (will link to existing strategy if strategyId provided)
         if (assetType === 'option') {

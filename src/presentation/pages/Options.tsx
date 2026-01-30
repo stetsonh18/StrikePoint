@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { TrendingUp, Plus, Download, Search, Calendar, DollarSign, Activity, Sparkles, Layers, Edit, Trash2 } from 'lucide-react';
 import type { OptionContract, OptionTransaction, Position, Transaction, Strategy } from '@/domain/types';
 import { useAuthStore } from '@/application/stores/auth.store';
@@ -164,10 +164,72 @@ const Options: React.FC = () => {
     status: 'open',
   });
 
+  // Debug: Log raw positions data
+  useEffect(() => {
+    if (allPositions) {
+      console.log('[Options] Raw positions from API:', {
+        count: allPositions.length,
+        positions: allPositions.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          asset_type: p.asset_type,
+          status: p.status,
+          option_type: p.option_type,
+          strike_price: p.strike_price,
+          expiration_date: p.expiration_date,
+          current_quantity: p.current_quantity
+        }))
+      });
+    } else {
+      console.log('[Options] No positions data (allPositions is null/undefined)');
+    }
+  }, [allPositions]);
+
   // Fetch all option positions (including closed) for realized P&L calculation
   const { data: allOptionPositions } = usePositions(userId, {
     asset_type: 'option',
   });
+
+  // Debug: Fetch ALL positions (no filters) to see what exists
+  const { data: allPositionsNoFilter } = usePositions(userId);
+  
+  // Debug: Log all positions to see what's in the database
+  useEffect(() => {
+    if (allPositionsNoFilter) {
+      console.log('[Options] ALL positions (no filters):', {
+        count: allPositionsNoFilter.length,
+        positions: allPositionsNoFilter.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          asset_type: p.asset_type,
+          status: p.status,
+          option_type: p.option_type,
+          strike_price: p.strike_price,
+          expiration_date: p.expiration_date,
+          current_quantity: p.current_quantity
+        }))
+      });
+      
+      // Check for option positions with different statuses
+      const optionPositions = allPositionsNoFilter.filter(p => p.asset_type === 'option');
+      console.log('[Options] All option positions (any status):', {
+        count: optionPositions.length,
+        byStatus: optionPositions.reduce((acc, p) => {
+          acc[p.status] = (acc[p.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        positions: optionPositions.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          status: p.status,
+          option_type: p.option_type,
+          strike_price: p.strike_price,
+          expiration_date: p.expiration_date,
+          current_quantity: p.current_quantity
+        }))
+      });
+    }
+  }, [allPositionsNoFilter]);
 
   // Fetch option transactions
   const { data: allTransactions, isLoading: transactionsLoading } = useTransactions(userId, {
@@ -260,21 +322,107 @@ const Options: React.FC = () => {
   // Transform positions with real-time prices from Tradier option quotes
   // Include all positions (both with and without strategies) for price updates
   const positions = useMemo(() => {
-    if (!allPositions) return [];
+    console.log('[Options] Transforming positions, allPositions:', {
+      count: allPositions?.length || 0,
+      isLoading: positionsLoading
+    });
     
-    // Relaxed filter: only require asset_type and status
-    // Let toOptionContract validate and filter out invalid positions
-    const basePositions = allPositions
-      .filter((p) => p.asset_type === 'option' && p.status === 'open')
+    if (!allPositions) {
+      console.log('[Options] No positions data available');
+      return [];
+    }
+    
+    // Filter option positions and validate required fields
+    const optionPositions = allPositions.filter((p) => p.asset_type === 'option' && p.status === 'open');
+    console.log('[Options] After filtering for option/open:', {
+      count: optionPositions.length,
+      positions: optionPositions.map(p => ({
+        id: p.id,
+        symbol: p.symbol,
+        asset_type: p.asset_type,
+        status: p.status,
+        option_type: p.option_type,
+        strike_price: p.strike_price,
+        expiration_date: p.expiration_date,
+        current_quantity: p.current_quantity
+      }))
+    });
+    
+    // Log positions that are missing required fields for debugging
+    const invalidPositions = optionPositions.filter((p) => 
+      !p.option_type || !p.strike_price || !p.expiration_date
+    );
+    
+    if (invalidPositions.length > 0) {
+      console.warn('[Options] Found option positions with missing required fields:', {
+        count: invalidPositions.length,
+        positions: invalidPositions.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          option_type: p.option_type,
+          strike_price: p.strike_price,
+          expiration_date: p.expiration_date,
+          status: p.status,
+          asset_type: p.asset_type
+        }))
+      });
+      logger.warn('Found option positions with missing required fields', {
+        count: invalidPositions.length,
+        positions: invalidPositions.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          option_type: p.option_type,
+          strike_price: p.strike_price,
+          expiration_date: p.expiration_date,
+          status: p.status,
+          asset_type: p.asset_type
+        }))
+      });
+    }
+    
+    // Transform valid positions
+    const basePositions = optionPositions
       .map((p) => {
         try {
           return toOptionContract(p);
         } catch (e) {
-          logger.warn('Skipping invalid option position during transformation', { position: p, error: e });
+          console.warn('[Options] Skipping invalid option position during transformation:', { 
+            position: {
+              id: p.id,
+              symbol: p.symbol,
+              option_type: p.option_type,
+              strike_price: p.strike_price,
+              expiration_date: p.expiration_date,
+              status: p.status
+            }, 
+            error: e 
+          });
+          logger.warn('Skipping invalid option position during transformation', { 
+            position: {
+              id: p.id,
+              symbol: p.symbol,
+              option_type: p.option_type,
+              strike_price: p.strike_price,
+              expiration_date: p.expiration_date,
+              status: p.status
+            }, 
+            error: e 
+          });
           return null;
         }
       })
       .filter((p): p is OptionContract => p !== null);
+    
+    console.log('[Options] After transformation to OptionContract:', {
+      count: basePositions.length,
+      transformed: basePositions.map(p => ({
+        id: p.id,
+        symbol: p.underlyingSymbol,
+        optionType: p.optionType,
+        strike: p.strikePrice,
+        expiration: p.expirationDate
+      }))
+    });
 
     // Update positions with real-time quotes from Tradier API
     return basePositions.map((position) => {
