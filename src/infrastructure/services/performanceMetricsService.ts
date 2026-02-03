@@ -1407,15 +1407,22 @@ export class PerformanceMetricsService {
       if (!expirationDate || !closedDate) {
         return;
       }
-      // Normalize both dates to midnight for comparison
-      const expDateMidnight = new Date(expirationDate.getFullYear(), expirationDate.getMonth(), expirationDate.getDate());
-      const closedDateMidnight = new Date(closedDate.getFullYear(), closedDate.getMonth(), closedDate.getDate());
-
+      
+      // Check if any leg has explicit 'expired' status - always count as expired
       const legsExpired = trade.legs.some((leg) => leg.status === 'expired');
-      // A trade is expired if legs are explicitly expired OR if closed AFTER expiration date
-      // Note: We now use > instead of >= so positions closed ON the expiration date
-      // are only marked as expired if they have an explicit 'expired' status
-      const isExpired = legsExpired || closedDateMidnight > expDateMidnight;
+      if (legsExpired) {
+        expiredTrades.push(trade);
+        return;
+      }
+      
+      // Normalize both dates to UTC midnight for comparison (avoid timezone issues)
+      const expDateUTC = Date.UTC(expirationDate.getUTCFullYear(), expirationDate.getUTCMonth(), expirationDate.getUTCDate());
+      const closedDateUTC = Date.UTC(closedDate.getUTCFullYear(), closedDate.getUTCMonth(), closedDate.getUTCDate());
+
+      // A trade is expired if closed AFTER expiration date
+      // Note: Positions closed ON the expiration date are counted as 'closed' (not expired)
+      // unless they have an explicit 'expired' status (checked above)
+      const isExpired = closedDateUTC > expDateUTC;
       if (isExpired) {
         expiredTrades.push(trade);
       } else {
