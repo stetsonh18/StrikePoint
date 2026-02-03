@@ -150,92 +150,143 @@ export const Settings = () => {
       return;
     }
 
+    if (!userId) {
+      toast.error('User ID is missing. Please refresh the page and try again.');
+      return;
+    }
+
     setIsDeleting(true);
 
     try {
+      logger.info('Starting delete all data process', { userId });
+      
       // Delete all user data in the correct order to respect foreign key constraints
       // Tables are deleted in reverse dependency order
 
-      // 1. Delete position_matches first (references positions and transactions)
-      const { error: matchesError } = await supabase
-        .from('position_matches')
-        .delete()
-        .eq('user_id', userId);
-
-      if (matchesError) throw matchesError;
-
-      // 2. Delete transactions (references positions)
+      // 1. Delete transactions (references positions)
+      logger.debug('Deleting transactions', { userId });
       const { error: transactionsError } = await supabase
         .from('transactions')
         .delete()
         .eq('user_id', userId);
 
-      if (transactionsError) throw transactionsError;
+      if (transactionsError) {
+        logger.error('Error deleting transactions', transactionsError);
+        throw new Error(`Failed to delete transactions: ${transactionsError.message}`);
+      }
+      logger.debug('Deleted transactions');
 
-      // 3. Delete positions
+      // 2. Delete positions
+      logger.debug('Deleting positions', { userId });
       const { error: positionsError } = await supabase
         .from('positions')
         .delete()
         .eq('user_id', userId);
 
-      if (positionsError) throw positionsError;
+      if (positionsError) {
+        logger.error('Error deleting positions', positionsError);
+        throw new Error(`Failed to delete positions: ${positionsError.message}`);
+      }
+      logger.debug('Deleted positions');
 
-      // 4. Delete cash_transactions
+      // 3. Delete cash_transactions
+      logger.debug('Deleting cash_transactions', { userId });
       const { error: cashTxError } = await supabase
         .from('cash_transactions')
         .delete()
         .eq('user_id', userId);
 
-      if (cashTxError) throw cashTxError;
+      if (cashTxError) {
+        logger.error('Error deleting cash_transactions', cashTxError);
+        throw new Error(`Failed to delete cash_transactions: ${cashTxError.message}`);
+      }
+      logger.debug('Deleted cash_transactions');
 
-      // 5. Delete strategies
+      // 4. Delete strategies
+      logger.debug('Deleting strategies', { userId });
       const { error: strategiesError } = await supabase
         .from('strategies')
         .delete()
         .eq('user_id', userId);
 
-      if (strategiesError) throw strategiesError;
+      if (strategiesError) {
+        logger.error('Error deleting strategies', strategiesError);
+        throw new Error(`Failed to delete strategies: ${strategiesError.message}`);
+      }
+      logger.debug('Deleted strategies');
 
-      // 6. Delete cash_balances
+      // 5. Delete cash_balances
+      logger.debug('Deleting cash_balances', { userId });
       const { error: balancesError } = await supabase
         .from('cash_balances')
         .delete()
         .eq('user_id', userId);
 
-      if (balancesError) throw balancesError;
+      if (balancesError) {
+        logger.error('Error deleting cash_balances', balancesError);
+        throw new Error(`Failed to delete cash_balances: ${balancesError.message}`);
+      }
+      logger.debug('Deleted cash_balances');
 
-      // 7. Delete journal_entries
+      // 6. Delete journal_entries
+      logger.debug('Deleting journal_entries', { userId });
       const { error: journalError } = await supabase
         .from('journal_entries')
         .delete()
         .eq('user_id', userId);
 
-      if (journalError) throw journalError;
+      if (journalError) {
+        logger.error('Error deleting journal_entries', journalError);
+        throw new Error(`Failed to delete journal_entries: ${journalError.message}`);
+      }
+      logger.debug('Deleted journal_entries');
 
-      // 8. Delete portfolio_snapshots (portfolio history)
+      // 7. Delete portfolio_snapshots (portfolio history)
+      logger.debug('Deleting portfolio_snapshots', { userId });
       await PortfolioSnapshotRepository.deleteAllForUser(userId);
+      logger.debug('Deleted portfolio_snapshots');
 
-      // 9. Delete AI insights
+      // 8. Delete AI insights
+      logger.debug('Deleting AI insights', { userId });
       await AIInsightRepository.deleteAllForUser(userId);
+      logger.debug('Deleted AI insights');
 
-      // 10. Delete futures contract specs
+      // 9. Delete futures contract specs
+      logger.debug('Deleting futures contract specs', { userId });
       await FuturesContractSpecRepository.deleteAllForUser(userId);
+      logger.debug('Deleted futures contract specs');
 
-      // 11. Delete imports
+      // 10. Delete imports
+      logger.debug('Deleting imports', { userId });
       const { error: importsError } = await supabase
         .from('imports')
         .delete()
         .eq('user_id', userId);
 
-      if (importsError) throw importsError;
+      if (importsError) {
+        logger.error('Error deleting imports', importsError);
+        throw new Error(`Failed to delete imports: ${importsError.message}`);
+      }
+      logger.debug('Deleted imports');
 
-      // 12. Delete user_preferences (will be recreated on next load)
+      // 11. Delete user_preferences (will be recreated on next load)
+      logger.debug('Deleting user_preferences', { userId });
       const { error: preferencesError } = await supabase
         .from('user_preferences')
         .delete()
         .eq('user_id', userId);
 
-      if (preferencesError) throw preferencesError;
+      if (preferencesError) {
+        logger.error('Error deleting user_preferences', preferencesError);
+        throw new Error(`Failed to delete user_preferences: ${preferencesError.message}`);
+      }
+      logger.debug('Deleted user_preferences');
+
+      // Invalidate all queries to refresh the UI
+      logger.debug('Invalidating all queries', { userId });
+      queryClient.invalidateQueries();
+      
+      logger.info('Successfully deleted all user data', { userId });
 
       toast.success('All data deleted successfully!', {
         description: 'Your account has been reset. The page will reload.',
@@ -250,9 +301,10 @@ export const Settings = () => {
         window.location.reload();
       }, 1500);
     } catch (error) {
-      logger.error('Error deleting user data', error);
+      logger.error('Error deleting user data', error, { userId, errorDetails: error instanceof Error ? error.stack : String(error) });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast.error('Failed to delete all data', {
-        description: error instanceof Error ? error.message : 'Please try again.',
+        description: errorMessage || 'Please try again. Check the console for more details.',
       });
     } finally {
       setIsDeleting(false);
@@ -692,7 +744,13 @@ export const Settings = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={handleDeleteAllData}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[Settings] Delete button clicked', { deleteConfirmation, isDeleting, userId });
+                    handleDeleteAllData();
+                  }}
                   disabled={deleteConfirmation !== 'DELETE' || isDeleting}
                   className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-900/50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
                 >
