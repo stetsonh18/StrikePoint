@@ -56,14 +56,14 @@ export const Header = () => {
         {/* Mobile menu button */}
         <button
           onClick={toggleMobileMenu}
-          className="md:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:text-emerald-400 transition-all flex-shrink-0 touch-target"
+          className="lg:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:text-emerald-400 transition-all flex-shrink-0 touch-target"
           aria-label="Open menu"
         >
           <Menu className="w-5 h-5" />
         </button>
 
         {/* Search - Hidden on mobile, show icon button instead */}
-        <div className="hidden md:flex flex-1 max-w-xl">
+        <div className="hidden lg:flex flex-1 max-w-xl">
           <div className="relative w-full">
             <label htmlFor="header-search" className="sr-only">
               Search trades and symbols
@@ -84,7 +84,7 @@ export const Header = () => {
         {/* Mobile search button */}
         <button
           onClick={() => setShowSearchModal(true)}
-          className="md:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:text-emerald-400 transition-all flex-shrink-0 touch-target"
+          className="lg:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:text-emerald-400 transition-all flex-shrink-0 touch-target"
           aria-label="Search"
         >
           <Search className="w-5 h-5" />
@@ -102,7 +102,7 @@ export const Header = () => {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
         </button>
 
-        <div className="hidden md:block ml-1 md:ml-2 h-8 w-px bg-slate-200 dark:bg-slate-800/50" />
+        <div className="hidden lg:block ml-1 lg:ml-2 h-8 w-px bg-slate-200 dark:bg-slate-800/50" />
 
         <div className="relative">
           <button

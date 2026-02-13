@@ -811,7 +811,7 @@ export const Dashboard = () => {
             {isChartExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
         </div>
-        <div className={isChartExpanded ? 'h-[calc(100vh-12rem)]' : 'h-96'}>
+        <div className={isChartExpanded ? 'h-[calc(100vh-12rem)]' : ''}>
           <PortfolioPerformanceChart userId={userId} formatCurrency={formatCurrency} isExpanded={isChartExpanded} />
         </div>
       </div>

@@ -25,7 +25,7 @@ export const Sidebar = () => {
       {/* Mobile overlay */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={closeMobileMenu}
           aria-hidden="true"
         />
@@ -38,10 +38,10 @@ export const Sidebar = () => {
           border-r border-slate-200 dark:border-slate-800/50
           backdrop-blur-xl
           flex flex-col transition-all duration-300 relative
-          fixed md:static inset-y-0 left-0 z-50
-          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          ${isMobileOpen ? 'pointer-events-auto' : 'pointer-events-none md:pointer-events-auto'}
-          hidden md:flex
+          fixed lg:static inset-y-0 left-0 z-50
+          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isMobileOpen ? 'pointer-events-auto' : 'pointer-events-none lg:pointer-events-auto'}
+          hidden lg:flex
         `}
         style={{
           display: isMobileOpen ? 'flex' : undefined
@@ -73,7 +73,7 @@ export const Sidebar = () => {
       {/* Close button for mobile */}
       <button
         onClick={closeMobileMenu}
-        className="absolute top-4 right-4 md:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10 pointer-events-auto touch-target"
+        className="absolute top-4 right-4 lg:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10 pointer-events-auto touch-target"
         aria-label="Close sidebar"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -82,7 +82,7 @@ export const Sidebar = () => {
       {/* Collapse/Expand button for desktop */}
       <button
         onClick={toggleSidebar}
-        className="hidden md:flex absolute -right-3 top-8 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
+        className="hidden lg:flex absolute -right-3 top-8 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 items-center justify-center text-slate-600 dark:text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all hover:shadow-glow-sm z-10"
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isCollapsed ? (
@@ -101,7 +101,7 @@ export const Sidebar = () => {
               to={item.path}
               onClick={() => {
                 // Close mobile menu when navigating
-                if (window.innerWidth < 768) {
+                if (window.innerWidth < 1024) {
                   closeMobileMenu();
                 }
               }}

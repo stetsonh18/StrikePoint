@@ -252,7 +252,7 @@ const Stocks: React.FC = () => {
       </div>
 
       {/* Portfolio Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6">
         <StatCard
           title="Total Value"
           value={formatCurrency(portfolioSummary.totalValue)}
