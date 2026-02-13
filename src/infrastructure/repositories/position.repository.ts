@@ -1,6 +1,7 @@
 import { supabase } from '../api/supabase';
 import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import { CashTransactionRepository } from './cashTransaction.repository';
+import { CashBalanceService } from '../services/cashBalanceService';
 import { StrategyRepository } from './strategy.repository';
 import type {
   Position,
@@ -565,6 +566,7 @@ export class PositionRepository {
     if (transactionIds.length > 0) {
       try {
         await CashTransactionRepository.deleteByTransactionIds(transactionIds);
+        await CashBalanceService.recalculateBalance(position.user_id);
       } catch (cashDeleteError) {
         logErrorWithContext(cashDeleteError, {
           context: 'PositionRepository.delete - deleting cash transactions',

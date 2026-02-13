@@ -3,6 +3,7 @@ import { logger } from '@/shared/utils/logger';
 import { parseError, logErrorWithContext } from '@/shared/utils/errorHandler';
 import { validateData, TransactionInsertSchema, TransactionUpdateSchema } from '@/shared/utils/validationSchemas';
 import { CashTransactionRepository } from './cashTransaction.repository';
+import { CashBalanceService } from '../services/cashBalanceService';
 import type {
   Transaction,
   TransactionInsert,
@@ -323,6 +324,7 @@ export class TransactionRepository {
         // Explicitly delete associated cash transactions before deleting transactions
         try {
           await CashTransactionRepository.deleteByTransactionIds(transactionIds);
+          await CashBalanceService.recalculateBalance(transaction.user_id);
         } catch (cashDeleteError) {
           logger.warn('Error deleting cash transactions for strategy', {
             error: cashDeleteError,
@@ -386,6 +388,7 @@ export class TransactionRepository {
     // Explicitly delete associated cash transactions before deleting the transaction
     try {
       await CashTransactionRepository.deleteByTransactionIds([id]);
+      await CashBalanceService.recalculateBalance(transaction.user_id);
     } catch (cashDeleteError) {
       logger.warn('Error deleting cash transactions for transaction', {
         error: cashDeleteError,

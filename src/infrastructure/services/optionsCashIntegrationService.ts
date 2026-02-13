@@ -284,7 +284,7 @@ export class OptionsCashIntegrationService {
       process_date: processDate,
       settle_date: settleDate,
       symbol: underlyingSymbol || null,
-      transaction_id: null, // NULL for multi-leg since one cash transaction links to multiple transactions
+      transaction_id: optionsTransactions[0].id, // Link to first leg so cascade delete works when strategy is deleted
       tags: ['option', 'multi-leg', 'strategy'],
     };
 
